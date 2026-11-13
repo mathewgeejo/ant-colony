@@ -1,0 +1,260 @@
+{
+  "hardware": {
+    "cpu": "11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+    "logicalCores": 4,
+    "ramGB": 7.748809814453125,
+    "os": "win32 10.0.26200",
+    "node": "v22.14.0"
+  },
+  "seconds": 120,
+  "initialAnts": 4968,
+  "ticks": 21416,
+  "meanMsPerTick": 5.603456546507284,
+  "finalAnts": 2942,
+  "samples": [
+    {
+      "seconds": 5.0021100999999994,
+      "ticks": 535,
+      "ants": 4968,
+      "colonyCount": 8,
+      "msPerTick": 9.349738504672898,
+      "heapMB": 13.789108276367188,
+      "bufferMB": 10.977702140808105,
+      "signalChunks": 39
+    },
+    {
+      "seconds": 10.0094792,
+      "ticks": 1156,
+      "ants": 4968,
+      "colonyCount": 8,
+      "msPerTick": 8.063396296296297,
+      "heapMB": 16.473594665527344,
+      "bufferMB": 11.15711498260498,
+      "signalChunks": 47
+    },
+    {
+      "seconds": 15.017018899999998,
+      "ticks": 1740,
+      "ants": 4967,
+      "colonyCount": 8,
+      "msPerTick": 8.574554280821916,
+      "heapMB": 18.609703063964844,
+      "bufferMB": 11.550276756286621,
+      "signalChunks": 50
+    },
+    {
+      "seconds": 20.0306708,
+      "ticks": 2327,
+      "ants": 4965,
+      "colonyCount": 8,
+      "msPerTick": 8.541144633730836,
+      "heapMB": 19.935394287109375,
+      "bufferMB": 11.458468437194824,
+      "signalChunks": 71
+    },
+    {
+      "seconds": 25.0324348,
+      "ticks": 3000,
+      "ants": 4952,
+      "colonyCount": 8,
+      "msPerTick": 7.432041604754828,
+      "heapMB": 19.58270263671875,
+      "bufferMB": 11.897538185119629,
+      "signalChunks": 81
+    },
+    {
+      "seconds": 30.039583599999997,
+      "ticks": 3761,
+      "ants": 4912,
+      "colonyCount": 8,
+      "msPerTick": 6.579696189224703,
+      "heapMB": 21.52259063720703,
+      "bufferMB": 11.93088436126709,
+      "signalChunks": 90
+    },
+    {
+      "seconds": 35.0442567,
+      "ticks": 4596,
+      "ants": 4875,
+      "colonyCount": 8,
+      "msPerTick": 5.993620479041916,
+      "heapMB": 21.623390197753906,
+      "bufferMB": 12.230196952819824,
+      "signalChunks": 107
+    },
+    {
+      "seconds": 40.0477864,
+      "ticks": 5435,
+      "ants": 4760,
+      "colonyCount": 8,
+      "msPerTick": 5.963682598331346,
+      "heapMB": 22.85040283203125,
+      "bufferMB": 12.610522270202637,
+      "signalChunks": 104
+    },
+    {
+      "seconds": 45.0535988,
+      "ticks": 6270,
+      "ants": 4669,
+      "colonyCount": 8,
+      "msPerTick": 5.994984910179643,
+      "heapMB": 26.39404296875,
+      "bufferMB": 13.148921012878418,
+      "signalChunks": 83
+    },
+    {
+      "seconds": 50.053658600000006,
+      "ticks": 6998,
+      "ants": 4602,
+      "colonyCount": 8,
+      "msPerTick": 6.868214010989015,
+      "heapMB": 24.42292022705078,
+      "bufferMB": 13.298354148864746,
+      "signalChunks": 111
+    },
+    {
+      "seconds": 55.0563929,
+      "ticks": 7972,
+      "ants": 4452,
+      "colonyCount": 8,
+      "msPerTick": 5.1362775154004074,
+      "heapMB": 11.871109008789062,
+      "bufferMB": 7.293707847595215,
+      "signalChunks": 108
+    },
+    {
+      "seconds": 60.060099,
+      "ticks": 8804,
+      "ants": 4310,
+      "colonyCount": 8,
+      "msPerTick": 6.014069831730773,
+      "heapMB": 18.843597412109375,
+      "bufferMB": 7.6782331466674805,
+      "signalChunks": 120
+    },
+    {
+      "seconds": 65.0634003,
+      "ticks": 9714,
+      "ants": 4183,
+      "colonyCount": 8,
+      "msPerTick": 5.498133296703288,
+      "heapMB": 18.700775146484375,
+      "bufferMB": 8.054511070251465,
+      "signalChunks": 105
+    },
+    {
+      "seconds": 70.0646778,
+      "ticks": 10729,
+      "ants": 3976,
+      "colonyCount": 8,
+      "msPerTick": 4.9273669950739025,
+      "heapMB": 18.108062744140625,
+      "bufferMB": 8.438887596130371,
+      "signalChunks": 97
+    },
+    {
+      "seconds": 75.0647958,
+      "ticks": 11848,
+      "ants": 3856,
+      "colonyCount": 8,
+      "msPerTick": 4.468380697050927,
+      "heapMB": 17.93572998046875,
+      "bufferMB": 8.948927879333496,
+      "signalChunks": 108
+    },
+    {
+      "seconds": 80.06707429999999,
+      "ticks": 12900,
+      "ants": 3796,
+      "colonyCount": 8,
+      "msPerTick": 4.7550175855513315,
+      "heapMB": 19.232383728027344,
+      "bufferMB": 9.564370155334473,
+      "signalChunks": 105
+    },
+    {
+      "seconds": 85.0678429,
+      "ticks": 13919,
+      "ants": 3734,
+      "colonyCount": 8,
+      "msPerTick": 4.9075256133464285,
+      "heapMB": 15.514076232910156,
+      "bufferMB": 9.882933616638184,
+      "signalChunks": 118
+    },
+    {
+      "seconds": 90.07003909999999,
+      "ticks": 15023,
+      "ants": 3697,
+      "colonyCount": 8,
+      "msPerTick": 4.530974818840572,
+      "heapMB": 18.263229370117188,
+      "bufferMB": 10.356139183044434,
+      "signalChunks": 126
+    },
+    {
+      "seconds": 95.0733642,
+      "ticks": 16149,
+      "ants": 3648,
+      "colonyCount": 8,
+      "msPerTick": 4.443450355239788,
+      "heapMB": 18.403350830078125,
+      "bufferMB": 10.76673412322998,
+      "signalChunks": 104
+    },
+    {
+      "seconds": 100.0743252,
+      "ticks": 17165,
+      "ants": 3605,
+      "colonyCount": 8,
+      "msPerTick": 4.922205708661427,
+      "heapMB": 20.33989715576172,
+      "bufferMB": 11.51013469696045,
+      "signalChunks": 127
+    },
+    {
+      "seconds": 105.0780906,
+      "ticks": 18250,
+      "ants": 3547,
+      "colonyCount": 8,
+      "msPerTick": 4.61176534562211,
+      "heapMB": 19.460342407226562,
+      "bufferMB": 11.695670127868652,
+      "signalChunks": 94
+    },
+    {
+      "seconds": 110.08186,
+      "ticks": 19237,
+      "ants": 3507,
+      "colonyCount": 8,
+      "msPerTick": 5.069675177304969,
+      "heapMB": 22.54547119140625,
+      "bufferMB": 12.35891056060791,
+      "signalChunks": 126
+    },
+    {
+      "seconds": 115.08540769999999,
+      "ticks": 20285,
+      "ants": 3300,
+      "colonyCount": 8,
+      "msPerTick": 4.774377576335874,
+      "heapMB": 24.94451904296875,
+      "bufferMB": 12.787898063659668,
+      "signalChunks": 116
+    }
+  ],
+  "audit": {
+    "inv": {
+      "sugar": 609,
+      "protein": 2709,
+      "seed": 1084,
+      "water": 5587846
+    },
+    "exp": {
+      "sugar": 609,
+      "protein": 2709,
+      "seed": 1084,
+      "water": 5587846
+    }
+  }
+}

@@ -24,7 +24,7 @@ export interface LocusDef {
 }
 
 export const LOCI: LocusDef[] = [
-  { key: 'size', name: 'Body size', effect: 'Larger workers carry and fight better and lose water more slowly.', cost: 'More larval food and development time; higher metabolism; large workers need wider tunnels.' },
+  { key: 'size', name: 'Body size', effect: 'Larger workers fight and dig more strongly and lose water more slowly.', cost: 'More larval food; higher metabolism; large workers need wider tunnels. Each worker carries one food unit regardless of size.' },
   { key: 'cuticle', name: 'Cuticle investment', effect: 'Thicker cuticle: better armour and desiccation resistance.', cost: 'Raises larval food cost and development time; slightly slower.' },
   { key: 'mandible', name: 'Mandible specialisation', effect: 'High = gripping/combat mandibles; low = digging/seed-handling mandibles.', cost: 'Each end of the axis trades against the other.' },
   { key: 'sensory', name: 'Sensory sensitivity', effect: 'Detects weaker trails and food at greater distance.', cost: 'Small metabolic and developmental cost.' },

@@ -30,10 +30,16 @@ export const DEFAULT_CLIMATE: Climate = {
 export const DAY_TICKS = 3600;
 export const SEASON_DAYS = 40;
 
+/** Runs start in mid-spring. */
+export const START_DAY_OFFSET = 5;
+/** 0..1 position in the (compressed) year: 0 = start of spring, 0.25 summer, 0.5 autumn, 0.75 winter. */
+export function yearFrac(tick: number) {
+  return (((tick / DAY_TICKS + START_DAY_OFFSET) % SEASON_DAYS) + SEASON_DAYS) % SEASON_DAYS / SEASON_DAYS;
+}
 export function airTemperature(c: Climate, tick: number): number {
   const day = tick / DAY_TICKS;
   const phase = day - Math.floor(day);
-  const season = Math.sin((2 * Math.PI * day) / SEASON_DAYS - Math.PI / 2); // starts in spring, peaks at day 20
+  const season = Math.cos(2 * Math.PI * (yearFrac(tick) - 0.375)); // warmest mid-summer
   return c.meanTemp + c.seasonAmp * season + c.dayAmp * Math.sin(2 * Math.PI * (phase - 0.3));
 }
 export function isDaytime(tick: number) {
@@ -41,7 +47,7 @@ export function isDaytime(tick: number) {
   return phase > 0.25 && phase < 0.8;
 }
 export function seasonName(tick: number) {
-  const d = ((tick / DAY_TICKS) % SEASON_DAYS) / SEASON_DAYS;
+  const d = yearFrac(tick);
   return d < 0.25 ? 'spring' : d < 0.5 ? 'summer' : d < 0.75 ? 'autumn' : 'winter';
 }
 
@@ -67,7 +73,7 @@ export class Physics {
   /** One fixed-step update of the terrain CA over active chunks only. */
   stepCA(tick: number) {
     const w = this.w;
-    const { W, H, CW, CH, mat, amt, moved, chunkActive } = w;
+    const { W, H, CW, CH, mat, moved, chunkActive } = w;
     this.stamp = (this.stamp + 1) >>> 0;
     const st = this.stamp;
     const rng = this.rng;
@@ -191,9 +197,9 @@ export class Physics {
     const b = i + W;
     const mb = mat[b];
     if (mb === M.AIR || mb === M.WATER) {
-      // unsupported: falls unless cohesive and held by both side neighbours
-      const held = cohesion > 0.6 && IS_SOLID[mat[i - 1] ?? M.STONE] && IS_SOLID[mat[i + 1] ?? M.STONE] && x > 0 && x < W - 1;
-      if (held && !rng.chance(0.002)) return false;
+      // unsupported: falls unless cohesive (damp) and keyed into a solid neighbour (arching)
+      const held = cohesion > 0.6 && ((x > 0 && IS_SOLID[mat[i - 1]]) || (x < W - 1 && IS_SOLID[mat[i + 1]]));
+      if (held && !rng.chance(0.00002)) return false;
       if (!held || rng.chance(0.5)) {
         w.swap(i, b);
         moved[b] = st;
@@ -208,6 +214,9 @@ export class Physics {
       const nx = x + d;
       if (nx < 0 || nx >= W) continue;
       const md = mat[b + d];
+      // grains do not slide sideways into excavated passages (workers keep tunnel mouths clear);
+      // unsupported material above a passage can still fall straight in
+      if (w.owner[b + d] || w.owner[i + d]) continue;
       if ((md === M.AIR || md === M.WATER) && (mat[i + d] === M.AIR || mat[i + d] === M.WATER)) {
         w.swap(i, b + d);
         moved[b + d] = st;
@@ -221,7 +230,7 @@ export class Physics {
   private maybeSlump(x: number, y: number, i: number, m: number, rng: Rng) {
     const w = this.w;
     const coh = MATERIALS[m].cohesion;
-    if (!rng.chance(0.004 * (1 - coh) + 0.0005)) return;
+    if (!rng.chance(0.0008 * (1 - coh) + 0.00005)) return;
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++) if (w.get(x + dx, y + dy) === M.ROOT) return;
     const a = w.amt[i];
@@ -279,7 +288,7 @@ export class Physics {
           const cb = MOIST_CAP[mat[b]];
           if (cb > 0 && mat[b] !== M.WATER) {
             const k = 0.35 * Math.sqrt(Math.max(0.01, Math.min(PERMEABILITY[m], PERMEABILITY[mat[b]])));
-            const diff = mi / cap - moist[b] / cb + 0.08;
+            const diff = mi / cap - moist[b] / cb + 0.03;
             let f = Math.trunc(diff * k * Math.min(cap, cb));
             if (f > 0) f = Math.min(f, mi, cb - moist[b]);
             else f = -Math.min(-f, moist[b], cap - mi);

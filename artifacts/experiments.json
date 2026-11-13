@@ -1,0 +1,684 @@
+[
+  {
+    "scenario": "first-colony",
+    "seed": 1,
+    "days": 12,
+    "seconds": 12.0385018,
+    "ants": 11,
+    "workers": [
+      10
+    ],
+    "deliveries": 56,
+    "deliveriesAfterIntervention": 56,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 1483,
+        "protein": 10,
+        "seed": 262,
+        "water": 3571301
+      },
+      "exp": {
+        "sugar": 1483,
+        "protein": 10,
+        "seed": 262,
+        "water": 3571301
+      }
+    }
+  },
+  {
+    "scenario": "moved-food",
+    "seed": 1,
+    "days": 4,
+    "seconds": 6.966286100000001,
+    "ants": 46,
+    "workers": [
+      45
+    ],
+    "deliveries": 64,
+    "deliveriesAfterIntervention": 1,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 306,
+        "protein": 27,
+        "seed": 0,
+        "water": 3689125
+      },
+      "exp": {
+        "sugar": 306,
+        "protein": 27,
+        "seed": 0,
+        "water": 3689125
+      }
+    }
+  },
+  {
+    "scenario": "flooded-passage",
+    "seed": 1,
+    "days": 4,
+    "seconds": 6.743454899999997,
+    "ants": 41,
+    "workers": [
+      40
+    ],
+    "deliveries": 0,
+    "deliveriesAfterIntervention": 0,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 17,
+        "protein": 10,
+        "seed": 0,
+        "water": 3710735
+      },
+      "exp": {
+        "sugar": 17,
+        "protein": 10,
+        "seed": 0,
+        "water": 3710735
+      }
+    }
+  },
+  {
+    "scenario": "competing-colonies",
+    "seed": 1,
+    "days": 4,
+    "seconds": 9.161459400000004,
+    "ants": 100,
+    "workers": [
+      48,
+      50
+    ],
+    "deliveries": 104,
+    "deliveriesAfterIntervention": 39,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 55,
+        "protein": 21,
+        "seed": 0,
+        "water": 4969511
+      },
+      "exp": {
+        "sugar": 55,
+        "protein": 21,
+        "seed": 0,
+        "water": 4969511
+      }
+    }
+  },
+  {
+    "scenario": "first-colony",
+    "seed": 19,
+    "days": 12,
+    "seconds": 16.218008,
+    "ants": 11,
+    "workers": [
+      10
+    ],
+    "deliveries": 37,
+    "deliveriesAfterIntervention": 37,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 1296,
+        "protein": 6,
+        "seed": 252,
+        "water": 3625576
+      },
+      "exp": {
+        "sugar": 1296,
+        "protein": 6,
+        "seed": 252,
+        "water": 3625576
+      }
+    }
+  },
+  {
+    "scenario": "moved-food",
+    "seed": 19,
+    "days": 4,
+    "seconds": 6.675618899999994,
+    "ants": 46,
+    "workers": [
+      45
+    ],
+    "deliveries": 92,
+    "deliveriesAfterIntervention": 63,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 242,
+        "protein": 23,
+        "seed": 0,
+        "water": 3727518
+      },
+      "exp": {
+        "sugar": 242,
+        "protein": 23,
+        "seed": 0,
+        "water": 3727518
+      }
+    }
+  },
+  {
+    "scenario": "flooded-passage",
+    "seed": 19,
+    "days": 4,
+    "seconds": 5.7722909,
+    "ants": 38,
+    "workers": [
+      37
+    ],
+    "deliveries": 34,
+    "deliveriesAfterIntervention": 24,
+    "rescues": 0,
+    "memoryFailures": 4,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 68,
+        "protein": 7,
+        "seed": 0,
+        "water": 3749213
+      },
+      "exp": {
+        "sugar": 68,
+        "protein": 7,
+        "seed": 0,
+        "water": 3749213
+      }
+    }
+  },
+  {
+    "scenario": "competing-colonies",
+    "seed": 19,
+    "days": 4,
+    "seconds": 9.001390700000004,
+    "ants": 90,
+    "workers": [
+      39,
+      49
+    ],
+    "deliveries": 131,
+    "deliveriesAfterIntervention": 54,
+    "rescues": 0,
+    "memoryFailures": 3,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 99,
+        "protein": 12,
+        "seed": 0,
+        "water": 4851259
+      },
+      "exp": {
+        "sugar": 99,
+        "protein": 12,
+        "seed": 0,
+        "water": 4851259
+      }
+    }
+  },
+  {
+    "scenario": "first-colony",
+    "seed": 42,
+    "days": 12,
+    "seconds": 16.222444300000003,
+    "ants": 10,
+    "workers": [
+      9
+    ],
+    "deliveries": 2,
+    "deliveriesAfterIntervention": 2,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 1698,
+        "protein": 8,
+        "seed": 257,
+        "water": 3693278
+      },
+      "exp": {
+        "sugar": 1698,
+        "protein": 8,
+        "seed": 257,
+        "water": 3693278
+      }
+    }
+  },
+  {
+    "scenario": "moved-food",
+    "seed": 42,
+    "days": 4,
+    "seconds": 5.975420599999998,
+    "ants": 44,
+    "workers": [
+      43
+    ],
+    "deliveries": 131,
+    "deliveriesAfterIntervention": 90,
+    "rescues": 0,
+    "memoryFailures": 0,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 324,
+        "protein": 22,
+        "seed": 0,
+        "water": 3795307
+      },
+      "exp": {
+        "sugar": 324,
+        "protein": 22,
+        "seed": 0,
+        "water": 3795307
+      }
+    }
+  },
+  {
+    "scenario": "flooded-passage",
+    "seed": 42,
+    "days": 4,
+    "seconds": 5.892488099999988,
+    "ants": 37,
+    "workers": [
+      36
+    ],
+    "deliveries": 44,
+    "deliveriesAfterIntervention": 36,
+    "rescues": 0,
+    "memoryFailures": 2,
+    "fights": 0,
+    "audit": {
+      "inv": {
+        "sugar": 36,
+        "protein": 13,
+        "seed": 0,
+        "water": 3811073
+      },
+      "exp": {
+        "sugar": 36,
+        "protein": 13,
+        "seed": 0,
+        "water": 3811073
+      }
+    }
+  },
+  {
+    "scenario": "competing-colonies",
+    "seed": 42,
+    "days": 4,
+    "seconds": 8.401163499999996,
+    "ants": 95,
+    "workers": [
+      50,
+      43
+    ],
+    "deliveries": 118,
+    "deliveriesAfterIntervention": 38,
+    "rescues": 0,
+    "memoryFailures": 14,
+    "fights": 230,
+    "audit": {
+      "inv": {
+        "sugar": 61,
+        "protein": 9,
+        "seed": 8,
+        "water": 4840634
+      },
+      "exp": {
+        "sugar": 61,
+        "protein": 9,
+        "seed": 8,
+        "water": 4840634
+      }
+    }
+  },
+  {
+    "scenario": "provisioned-reproduction",
+    "seed": 1,
+    "days": 24,
+    "counters": {
+      "dispersedQueens": 10,
+      "unmatedQueens": 0,
+      "landedQueens": 6,
+      "flights": 3,
+      "deliveries": 2513
+    },
+    "alates": [
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 5,
+        "m": 5
+      },
+      {
+        "g": 11,
+        "m": 35
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      }
+    ],
+    "lineage": [
+      {
+        "id": 1,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 0
+      },
+      {
+        "id": 2,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 4
+      },
+      {
+        "id": 3,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 2
+      },
+      {
+        "id": 4,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 5,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 6,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 7,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 8,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 9,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      }
+    ],
+    "mutations": 150,
+    "audit": {
+      "inv": {
+        "sugar": 5867,
+        "protein": 8448,
+        "seed": 271,
+        "water": 3549706
+      },
+      "exp": {
+        "sugar": 5867,
+        "protein": 8448,
+        "seed": 271,
+        "water": 3549706
+      }
+    }
+  },
+  {
+    "scenario": "provisioned-reproduction",
+    "seed": 19,
+    "days": 24,
+    "counters": {
+      "dispersedQueens": 13,
+      "unmatedQueens": 0,
+      "landedQueens": 9,
+      "flights": 2,
+      "deliveries": 2557
+    },
+    "alates": [
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 19,
+        "m": 12
+      },
+      {
+        "g": 12,
+        "m": 19
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      }
+    ],
+    "lineage": [
+      {
+        "id": 1,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 0
+      },
+      {
+        "id": 2,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 5
+      },
+      {
+        "id": 3,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 4
+      },
+      {
+        "id": 4,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 5,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 6,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 7,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 8,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 9,
+        "generation": 1,
+        "mother": 3,
+        "daughters": 0
+      },
+      {
+        "id": 10,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 11,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      },
+      {
+        "id": 12,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      }
+    ],
+    "mutations": 107,
+    "audit": {
+      "inv": {
+        "sugar": 5635,
+        "protein": 8659,
+        "seed": 255,
+        "water": 3589710
+      },
+      "exp": {
+        "sugar": 5635,
+        "protein": 8659,
+        "seed": 255,
+        "water": 3589710
+      }
+    }
+  },
+  {
+    "scenario": "provisioned-reproduction",
+    "seed": 42,
+    "days": 24,
+    "counters": {
+      "dispersedQueens": 3,
+      "unmatedQueens": 0,
+      "landedQueens": 1,
+      "flights": 2,
+      "deliveries": 1982
+    },
+    "alates": [
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 11,
+        "m": 12
+      },
+      {
+        "g": 0,
+        "m": 0
+      },
+      {
+        "g": 0,
+        "m": 0
+      }
+    ],
+    "lineage": [
+      {
+        "id": 1,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 0
+      },
+      {
+        "id": 2,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 1
+      },
+      {
+        "id": 3,
+        "generation": 0,
+        "mother": 0,
+        "daughters": 0
+      },
+      {
+        "id": 4,
+        "generation": 1,
+        "mother": 2,
+        "daughters": 0
+      }
+    ],
+    "mutations": 99,
+    "audit": {
+      "inv": {
+        "sugar": 6184,
+        "protein": 8524,
+        "seed": 266,
+        "water": 3660599
+      },
+      "exp": {
+        "sugar": 6184,
+        "protein": 8524,
+        "seed": 266,
+        "water": 3660599
+      }
+    }
+  }
+]

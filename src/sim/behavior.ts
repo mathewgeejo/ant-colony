@@ -44,9 +44,14 @@ export function supported(sim: Sim, x: number, y: number): boolean {
   if (y >= w.H - 1) return true;
   const i = y * w.W + x;
   if (w.mat[i] === M.PLANT) return true;
+  // 2D cross-section simplification: underground passages have front and back walls,
+  // so any enclosed (not sky-exposed) open cell offers footing
+  if (y > w.surface[x]) return true;
   for (let d = 0; d < 8; d++) {
     const nx = x + DX[d], ny = y + DY[d];
-    if (nx < 0 || ny < 0 || nx >= w.W || ny >= w.H) return true;
+    // the world's side and top edges are not climbable walls
+    if (nx < 0 || ny < 0 || nx >= w.W) continue;
+    if (ny >= w.H) return true;
     const m = w.mat[ny * w.W + nx];
     if (IS_SOLID[m] || m === M.PLANT) return true;
   }
@@ -157,9 +162,18 @@ export function step(sim: Sim, i: number) {
         break;
       }
       case NAV.EXIT: {
-        if (DY[d] < 0) wt *= 3.5; else if (DY[d] > 0) wt *= 0.3;
-        const de1 = dist2(nx, ny, ex, ey);
-        wt *= de1 < de0 ? 2 : 0.7;
+        // inside its own nest an ant knows the way out (nest familiarity: distance-to-exit field)
+        const dh = sim.nestDist[y * W + x];
+        if (dh > 0 && w.owner[y * W + x] === owner) {
+          const dn = sim.nestDist[ni];
+          if (dn > 0 && dn < dh) wt *= 8;
+          else if (dn === 0 && dh <= 2 && w.owner[ni] !== owner) wt *= 8; // stepping out of the entrance
+          else wt *= 0.15;
+        } else {
+          if (DY[d] < 0) wt *= 3.5; else if (DY[d] > 0) wt *= 0.3;
+          const de1 = dist2(nx, ny, ex, ey);
+          wt *= de1 < de0 ? 2 : 0.7;
+        }
         break;
       }
       case NAV.UP: {
@@ -193,12 +207,18 @@ export function step(sim: Sim, i: number) {
   if (nav === NAV.GOAL || nav === NAV.HOME || nav === NAV.RETRACE || nav === NAV.ROUTE_OUT) {
     if (dist2(nx, ny, tx, ty) >= d0) a.stuck[i] = Math.min(255, a.stuck[i] + 1);
     else if (a.stuck[i] > 0) a.stuck[i]--;
+  } else if (nav === NAV.TRAIL_OUT) {
+    // outbound trail followers must keep moving away from the nest; at a trail's end they search locally
+    if (dist2(nx, ny, ex, ey) <= de0) a.stuck[i] = Math.min(255, a.stuck[i] + 1);
+    else if (a.stuck[i] > 0) a.stuck[i]--;
   }
+  if (nx <= 1 || nx >= W - 2) a.hx[i] = (nx <= 1 ? 1 : -1) as any; // world edge: turn around
   moveTo(sim, i, nx, ny);
 }
 
 export function moveTo(sim: Sim, i: number, nx: number, ny: number) {
   const a = sim.a, w = sim.w;
+  if (!w.inb(nx, ny) || IS_SOLID[w.get(nx, ny)]) return;
   const oi = a.y[i] * w.W + a.x[i];
   if (sim.occ[oi] > 0) sim.occ[oi]--;
   a.hx[i] = Math.sign(nx - a.x[i]);
@@ -223,13 +243,10 @@ export function moveTo(sim: Sim, i: number, nx: number, ny: number) {
     const sp = sim.speciesOf(c);
     const q = a.carryQ[i];
     const dep = sp.communication.trailDeposit * a.pheno[i * 29 + P.SIGNAL] * (0.15 + 0.85 * q);
-    if (dep > 0) {
+    if (dep > 0 && w.mat[ni] !== M.WATER) {
       c.trail.add(nx, ny, dep);
       a.energy[i] -= 0.00025 * a.pheno[i * 29 + P.SIGNAL];
     }
-  } else if (a.task[i] === TASK.FORAGE && a.nav[i] === NAV.TRAIL_OUT && !own) {
-    const sp = sim.speciesOf(c);
-    if (sp.communication.recruitment === 'mass') c.trail.add(nx, ny, 0.08 * sp.communication.trailDeposit * a.pheno[i * 29 + P.SIGNAL]);
   }
 }
 
@@ -237,6 +254,10 @@ export function moveTo(sim: Sim, i: number, nx: number, ny: number) {
 
 export function updateAnt(sim: Sim, i: number) {
   const a = sim.a;
+  // Collapsing terrain can bury an ant between decisions; never walk out through solids.
+  if (IS_SOLID[sim.w.get(a.x[i], a.y[i])]) {
+    if (!escapeSolid(sim, i)) { sim.killAnt(i, 'buried'); return; }
+  }
   a.px[i] = a.x[i]; a.py[i] = a.y[i];
   if (((sim.tick + i) % DECIDE_EVERY) === 0) decide(sim, i);
   if (!a.alive[i]) return;
@@ -269,7 +290,7 @@ export function updateAnt(sim: Sim, i: number) {
 
 /** Checks that happen right after moving: arrivals at goals, food pickup, delivery. */
 function afterStep(sim: Sim, i: number) {
-  const a = sim.a, w = sim.w;
+  const a = sim.a;
   const x = a.x[i], y = a.y[i];
   const c = sim.colonies[a.colony[i]];
   if (!c) return;
@@ -453,6 +474,8 @@ function stimulus(s: number, theta: number) {
 
 function decide(sim: Sim, i: number) {
   const a = sim.a;
+  // busy with timed work (digging, feeding): keep working unless submerged
+  if (a.timer[i] > 0 && a.nav[i] === NAV.STAY && sim.w.mat[a.y[i] * sim.w.W + a.x[i]] !== M.WATER) return;
   const caste = a.caste[i];
   if (caste === CASTE.QUEEN) return decideQueen(sim, i);
   if (caste === CASTE.MALE || caste === CASTE.GYNE) return decideAlate(sim, i);
@@ -482,6 +505,8 @@ function decide(sim: Sim, i: number) {
       return;
     }
   }
+  // hunger: workers inside the nest feed from stores whatever they are doing
+  if (own && a.energy[i] < 0.3 && sim.feedAdult(c, i)) a.why[i] = WHY.ENERGY;
   // thirst
   if (a.hydration[i] < 0.3 && !a.carry[i] && a.task[i] !== TASK.DRINK && a.carryBrood[i] < 0) {
     a.task[i] = TASK.DRINK; a.why[i] = WHY.THIRST; a.nav[i] = own ? NAV.NEST_WANDER : NAV.EXPLORE; a.timer[i] = 300;
@@ -537,6 +562,8 @@ function decide(sim: Sim, i: number) {
     if (sim.feedAdult(c, i)) { a.why[i] = WHY.ENERGY; return; }
   }
   if (a.hydration[i] < 0.6) tryDrink(sim, i);
+  // resting workers sample task stimuli only occasionally (roughly every 2 game-minutes)
+  if (a.task[i] === TASK.IDLE && a.why[i] !== WHY.NONE && !sim.rng.chance(0.12)) return;
   chooseTask(sim, i, c);
 }
 
@@ -545,8 +572,9 @@ function chooseTask(sim: Sim, i: number, c: Colony) {
   const sp = sim.speciesOf(c);
   const o = i * 29;
   const ageFrac = a.age[i] / sp.workers.lifespanDays;
-  // age polyethism: young workers bias to in-nest work, older to foraging
-  const young = ageFrac < 0.2 ? 1 : 0;
+  // age polyethism: young (callow) workers bias to in-nest work, older to foraging;
+  // strong colony hunger overrides the bias
+  const young = a.age[i] < 3 && c.stim.forage < 0.6 ? 1 : 0;
   const thr = (k: number, base: number) => base * a.thrL[i * 4 + k];
   const s = c.stim;
   let forageS = s.forage * (young ? 0.35 : 1 + Math.min(0.8, ageFrac));
@@ -608,14 +636,14 @@ function decideForage(sim: Sim, i: number, c: Colony, own: boolean) {
   const a = sim.a, rng = sim.rng;
   const o = i * 29;
   if (a.energy[i] < 0.2) { returnHome(sim, i, c, WHY.RETURN_HUNGRY); return; }
-  if (own) {
-    // still inside: head for the exit
+  if (own && (a.nav[i] === NAV.EXIT || a.stepCount[i] === 0)) {
+    // still inside and has not left yet: head for the exit
     if (a.nav[i] !== NAV.EXIT) { a.nav[i] = NAV.EXIT; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; }
     if (a.stuck[i] > 80) { a.task[i] = TASK.IDLE; a.stuck[i] = 0; }
     return;
   }
   // first decision outside: choose information source
-  const maxSteps = 250 + 900 * a.pheno[o + P.EXPLORE];
+  const maxSteps = 500 + 2200 * a.pheno[o + P.EXPLORE];
   if (a.stepCount[i] > maxSteps) { returnHome(sim, i, c, WHY.RETURN_EMPTY); return; }
   const nav = a.nav[i];
   if (nav === NAV.EXIT || nav === NAV.GOAL && a.stepCount[i] < 2) {
@@ -632,10 +660,17 @@ function decideForage(sim: Sim, i: number, c: Colony, own: boolean) {
     sim.noteRouteBlocked(c);
   }
   if (a.nav[i] === NAV.GOAL && a.stuck[i] > 15) { a.nav[i] = NAV.EXPLORE; a.stuck[i] = 0; }
+  if (a.nav[i] === NAV.TRAIL_OUT && a.stuck[i] > 12) {
+    // end of the trail (or it leads nowhere further): search locally from here
+    a.nav[i] = NAV.EXPLORE; a.why[i] = WHY.SCOUT; a.stuck[i] = 0; a.timer[i] = 60;
+    if (rng.chance(0.5)) a.hx[i] = -a.hx[i] as any;
+    return;
+  }
   if (a.nav[i] === NAV.EXPLORE || a.nav[i] === NAV.TRAIL_OUT) {
     // trail following: probability depends on detected strength, sensitivity and fidelity
     const t = trailAt(sim, c, a.x[i], a.y[i]);
     const detect = 0.05 / a.pheno[o + P.SENSORY];
+    if (a.nav[i] === NAV.EXPLORE && a.timer[i] > 0) { a.timer[i]--; return; } // local search after losing a trail
     if (t > detect) {
       const follow = a.pheno[o + P.FIDELITY] * (t / (t + 0.5));
       if (a.nav[i] === NAV.EXPLORE && rng.chance(follow)) { a.nav[i] = NAV.TRAIL_OUT; a.why[i] = WHY.TRAIL_OUT; }
@@ -674,7 +709,7 @@ function tryDrink(sim: Sim, i: number): boolean {
       a.hydration[i] = Math.min(1, a.hydration[i] + 0.2);
       return true;
     }
-    if (MOIST_CAP[m] > 0 && w.moist[k] > MOIST_CAP[m] * 0.25) {
+    if (MOIST_CAP[m] > 0 && w.moist[k] > MOIST_CAP[m] * 0.1) {
       w.moist[k]--;
       w.ledger.sink('water', 'drunk by ants', 1);
       a.hydration[i] = Math.min(1, a.hydration[i] + 0.12);
@@ -697,7 +732,8 @@ function digScore(sim: Sim, c: Colony, x: number, y: number, dy: number, exitMod
   // never dig into water: check neighbours
   for (let d = 0; d < 8; d++) if (w.get(x + DX[d], y + DY[d]) === M.WATER) return 0;
   const cap = MOIST_CAP[m];
-  if (cap > 0 && w.moist[k] >= cap - 2) return 0.05; // saturated soil is unstable
+  // saturated cohesive soil is avoided (unstable), but loose fill blocking a passage is always cleared
+  if (cap > 0 && w.moist[k] >= cap - 2 && m !== M.LOOSE && m !== M.SAND && !exitMode) return 0.05;
   let air = 0;
   for (let d = 0; d < 8; d++) if (isOpen(w.get(x + DX[d], y + DY[d]))) air++;
   let s = MATERIALS[m].chamberSuitability + 0.2;
@@ -708,6 +744,8 @@ function digScore(sim: Sim, c: Colony, x: number, y: number, dy: number, exitMod
   } else {
     if (plug) return 0;
     const depthBelow = y - c.entrance.y;
+    // keep the entrance shaft narrow: no widening in the top rows below the surface
+    if (depthBelow < 5 || y <= w.surface[x] + 3) return 0;
     const deeper = c.nestDepth < sp.nest.targetDepth;
     if (dy > 0) s *= deeper ? 2.2 : 0.5;
     else if (dy < 0) s *= depthBelow < 6 ? 0.05 : 0.35;
@@ -779,12 +817,14 @@ function decideHaul(sim: Sim, i: number, c: Colony, own: boolean) {
   const x = a.x[i], y = a.y[i];
   a.stepCount[i] = Math.min(65535, a.stepCount[i] + DECIDE_EVERY);
   const outside = !own && w.skyExposed(x, y);
-  const farEnough = dist2(x, y, c.entrance.x, c.entrance.y) >= (a.carry[i] === M.CORPSE || a.carry[i] === M.WASTE ? 64 : 4);
+  const farEnough = dist2(x, y, c.entrance.x, c.entrance.y) >= (a.carry[i] === M.CORPSE || a.carry[i] === M.WASTE ? 144 : 64);
   if (outside && farEnough) { if (dropCarried(sim, i, false)) return; }
   if (outside && !farEnough) { a.nav[i] = NAV.EXPLORE; return; }
   if (!own && !outside) a.nav[i] = NAV.UP;
   else a.nav[i] = NAV.EXIT;
-  if (a.stepCount[i] > 900 || a.stuck[i] > 120) dropCarried(sim, i, true);
+  // no way out (sealed or blocked): stash the pellet in a dead-end inside the nest
+  const giveUp = (!c.hasExit && a.stepCount[i] > 120) || a.stepCount[i] > 700 || a.stuck[i] > 120;
+  if (giveUp && own) dropCarried(sim, i, true);
 }
 
 /** Place the carried pellet/corpse in a nearby open, supported cell. */
@@ -792,6 +832,12 @@ function dropCarried(sim: Sim, i: number, inside: boolean): boolean {
   const a = sim.a, w = sim.w;
   const x = a.x[i], y = a.y[i];
   const m = a.carry[i];
+  if (inside && (m === M.LOOSE || m === M.SAND)) {
+    // granular spoil dropped inside would pour down passages and plug them; instead the
+    // pellet is pressed into the tunnel wall (abstraction - soil is not a tracked resource)
+    a.carry[i] = 0; a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER; a.stepCount[i] = 0;
+    return true;
+  }
   let best = -1, bestS = -1;
   for (let d = 0; d < 8; d++) {
     const nx = x + DX[d], ny = y + DY[d];
@@ -801,8 +847,15 @@ function dropCarried(sim: Sim, i: number, inside: boolean): boolean {
     let solids = 0;
     for (let e = 0; e < 8; e++) if (IS_SOLID[w.get(nx + DX[e], ny + DY[e])]) solids++;
     // inside the nest only fill dead-end corners so passages stay open
-    if (inside && solids < 5) continue;
-    if (!inside && !IS_SOLID[w.get(nx, ny + 1)]) continue;
+    if (inside && solids < 6) continue;
+    if (!inside) {
+      if (!IS_SOLID[w.get(nx, ny + 1)]) continue;
+      // never dump spoil where it could slide into a passage: no excavated cells nearby
+      let nearTunnel = false;
+      for (let dy = -2; dy <= 4 && !nearTunnel; dy++)
+        for (let dx = -5; dx <= 5; dx++) if (w.inb(nx + dx, ny + dy) && w.owner[(ny + dy) * w.W + nx + dx] && w.mat[(ny + dy) * w.W + nx + dx] === M.AIR) { nearTunnel = true; break; }
+      if (nearTunnel) continue;
+    }
     if (solids > bestS) { bestS = solids; best = k; }
   }
   if (best < 0) return false;
@@ -1079,7 +1132,7 @@ export function physiology(sim: Sim, i: number) {
   a.age[i] += dtDays;
   const isQueen = a.caste[i] === CASTE.QUEEN;
   // energy
-  const drain = (isQueen ? 0 : 0.3) * dtDays * a.pheno[o + P.METCOST] * Math.max(0.15, q10) * active;
+  const drain = (isQueen ? 0 : 0.15) * dtDays * a.pheno[o + P.METCOST] * Math.max(0.15, q10) * active;
   a.energy[i] -= drain;
   if (a.pheno[o + P.BIOLUM] > 0 && a.anim[i] & 1) a.energy[i] -= drain * 0.25 * a.pheno[o + P.BIOLUM];
   // water balance: loss depends on air humidity, temperature and the water-balance phenotype
