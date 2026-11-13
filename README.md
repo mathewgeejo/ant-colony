@@ -26,6 +26,7 @@ npm run preview
 
 - Drag a selected material to paint; Replace determines whether occupied terrain can be overwritten. Dig removes soil while preserving food and water. Erase removes either.
 - Mouse wheel / + / − zoom. Right-drag, middle-drag or the Pan tool moves the camera. F fits the world; arrow keys pan. Touch users select Pan to drag.
+- E focuses material search; X selects Erase. The compact element palette and optional overlay inspector are inspired by Sandboxels. On phones, Fit centres a readable colony slice; zoom out for the entire map. New world and Field journal are also accessible inside Settings.
 - Space pauses, `.` single-steps, I inspects, D digs, H selects Pan, [ and ] change brush size. Click an ant to inspect its current reason, needs, route memory and inherited traits.
 - Place sugar for adults and protein for growing larvae; the harvester profile also processes seeds. Add water, alter temperature/moisture, place barriers or introduce rival colonies to change survival conditions.
 - Use overlays for trails, moisture, temperature, resources and activity. Pattern marks and labels are available in Settings. All sandbox tools are available from the start. Discovery records never grant communication or other abilities.

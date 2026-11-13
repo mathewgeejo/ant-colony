@@ -1,61 +1,61 @@
 [
   {
     "seed": 1,
-    "maxFlood": 3,
+    "maxFlood": 207,
     "rescues": 0,
-    "floodEvents": 0,
+    "floodEvents": 2,
     "audit": {
       "inv": {
-        "sugar": 39,
-        "protein": 0,
+        "sugar": 7,
+        "protein": 14,
         "seed": 0,
-        "water": 3704137
+        "water": 3692581
       },
       "exp": {
-        "sugar": 39,
-        "protein": 0,
+        "sugar": 7,
+        "protein": 14,
         "seed": 0,
-        "water": 3704137
+        "water": 3692581
       }
     }
   },
   {
     "seed": 19,
-    "maxFlood": 13,
+    "maxFlood": 165,
     "rescues": 0,
-    "floodEvents": 0,
+    "floodEvents": 4,
     "audit": {
       "inv": {
-        "sugar": 88,
-        "protein": 2,
+        "sugar": 63,
+        "protein": 12,
         "seed": 0,
-        "water": 3744335
+        "water": 3735999
       },
       "exp": {
-        "sugar": 88,
-        "protein": 2,
+        "sugar": 63,
+        "protein": 12,
         "seed": 0,
-        "water": 3744335
+        "water": 3735999
       }
     }
   },
   {
     "seed": 42,
-    "maxFlood": 2,
+    "maxFlood": 166,
     "rescues": 0,
-    "floodEvents": 0,
+    "floodEvents": 2,
     "audit": {
       "inv": {
-        "sugar": 84,
-        "protein": 0,
+        "sugar": 43,
+        "protein": 13,
         "seed": 0,
-        "water": 3811533
+        "water": 3796451
       },
       "exp": {
-        "sugar": 84,
-        "protein": 0,
+        "sugar": 43,
+        "protein": 13,
         "seed": 0,
-        "water": 3811533
+        "water": 3796451
       }
     }
   }

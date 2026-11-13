@@ -1,0 +1,16 @@
+{
+  "acceptMeanMs": 71.06339869545955,
+  "acceptMaxMs": 204.39999997615814,
+  "meanChunks": 65.9673202614379,
+  "packets": 153,
+  "paintLatencyMs": 80.30000007152557,
+  "fps": 10.607241003373161,
+  "renderMs": 0.3672982787558673,
+  "stepMs": 13.600000023841858,
+  "fieldMs": 4.243169222447923,
+  "ants": 1,
+  "tick": 1281,
+  "workerAchievedSpeed": 4.493503956027873,
+  "testSeconds": 13.1356933,
+  "errors": []
+}

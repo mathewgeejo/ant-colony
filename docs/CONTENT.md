@@ -24,7 +24,7 @@ All use the same engine; no success event, birth, mutation, trail, fight or mort
 | --- | --- | --- |
 | First colony | One claustral queen; mild meadow, nearby protein, no predators | Founding chamber, eggs→larvae→pupae→workers, reserve depletion, reopened entrance |
 | Moved food | Established colony and sugar patch; button removes old patch and paints another | Actual return deposits, trail decay, private-memory failures, rediscovery. Some seeds take much longer or lose workers. |
-| Flooded passage | Barrier-lined reservoir and downhill spillway; button opens gate | Water occupancy and moisture separately, nest exposure, escaping ants, brood rescue if brood is present |
+| Flooded passage | Barrier-lined overhead reservoir and connected experimental nest; button opens gate | Water occupancy and moisture separately, nest exposure, escaping ants, brood rescue when workers can reach a dry destination |
 | Competing colonies | Garden and harvester colonies; central mixed food | Local encounters and fights if routes intersect. Competition does not guarantee combat in every seed. |
 | Environmental shift | Twelve founding queens; sustained heat/drying starting day 30 | Exposure, deaths, reproductive success, later distributions. Long-term selection outcomes are exploratory, not statistically validated. |
 | Fantasy divergence | Storms and founders with standing fictional variation | Expression, submersion and dry-air costs. Alleles are not granted by floods. Multi-generation spread is not guaranteed or validated. |

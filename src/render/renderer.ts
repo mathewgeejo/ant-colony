@@ -56,6 +56,13 @@ export class Renderer {
     this.frame = null; this.route = []; this.surface = new Int16Array(W); this.sprites.clear(); this.fit();
   }
   fit() {
+    // A phone shows a readable slice centred on the colony; wheel/buttons can reveal the full map.
+    if (this.width < 600) {
+      this.zoom = Math.max(3.5, this.height / this.H);
+      const x = this.colonies.find(c=>c.alive)?.entrance.x ?? this.W*.45;
+      this.ox = this.width/2 - x*this.zoom; this.oy = 0;
+      return;
+    }
     this.zoom = Math.max(1, Math.min(this.width / this.W, this.height / (this.H * .85)));
     this.ox = (this.width - this.W * this.zoom) / 2;
     this.oy = Math.max(0, (this.height - this.H * this.zoom) / 2);

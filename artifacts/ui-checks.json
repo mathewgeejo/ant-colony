@@ -1,0 +1,19 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "Food and water category",
+    "Material search filters buttons",
+    "Observatory opens over full-width world"
+  ],
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      390,
+      844
+    ]
+  ],
+  "errors": []
+}

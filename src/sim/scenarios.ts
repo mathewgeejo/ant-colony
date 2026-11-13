@@ -23,7 +23,7 @@ export const SCENARIOS: ScenarioDef[] = [
   { id: 'sandbox', title: 'Free sandbox', mode: 'naturalistic', defaultSize: [512, 256], blurb: 'A temperate meadow with one newly mated black garden ant queen. Everything else is up to you.', goal: 'Build, break and observe.' },
   { id: 'first-colony', title: 'First colony', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A mild meadow with no predators. A founding queen searches for a site, seals herself in and rears her first workers from body reserves.', goal: 'Watch the queen dig a chamber, lay eggs and rear the first (nanitic) workers. Try warming the chamber with the heat tool.' },
   { id: 'moved-food', title: 'Moved food', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'An established colony exploits a rich sugar patch. Use the scenario button to move the food and watch the colony rediscover it.', goal: 'Let a trail form (signal overlay), then press "Move the sugar". Foragers with route memory return to the old site first.' },
-  { id: 'flooded-passage', title: 'Flooded passage', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A colony nests in a hollow below a dammed pool. Open the dam and see how water spreads through the nest and how workers respond.', goal: 'Press "Open the dam" (or paint water). Watch nurses carry brood away from water and workers re-dig passages.' },
+  { id: 'flooded-passage', title: 'Flooded passage', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A colony occupies a lined experimental nest beneath a sealed reservoir. Open its gate to expose the passages to a gravity-fed flood.', goal: 'Press "Open the dam" (or paint water). Inspect submerged ants and brood; rescue requires surviving workers and somewhere dry to go.' },
   { id: 'competing-colonies', title: 'Competing colonies', mode: 'naturalistic', defaultSize: [512, 192], blurb: 'A black garden ant colony and a California harvester ant colony share a meadow with one central food patch.', goal: 'Observe overlapping foraging ranges, encounters at the food patch and the territory overlay.' },
   { id: 'environmental-shift', title: 'Environmental shift', mode: 'speculative', defaultSize: [512, 192], blurb: 'Twelve founding queens start in a temperate meadow. From day 30 the climate becomes hotter and drier and stays that way.', goal: 'Over several reproductive generations, compare founder genotypes for water balance and thermal optimum in the evolution panel.' },
   { id: 'fantasy-divergence', title: 'Fantasy divergence', mode: 'fantasy', defaultSize: [512, 192], blurb: 'FICTIONAL mechanics enabled. Founders carry standing variation for an air-film respiration allele and bioluminescence. Frequent storms flood the ground.', goal: 'Does the fictional trait spread? Toggle "Dry climate" to remove its benefit and keep its cost.' },
@@ -258,25 +258,25 @@ export function createSim(opt: CreateOptions): Sim {
       w.recomputeAllSurface();
       clearPlantsNear(sim, nx, 20);
       const nest = sim.establishedColony(lasius, nx, surfaceY(sim, nx) - 1, 40);
-      // dammed pool uphill (left)
-      const px0 = nx - 60, px1 = nx - 30;
-      let top = H;
-      for (let x = px0; x <= px1; x++) top = Math.min(top, surfaceY(sim, x));
-      const damTop = top - 12;
-      for (let y = damTop; y < surfaceY(sim, px1 + 1) + 1; y++) for (const x of [px0 - 1, px1 + 1]) { const i = y * w.W + x; w.mat[i] = M.BARRIER; w.amt[i] = 0; w.moist[i] = 0; }
-      for (let x = px0; x <= px1; x++) for (let y = damTop + 1; y < surfaceY(sim, x); y++) { const i = y * w.W + x; w.mat[i] = M.WATER; w.amt[i] = WATER_UNITS; }
-      // Impermeable experimental reservoir and a connected, downhill spillway.
-      // This sets flood exposure; mortality/rescue outcomes still follow agent rules.
-      for (let x = px0; x <= px1; x++) { const k = surfaceY(sim, x) * w.W + x; w.mat[k] = M.BARRIER; w.moist[k] = 0; w.amt[k] = 0; }
       const inlet = nest?.entrance.y ?? s0;
-      for (let x = px1 + 2; x < nx; x++) {
-        const yy = Math.round(damTop + 6 + (inlet - damTop - 6) * (x - px1 - 1) / (nx - px1 - 1));
-        for (let dy = -1; dy <= 0; dy++) { const k = (yy + dy) * w.W + x; w.mat[k] = M.AIR; w.moist[k] = 0; w.amt[k] = 0; }
-        const k = (yy + 1) * w.W + x; w.mat[k] = M.BARRIER; w.moist[k] = 0; w.amt[k] = 0;
+      // An explicitly engineered tank exposes a lined nest to a gravity-fed pulse.
+      // Geometry is controlled; rescue, mortality and survival are not scripted.
+      const put=(x:number,y:number,m:number)=>{const k=y*w.W+x;w.mat[k]=m;w.moist[k]=0;w.amt[k]=m===M.WATER?WATER_UNITS:0;};
+      for(let x=nx-13;x<=nx+13;x++)put(x,inlet-2,M.BARRIER);
+      for(let y=inlet-14;y<inlet-2;y++){
+        put(nx-13,y,M.BARRIER);put(nx+13,y,M.BARRIER);
+        for(let x=nx-12;x<=nx+12;x++)put(x,y,M.WATER);
+      }
+      if(nest){
+        const cy=nest.chamber.y;
+        for(let y=inlet-1;y<=cy;y++)for(const x of [nx,nx+1]){put(x,y,M.AIR);w.owner[y*w.W+x]=nest.slot+1;}
+        for(let y=inlet;y<cy-1;y++){put(nx-1,y,M.BARRIER);put(nx+2,y,M.BARRIER);}
+        for(let x=nx-6;x<=nx+7;x++)put(x,cy+2,M.BARRIER);
+        for(let y=cy-1;y<=cy+2;y++){put(nx-6,y,M.BARRIER);put(nx+7,y,M.BARRIER);}
       }
       w.recomputeAllSurface();
       sim.scenarioInfo.actions = [
-        { label: 'Open the dam', cmds: [{ t: 'erase', x: px1 + 1, y: damTop + 6, r: 0 } as Command, { t: 'erase', x: px1 + 1, y: damTop + 5, r: 0 } as Command] },
+        { label: 'Open the dam', cmds: [{ t: 'erase', x: nx, y: inlet-2, r: 0 } as Command, { t: 'erase', x: nx+1, y: inlet-2, r: 0 } as Command] },
         { label: 'Heavy rain over the nest', cmds: [{ t: 'rain', x: nx, y: 0, r: 30 } as Command] },
       ];
       break;

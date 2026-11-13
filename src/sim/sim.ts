@@ -1105,7 +1105,7 @@ export class Sim {
       for (const sp of this.species) {
         const days = this.flightDays[sp.id];
         if (!days || !days.includes(day)) continue;
-        if (this.airT < 18 || this.phys.raining > 0) { this.event('flight', `${sp.name}: flight day postponed (weather).`); continue; }
+        if (this.airT < 18 || this.phys.raining > 0) { this.event('flight', `${sp.name}: flight day skipped (weather).`); continue; }
         let alates = 0;
         const a = this.a;
         for (let i = 0; i < a.n; i++) {

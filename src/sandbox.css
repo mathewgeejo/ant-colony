@@ -1,6 +1,7 @@
 /* Compact experimental workbench, inspired by the direct element palette in Sandboxels. */
 :root{--panel:#242628;--raised:#303335;--edge:#505459;--muted:#adb0aa;--gold:#e3c386;background:#1b1d1e;color:#e1e2dc}
 [hidden]{display:none!important}
+@media(max-width:600px){#palette{align-content:flex-start}}
 button,select,input{border-radius:2px}
 button{background:#303335;border-color:#505459}
 button:hover{background:#424648;border-color:#959d9e}
@@ -81,6 +82,8 @@ aside details{border-color:#4d5b48}
 .species-picker label{font-size:10px}.species-picker input{height:23px!important;min-height:23px!important;width:150px!important;padding:2px 5px!important}
 .species-picker select{grid-column:1/-1;min-height:24px;height:24px;padding:2px 5px;font-size:11px}
 .overlay-legend{bottom:91px;left:14px;border-radius:2px;background:#222e26ee;color:#dae4ce;border-color:#859678;font-size:11px;padding:7px 10px}
+/* Three complete rows fit without cutting off the last material buttons on phones. */
+@media(max-width:600px){body #app{grid-template-rows:49px minmax(0,1fr) 182px 28px}body #palette{height:115px}}
 footer{background:#191d1c;border-color:#485349;padding:0 16px;color:#a3b39a;font-size:10px}
 footer button{font-size:10px}#fps{color:#91a48a}
 dialog{background:#272e28;border-radius:3px;border-color:#8c957a}
