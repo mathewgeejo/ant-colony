@@ -10,6 +10,7 @@ function open(): Promise<IDBDatabase> {
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error ?? new Error('Could not open local storage (IndexedDB).'));
+    r.onblocked = () => rej(new Error('Local storage is blocked by another open game tab. Close that tab and try again.'));
   });
 }
 
@@ -20,8 +21,8 @@ function run<T>(stores: string[], mode: IDBTransactionMode, fn: (t: IDBTransacti
     let out: T | undefined;
     if (req) req.onsuccess = () => { out = req.result; };
     t.oncomplete = () => { db.close(); res(out); };
-    t.onerror = () => rej(t.error ?? new Error('Storage error.'));
-    t.onabort = () => rej(t.error ?? new Error('Storage transaction aborted (storage may be full or blocked).'));
+    t.onerror = () => { db.close(); rej(t.error ?? new Error('Storage error.')); };
+    t.onabort = () => { db.close(); rej(t.error ?? new Error('Storage transaction aborted (storage may be full or blocked).')); };
   }));
 }
 

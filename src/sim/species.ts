@@ -170,7 +170,7 @@ export const LASIUS_NIGER: SpeciesDef = {
     topt: 25, tbreadth: 9, explore: 0.35, thrForage: 0.45, thrNurse: 0.35, thrDig: 0.5, devrateSpread: 0.12, chem: 0.5,
   },
   visual: { body: [38, 30, 30], head: [30, 24, 24], gaster: [46, 38, 36], sprite: 'formicine' },
-  sources: ['matte2012', 'kipyatkov2004', 'kipyatkov2015', 'boomsma1998', 'beckers1992', 'gruter2011', 'czaczkes2015', 'devigne2002', 'claustralfeeding2024'],
+  sources: ['https://antwiki.org/wiki/Lasius_niger','https://pubmed.ncbi.nlm.nih.gov/22972897/','https://pmc.ncbi.nlm.nih.gov/articles/PMC7411844/','https://pmc.ncbi.nlm.nih.gov/articles/PMC1859884/','https://pmc.ncbi.nlm.nih.gov/articles/PMC8404329/'],
   simplifications: [
     'Colony sizes are scaled down roughly 100x (mature colonies here have tens to a few hundred workers, not ~10,000).',
     'Development and lifespans are time-compressed (see clock); relative stage durations follow the temperature-dependent pattern, not exact day counts.',
@@ -217,9 +217,10 @@ export const POGONOMYRMEX_CALIFORNICUS: SpeciesDef = {
     topt: 31, tbreadth: 10, explore: 0.55, thrForage: 0.4, thrNurse: 0.35, thrDig: 0.45, devrateSpread: 0.12, chem: 0.9,
   },
   visual: { body: [150, 58, 34], head: [132, 50, 30], gaster: [110, 44, 30], sprite: 'myrmicine' },
-  sources: ['johnson2004', 'overson2016', 'clark2024', 'cahan2009', 'prabhakar2012', 'gordon1989', 'byers2011', 'wilson1958'],
+  sources: ['https://doi.org/10.1007/s00442-002-0960-2','https://doi.org/10.1016/j.anbehav.2003.11.021','https://pubmed.ncbi.nlm.nih.gov/15057720/','https://doi.org/10.1371/journal.pcbi.1002670'],
   simplifications: [
     'Genetic caste determination (dependent lineages) known from some Pogonomyrmex populations is not modelled; caste here is nutritional/colony-state dependent.',
+    'Contact-based outgoing forager regulation is extrapolated from P. barbatus research, not established here for P. californicus.',
     'Seed husking and granary management are abstracted into the colony store.',
     'Mating multiplicity distribution is an assumption (polyandry is common in Pogonomyrmex; exact values for P. californicus were not verified).',
     'Nuptial-flight cues are abstracted to warm summer days.',
@@ -231,6 +232,11 @@ export const BUILTIN_SPECIES: SpeciesDef[] = [LASIUS_NIGER, POGONOMYRMEX_CALIFOR
 // ---------------- validation for imported species ----------------
 type Check = [string, 'number' | 'string' | 'boolean' | 'array' | 'object', number?, number?];
 const CHECKS: Check[] = [
+  ['subfamily','string'],['founding.strategy','string'],['founding.association','string'],['founding.sealsChamber','boolean'],
+  ['development.cocoon','boolean'],['activity.diurnal','boolean'],['workers.polymorphism','string'],
+  ['communication.recruitment','string'],['communication.alarmChemical','string'],['communication.contactDescription','string'],
+  ['defense.mode','string'],['defense.description','string'],['reproduction.flightSeason','string'],['reproduction.flightCue','string'],
+  ['nutrition.preference.sugar','number',0,3],['nutrition.preference.protein','number',0,3],['nutrition.preference.seed','number',0,3],
   ['id', 'string'], ['name', 'string'], ['commonName', 'string'], ['status', 'string'], ['summary', 'string'],
   ['founding.reserves', 'number', 10, 500], ['founding.forageBelowReserve', 'number', 0, 500], ['founding.associationChance', 'number', 0, 1],
   ['founding.groupMetabolism', 'number', 0.5, 1.2], ['founding.chamberDepth', 'number', 4, 80], ['founding.moisture', 'array'],
@@ -286,16 +292,21 @@ export function validateSpecies(raw: unknown): string[] {
     if (v !== undefined && !allowed.includes(v)) errs.push(`"${path}" must be one of: ${allowed.join(', ')}.`);
   }
   const r = raw as any;
+  for(const path of ['sources','simplifications']) {
+    const list=r[path];
+    if(Array.isArray(list)&&(list.length>40||list.some((v:unknown)=>typeof v!=='string'||v.length>2000)))errs.push(`"${path}" must contain at most 40 text entries of up to 2,000 characters.`);
+  }
+  for(const [path,type] of CHECKS)if(type==='string'&&typeof getPath(r,path)==='string'&&getPath(r,path).length>2000)errs.push(`"${path}" is too long.`);
   if (Array.isArray(r.queen?.matings)) {
     const s = r.queen.matings.reduce((a: number, b: unknown) => a + (typeof b === 'number' ? b : NaN), 0);
     if (!Number.isFinite(s) || Math.abs(s - 1) > 0.01) errs.push('"queen.matings" must be probabilities that sum to 1.');
-    if (r.queen.matings.length > 8) errs.push('"queen.matings" supports at most 8 entries.');
+    if (r.queen.matings.length < 1 || r.queen.matings.length > 8 || r.queen.matings.some((n:unknown)=>typeof n!=='number'||n<0||n>1)) errs.push('"queen.matings" needs 1–8 nonnegative probabilities.');
   }
   for (const k of ['visual.body', 'visual.head', 'visual.gaster']) {
     const v = getPath(raw, k);
     if (Array.isArray(v) && (v.length !== 3 || v.some((c: unknown) => typeof c !== 'number' || c < 0 || c > 255))) errs.push(`"${k}" must be [r, g, b] with values 0..255.`);
   }
-  if (Array.isArray(r.founding?.moisture) && (r.founding.moisture.length !== 2 || r.founding.moisture.some((c: unknown) => typeof c !== 'number'))) errs.push('"founding.moisture" must be [low, high].');
+  if (Array.isArray(r.founding?.moisture) && (r.founding.moisture.length !== 2 || r.founding.moisture.some((c: unknown) => typeof c !== 'number'||!Number.isFinite(c)||c<0||c>1)||r.founding.moisture[0]>r.founding.moisture[1])) errs.push('"founding.moisture" must be ordered [low, high] within 0..1.');
   if (r.development && r.development.tMin >= r.development.tOpt) errs.push('"development.tMin" must be below "development.tOpt".');
   if (r.development && r.development.tOpt >= r.development.tMax) errs.push('"development.tOpt" must be below "development.tMax".');
   if (typeof r.id === 'string' && !/^[a-z0-9-]{3,40}$/.test(r.id)) errs.push('"id" must be 3-40 lowercase letters, digits or hyphens.');

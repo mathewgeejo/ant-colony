@@ -245,6 +245,7 @@ export class SpatialIndex {
     this.bw = Math.ceil(W / this.bs);
     this.bh = Math.ceil(H / this.bs);
     this.head = new Int32Array(this.bw * this.bh);
+    this.head.fill(-1);
   }
   rebuild(a: AntStore) {
     this.head.fill(-1);

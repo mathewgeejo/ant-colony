@@ -252,6 +252,7 @@ export class Sim {
   private displaceAntsAt(i: number) {
     const w = this.w, a = this.a;
     const x = i % w.W, y = (i / w.W) | 0;
+    this.idx.rebuild(a);
     this.idx.query(a, x, y, 0, (j) => {
       for (let r = 1; r <= 3; r++)
         for (let dy = -r; dy <= r; dy++)

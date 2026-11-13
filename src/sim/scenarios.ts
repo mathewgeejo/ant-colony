@@ -276,7 +276,7 @@ export function createSim(opt: CreateOptions): Sim {
       }
       w.recomputeAllSurface();
       sim.scenarioInfo.actions = [
-        { label: 'Open the dam', cmds: [{ t: 'erase', x: px1 + 1, y: damTop + 6, r: 6 } as Command] },
+        { label: 'Open the dam', cmds: [{ t: 'erase', x: px1 + 1, y: damTop + 6, r: 0 } as Command, { t: 'erase', x: px1 + 1, y: damTop + 5, r: 0 } as Command] },
         { label: 'Heavy rain over the nest', cmds: [{ t: 'rain', x: nx, y: 0, r: 30 } as Command] },
       ];
       break;

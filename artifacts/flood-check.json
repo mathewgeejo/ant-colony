@@ -1,0 +1,62 @@
+[
+  {
+    "seed": 1,
+    "maxFlood": 3,
+    "rescues": 0,
+    "floodEvents": 0,
+    "audit": {
+      "inv": {
+        "sugar": 39,
+        "protein": 0,
+        "seed": 0,
+        "water": 3704137
+      },
+      "exp": {
+        "sugar": 39,
+        "protein": 0,
+        "seed": 0,
+        "water": 3704137
+      }
+    }
+  },
+  {
+    "seed": 19,
+    "maxFlood": 13,
+    "rescues": 0,
+    "floodEvents": 0,
+    "audit": {
+      "inv": {
+        "sugar": 88,
+        "protein": 2,
+        "seed": 0,
+        "water": 3744335
+      },
+      "exp": {
+        "sugar": 88,
+        "protein": 2,
+        "seed": 0,
+        "water": 3744335
+      }
+    }
+  },
+  {
+    "seed": 42,
+    "maxFlood": 2,
+    "rescues": 0,
+    "floodEvents": 0,
+    "audit": {
+      "inv": {
+        "sugar": 84,
+        "protein": 0,
+        "seed": 0,
+        "water": 3811533
+      },
+      "exp": {
+        "sugar": 84,
+        "protein": 0,
+        "seed": 0,
+        "water": 3811533
+      }
+    }
+  }
+]

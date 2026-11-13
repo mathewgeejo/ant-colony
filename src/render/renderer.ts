@@ -131,7 +131,8 @@ export class Renderer {
       const col = this.colonies.find(c => c.slot === slot);
       const sp = this.species.find(s => s.id === col?.speciesId);
       const v = sp?.visual ?? { body: [50, 38, 29], head: [34, 27, 23], gaster: [62, 45, 32], sprite: 'formicine' };
-      const grid = orientGrid(spriteFor(v.sprite, caste).frames[anim], orient);
+      const def = spriteFor(v.sprite, caste);
+      const grid = orientGrid(def.wings ? [...def.wings,...def.frames[anim]] : def.frames[anim], orient);
       s = document.createElement('canvas'); s.width = Math.max(...grid.map(r => r.length)); s.height = grid.length;
       paintGrid(s.getContext('2d')!, grid, 0, 0, antColors({ ...v, marking: col?.marking ?? marks[slot % marks.length] }, caste));
       this.sprites.set(key, s);
@@ -185,6 +186,7 @@ export class Renderer {
         }
         if (effects & 512) { c.fillStyle = '#c0c4bd'; c.fillRect(x - .5, y - .8, 1, .5); }
         if (effects & 1024) { c.strokeStyle = '#9ed5df'; c.lineWidth = .2; c.strokeRect(x - 1, y - 1, 2, 2); }
+        if (effects & 2048) { c.fillStyle = '#edaa66'; c.fillRect(x, y - .6, .6, .5); }
         if (carry) { c.fillStyle = ['','#f5cc6b','#ce8d76','#bba65c','#9d7950','#aaa28b','#f2e5b6'][carry]; c.fillRect(x + .8, y - .8, .7, .7); }
         if (bits & 8192) { c.fillStyle = '#f2aa76'; c.fillRect(x - 1, y - 1, .5, .5); }
         if (bits & 16384) { c.fillStyle = '#b99867'; c.fillRect(x + 1, y + .5, .5, .5); }
