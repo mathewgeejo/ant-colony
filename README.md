@@ -1,5 +1,7 @@
 # Ant Colony Sandbox
 
+Screenshot content expansion: [all 312 named reference buttons](docs/SCREENSHOT-CHECKLIST.md), [implementation evidence and remaining scope](docs/SCREENSHOT-PROGRESS.md), and [Life content, mechanics and sources](docs/LIFE-CONTENT.md). Land and Life expansions bring the material registry to 91 paintable materials, plus 14 additional animal profiles. All 36 Life entries have representations; full reference organism/element/reaction parity is still in progress. Try **New world → Living garden**.
+
 A playable, editable pixel ecosystem with a simulation worker, autonomous ant agents, cellular terrain and water, brood development, local signals, competing colonies, and explicit inherited lineages. All art is original pixel grids and procedural code. No generated images or external art service.
 
 ## Run locally

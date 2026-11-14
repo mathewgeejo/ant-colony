@@ -7,7 +7,7 @@ import { CASTE, MEM, NAV, TASK, WHY } from './ants.ts';
 import type { Colony } from './colony.ts';
 import { STAGE } from './colony.ts';
 import { P, thermalPerf } from './genetics.ts';
-import { DIG_RESIST, FOOD_OF, IS_SOLID, IS_GAS, IS_LIQUID, M, MOIST_CAP, MATERIALS } from './materials.ts';
+import { DIG_RESIST, FOOD_OF, IS_SOLID, IS_LIQUID, CLIMBABLE, M, MOIST_CAP, MATERIALS } from './materials.ts';
 import type { Sim } from './sim.ts';
 import { FLAG_PLUG } from './world.ts';
 
@@ -17,7 +17,7 @@ export const PHYS_EVERY = 10;
 export const DECIDE_EVERY = 4;
 
 function isOpen(m: number) {
-  return m === M.AIR || m === M.PLANT || IS_GAS[m]===1;
+  return !IS_SOLID[m]&&!IS_LIQUID[m];
 }
 
 /** A cell an ant can stand in: open, and touching something to hold on to. */
@@ -43,7 +43,7 @@ export function supported(sim: Sim, x: number, y: number): boolean {
   const w = sim.w;
   if (y >= w.H - 1) return true;
   const i = y * w.W + x;
-  if (w.mat[i] === M.PLANT) return true;
+  if (CLIMBABLE[w.mat[i]]) return true;
   // 2D cross-section simplification: underground passages have front and back walls,
   // so any enclosed (not sky-exposed) open cell offers footing
   if (y > w.surface[x]) return true;
@@ -53,7 +53,7 @@ export function supported(sim: Sim, x: number, y: number): boolean {
     if (nx < 0 || ny < 0 || nx >= w.W) continue;
     if (ny >= w.H) return true;
     const m = w.mat[ny * w.W + nx];
-    if (IS_SOLID[m] || m === M.PLANT) return true;
+    if (IS_SOLID[m] || CLIMBABLE[m]) return true;
   }
   return false;
 }

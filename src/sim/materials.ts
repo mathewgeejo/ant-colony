@@ -24,6 +24,8 @@ export const M = {
   GRAVEL: 18,
   ICE:19,SNOW:20,STEAM:21,FIRE:22,SMOKE:23,ASH:24,OIL:25,LAVA:26,GLASS:27,MOLTEN_GLASS:28,METAL:29,MOLTEN_METAL:30,WIRE:31,BATTERY:32,LAMP:33,ACID:34,SALT:35,SALTWATER:36,GUNPOWDER:37,EXPLOSIVE:38,SPARK:39,DUST:40,RUBBER:41,ALCOHOL:42,HONEY:43,FLOUR:44,DOUGH:45,BREAD:46,COAL:47,OXYGEN:48,HYDROGEN:49,CO2:50,FUSE:51,HEATER:52,COOLER:53,CLONER:54,
   CLAY_POWDER:55,SAWDUST:56,GLASS_SHARD:57,SUGAR_POWDER:58,
+  DIRT:59,MUD:60,ROCK:61,SANDSTONE:62,MUDSTONE:63,CLAY_SOIL:64,PERMAFROST:65,MYCELIUM:66,MULCH:67,BASALT:68,TUFF:69,CINNABAR:70,LIMESTONE:71,BAKED_CLAY:72,
+  GRASS:73,ALGAE:74,CELL:75,PLAGUE:76,BONE:77,SAPLING:78,PINECONE:79,CACTUS:80,KELP:81,CORAL:82,POLLEN:83,FLOWER_SEED:84,PETAL:85,VINE:86,BAMBOO_PLANT:87,MUSHROOM_SPORE:88,LICHEN:89,PRIMORDIAL_SOUP:90,MUSHROOM:91,
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -32,6 +34,8 @@ export type FoodType = 1 | 2 | 3;
 export const FOOD_NAMES = ['none', 'sugar', 'protein', 'seed'] as const;
 
 export interface Material {
+  initialMoisture?:number;
+  initialTemperature?:number;
   state?:'solid'|'powder'|'liquid'|'gas';
   density?:number;
   flammability?:number;
@@ -194,6 +198,39 @@ export const MATERIALS: Material[] = [
   mat(M.SAWDUST,'sawdust','Sawdust','Falling flammable wood particles.',[164,127,75],{granular:true,cohesion:0,flammability:.8}),
   mat(M.GLASS_SHARD,'glass-shard','Glass shards','Crushed glass grains fall and sink through lighter liquids.',[160,202,189],{granular:true,cohesion:0}),
   mat(M.SUGAR_POWDER,'sugar-powder','Sugar powder','Falling sugar food. Can feed adult ants and burn; units stay in the food ledger.',[239,222,169],{granular:true,cohesion:0,food:1,foodUnits:8,category:'food',flammability:.5}),
+  mat(M.DIRT,'dirt','Dirt','Loose soil grains. Absorbs touching water into mud; dries after heating.',[119,79,39],{granular:true,cohesion:.25,moistureCap:120,permeability:.35,digResist:25,nutrient:30,chamberSuitability:.55}),
+  mat(M.MUD,'mud','Mud','Wet cohesive soil. Dries into dirt, freezes into permafrost and bakes into mudstone.',[83,59,38],{granular:true,cohesion:.65,moistureCap:160,initialMoisture:100,permeability:.1,digResist:20,nutrient:20,chamberSuitability:.3}),
+  mat(M.ROCK,'rock','Rock','Loose rock fragments fall and slide. Unlike Rock wall, they do not stay suspended.',[105,102,94],{granular:true,cohesion:.05,density:2.7,thermal:.7}),
+  mat(M.SANDSTONE,'sandstone','Sandstone','Fixed porous sedimentary rock. Retains small amounts of water; grinding releases sand; intense heat melts it.',[179,144,93],{moistureCap:30,permeability:.12,thermal:.5}),
+  mat(M.MUDSTONE,'mudstone','Mudstone','Baked mud forms a stable impermeable rock. Grinding releases dirt.',[118,101,86],{thermal:.5}),
+  mat(M.CLAY_SOIL,'clay-soil','Clay soil','Cohesive clay-rich soil. Absorbs water slowly and bakes into ceramic above 400°C.',[158,113,80],{digResist:95,permeability:.05,moistureCap:200,nutrient:15,chamberSuitability:.7,cohesion:.9}),
+  mat(M.PERMAFROST,'permafrost','Permafrost','Frozen wet soil. Stays fixed below freezing; thawing produces mud with the stored pore water.',[122,115,103],{moistureCap:160,initialMoisture:100,initialTemperature:-12,thermal:.35,digResist:180}),
+  mat(M.MYCELIUM,'mycelium','Mycelium','Simplified fungal soil network. Spreads into touching moist dirt by consuming substrate nutrients; dries into dirt. Not a researched species profile.',[141,118,135],{moistureCap:180,initialMoisture:60,permeability:.3,nutrient:40,digResist:20,flammability:.2}),
+  mat(M.MULCH,'mulch','Mulch','Loose combustible plant litter. Moist mulch slowly decomposes into dirt.',[126,67,35],{granular:true,cohesion:.3,moistureCap:180,permeability:.5,nutrient:80,digResist:12,flammability:.6}),
+  mat(M.BASALT,'basalt','Basalt','Dense fixed volcanic rock. Melted by intense heat; grinding yields loose rock.',[78,77,74],{density:3,thermal:.8}),
+  mat(M.TUFF,'tuff','Tuff','Porous volcanic rock. Absorbs water readily and crushes into ash.',[155,144,115],{density:1.5,moistureCap:100,permeability:.6,thermal:.3,digResist:100}),
+  mat(M.CINNABAR,'cinnabar','Cinnabar','Toxic mineral powder. Contaminates contact cells; strong heating leaves metal and toxic smoke. Simplified chemistry.',[165,68,52],{granular:true,cohesion:.1,density:8,thermal:.5}),
+  mat(M.LIMESTONE,'limestone','Limestone','Carbonate rock. Contact with acid consumes reagent and releases carbon dioxide; crushing yields mineral dust.',[192,185,150],{density:2.7,thermal:.6}),
+  mat(M.BAKED_CLAY,'baked-clay','Baked clay','Fired ceramic grains. Remains dry, falls in piles and melts into glass-like liquid under intense heat.',[166,88,67],{granular:true,cohesion:.1,density:2.4,thermal:.6}),
+  mat(M.GRASS,'grass','Grass','Rooted ground cover. Uses soil moisture, spreads laterally and withers when dry.',[91,153,46],{solid:false,state:'solid',climbable:true,category:'organic',nutrient:20,flammability:.6}),
+  mat(M.ALGAE,'algae','Algae','Aquatic growth. Consumes local nutrient reserves to colonize adjacent water; dries out on land.',[122,161,49],{solid:false,state:'solid',category:'organic',nutrient:40,moistureCap:64,initialMoisture:32}),
+  mat(M.CELL,'cell','Cell','Generic microbial sandbox cell. Nutrient-limited fission near water; extreme temperature and starvation kill it.',[145,201,64],{solid:false,state:'solid',category:'organic',nutrient:60,moistureCap:64,initialMoisture:32}),
+  mat(M.PLAGUE,'plague','Plague','FICTIONAL sandbox pathogen. Infects nearby wildlife and consumes itself while spreading in nutrient-rich wet material; not a real disease model.',[109,50,138],{solid:false,state:'solid',category:'organic',nutrient:40}),
+  mat(M.BONE,'bone','Bone','Structural remains. Resists ordinary decay, dissolves in acid and crushes into mineral dust.',[219,214,195],{density:1.8,thermal:.3}),
+  mat(M.SAPLING,'sapling','Sapling','Young tree. Moist fertile soil supports roots, a woody trunk and a leafy crown.',[121,148,64],{solid:false,state:'solid',category:'organic',nutrient:30,flammability:.5,climbable:true}),
+  mat(M.PINECONE,'pinecone','Pinecone','Falling cone. On moist soil it can germinate into a sapling; excessive heat burns it.',[129,86,46],{granular:true,cohesion:.1,food:3,foodUnits:2,category:'organic',flammability:.5}),
+  mat(M.CACTUS,'cactus','Cactus','Water-storing desert plant. Uses moisture slowly; adjacent contact injures soft-bodied wildlife.',[89,146,68],{solid:false,state:'solid',climbable:true,category:'organic',nutrient:35,moistureCap:160,initialMoisture:100,flammability:.15}),
+  mat(M.KELP,'kelp','Kelp','Rooted aquatic fronds. Grows upward through water, transfers displaced water into moisture and dies when stranded.',[86,129,54],{solid:false,state:'solid',climbable:true,category:'organic',nutrient:40,moistureCap:64,initialMoisture:32}),
+  mat(M.CORAL,'coral','Coral','Fixed aquatic colony. Slow nutrient-limited branching; simplified heat-stress mortality leaves a mineral skeleton. Bleaching and recovery physiology are abstracted.',[203,123,157],{category:'organic',nutrient:50,moistureCap:64,initialMoisture:32,thermal:.4}),
+  mat(M.POLLEN,'pollen','Pollen','Falling pollen. Bees can carry it; touching a different flower supports seed production.',[216,194,61],{granular:true,cohesion:0,category:'organic',nutrient:1,flammability:.5}),
+  mat(M.FLOWER_SEED,'flower-seed','Flower seed','Germinates on damp fertile soil into a flowering stem. Its nutritional seed unit is consumed by germination.',[125,104,55],{granular:true,cohesion:.1,food:3,foodUnits:1,category:'organic',flammability:.4}),
+  mat(M.PETAL,'petal','Petal','Living flower petal. Attracts pollinators, produces pollen using stored growth energy and needs a supporting stem.',[207,109,149],{solid:false,state:'solid',category:'organic',nutrient:25,flammability:.4}),
+  mat(M.VINE,'vine','Vine','Climbing plant. Grows along connected walls or stems using moisture; unsupported tips cannot keep extending.',[70,133,62],{solid:false,state:'solid',climbable:true,category:'organic',nutrient:30,flammability:.6}),
+  mat(M.BAMBOO_PLANT,'bamboo-plant','Bamboo plant','Segmented tall shoots. Draws water from soil and matures lower segments into wood; growth is resource-limited.',[143,160,66],{solid:false,state:'solid',climbable:true,category:'organic',nutrient:40,flammability:.5}),
+  mat(M.MUSHROOM_SPORE,'mushroom-spore','Mushroom spore','Falling fungal propagule. Damp organic substrate supports mycelium and fruiting mushrooms.',[158,133,164],{granular:true,cohesion:0,category:'organic',nutrient:4}),
+  mat(M.LICHEN,'lichen','Lichen','Slow surface crust. Colonizes wet rock using stored nutrients and withers under prolonged dryness.',[156,180,144],{solid:false,state:'solid',category:'organic',nutrient:30,moistureCap:40,initialMoisture:20,flammability:.2}),
+  mat(M.PRIMORDIAL_SOUP,'primordial-soup','Primordial soup','FICTIONAL abiogenesis sandbox mixture. Warm nutrient-rich liquid can form cells; this does not simulate the origin of life.',[144,83,53],{solid:false,state:'liquid',category:'fluid',density:1.1,viscosity:.5,nutrient:80,moistureCap:64,initialMoisture:40}),
+  mat(M.MUSHROOM,'mushroom','Mushroom','Fungal fruiting body. Requires damp substrate; releases spores at a nutrient cost and decomposes when dry.',[170,130,123],{solid:false,state:'solid',category:'organic',nutrient:30,moistureCap:64,initialMoisture:20,flammability:.3}),
 ];
 
 export const NUM_MATERIALS = MATERIALS.length;

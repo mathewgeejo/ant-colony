@@ -7,12 +7,12 @@
 //    at a rate scaled by the substrate material's signalPersistence.
 //  - 'air': volatile (alarm, nest/brood odour). Diffuses only between open air
 //    cells; solids and water block it. Decays quickly.
-import { IS_SOLID, IS_GAS, IS_LIQUID, M, SIGNAL_PERSIST } from './materials.ts';
+import { IS_SOLID, IS_LIQUID, SIGNAL_PERSIST } from './materials.ts';
 import { CS, CSHIFT, World } from './world.ts';
 
 const EPS = 0.004;
 const AREA = CS * CS;
-const openGas=(m:number)=>!!IS_GAS[m]||m===M.PLANT;
+const openGas=(m:number)=>!IS_SOLID[m]&&!IS_LIQUID[m];
 
 export type Transport = 'surface' | 'air';
 

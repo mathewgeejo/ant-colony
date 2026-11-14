@@ -1,4 +1,9 @@
 /* Pixel controls and boxes; the living world's meadow colours are preserved. */
+.wildlife-icon{width:19px;height:18px;image-rendering:pixelated;flex-shrink:0}#palette{overflow-y:auto}
+body.life-palette #app{grid-template-rows:54px minmax(0,1fr) 220px 30px}body.life-palette .workbench{height:220px}body.life-palette #palette{height:140px}
+body.life-palette .species-picker{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;height:28px}body.life-palette .species-picker label{display:none}body.life-palette .species-picker input{width:90px!important;min-height:27px}body.life-palette .species-picker select{width:160px;min-height:27px}
+@media(max-width:600px){body.life-palette #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body.life-palette .workbench{height:218px}body.life-palette #palette{height:115px}body.life-palette .species-picker select{width:150px}}
+body.life-palette.gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}
 #app{grid-template-columns:minmax(0,1fr);min-width:0}.workbench,.bench-top,.sandbox-controls{min-width:0;max-width:100%}.workbench{overflow:hidden}.bench-top{overflow:hidden}
 button,select,input,dialog,.quick-tools,.world-heading,.overlay-legend,.brood-stages,.reason,.stage{border-radius:0!important}
 button{box-shadow:inset 1px 1px #ffffff24,inset -1px -1px #0008,2px 2px #101713;transition:none}

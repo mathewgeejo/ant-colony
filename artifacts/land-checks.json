@@ -1,0 +1,10 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "All 18 reference Land materials selectable",
+    "All 18 can be painted while paused",
+    "Desktop rendered screenshot",
+    "Phone has no horizontal overflow"
+  ],
+  "errors": []
+}

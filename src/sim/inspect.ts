@@ -7,6 +7,7 @@ import { FOOD_OF, IS_SOLID, M, MATERIALS, MOIST_CAP } from './materials.ts';
 import { DAY_TICKS } from './physics.ts';
 import type { Sim } from './sim.ts';
 import { thermalRate } from './sim.ts';
+import { wildlifeById } from './wildlife-defs.ts';
 import { FLAG_APHID, FLAG_PLUG } from './world.ts';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -18,6 +19,11 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   const m = w.mat[k];
   const def = MATERIALS[m];
   const lines: string[] = [];
+  for(const c of sim.critters.list)if(Math.abs(c.x-x)+Math.abs(c.y-y)<=1){
+   const d=wildlifeById(c.kind),name=d?.name??(c.kind===1?'Spider':'Springtail');
+   lines.push(`${name} #${c.id}: ${c.action}. Health ${pct(c.hp)}, energy ${pct(c.energy)}.`);
+   if(d){lines.push(d.description);lines.push(`Stage: ${['egg / newborn','juvenile','adult','pupa'][c.stage]}; age ${c.age} ticks. Generation ${c.generation}; parent ${c.parentId||'introduced'}, mate ${c.mateId||'none'}.`);if(c.infection)lines.push(`Fictional sandbox infection: ${c.infection} ticks remaining. Not a disease prediction.`);}
+  }
   const T = w.tempAt(x, y), H = w.humAt(x, y);
   if(w.charge[k])lines.push(`Electrical charge ${Math.round(w.charge[k]/255*100)}%. Charge propagates through touching conductive cells and attenuates.`);
   lines.push(`Temperature ${T.toFixed(1)} C, air humidity ${pct(H)}.`);

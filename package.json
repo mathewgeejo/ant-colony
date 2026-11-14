@@ -13,7 +13,9 @@
     "bench": "node --experimental-strip-types --no-warnings scripts/bench.ts",
     "experiments": "node --experimental-strip-types --no-warnings scripts/experiments.ts",
     "screenshots": "node scripts/screenshots.mjs",
-    "sandbox-check": "node scripts/sandbox-controls.mjs"
+    "sandbox-check": "node scripts/sandbox-controls.mjs",
+    "life-check": "node scripts/life-preview.mjs",
+    "life-experiment": "node --experimental-strip-types --no-warnings scripts/life-experiment.ts"
   },
   "repository": {
     "type": "git",

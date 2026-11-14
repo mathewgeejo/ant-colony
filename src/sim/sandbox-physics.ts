@@ -46,6 +46,21 @@ export class SandboxPhysics {
  }
  step(x:number,y:number,k:number,stamp:number,tick:number):boolean{
   const w=this.w,m=w.mat[k],tc=w.tIdx(x,y),T=w.temp[tc];
+  if((m===M.CLAY_POWDER||m===M.CLAY||m===M.CLAY_SOIL)&&T>400){this.transform(k,M.BAKED_CLAY,0,'clay firing');return true;}
+  if(m>=M.DIRT){
+   if(m===M.PERMAFROST){if(T>0){this.transform(k,M.MUD,w.amt[k],'soil thawing');return true;}return false;}
+   if(m===M.MUD){if(T<0){this.transform(k,M.PERMAFROST,w.amt[k],'soil freezing');return true;}if(T>110){this.transform(k,M.MUDSTONE,w.amt[k],'mud baking');return true;}if(w.moist[k]<15){this.transform(k,M.DIRT,w.amt[k],'mud drying');return true;}}
+   if((m===M.SANDSTONE||m===M.BAKED_CLAY)&&T>1100){this.transform(k,M.MOLTEN_GLASS,1,'mineral melting');return true;}
+   if(m===M.BASALT&&T>1200){this.transform(k,M.LAVA,1,'basalt melting');return true;}
+   if(m===M.CINNABAR){w.toxin[k]=Math.max(w.toxin[k],160);if(T>350){this.transform(k,M.METAL,1,'mineral roasting');for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.AIR){this.transform(j,M.SMOKE,180,'mineral fumes');w.toxin[j]=255;break;}}return true;}}
+   if(m===M.LIMESTONE)for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.ACID){this.transform(k,M.CO2,255,'carbonate acid reaction');if(w.amt[j]>1)w.amt[j]--;else this.transform(j,M.AIR,0,'acid exhausted');return true;}}
+   if(m===M.DIRT){if(w.moist[k]>=60){this.transform(k,M.MUD,w.amt[k],'soil wetting');return true;}for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.WATER){const n=Math.min(w.amt[j],120-w.moist[k]);if(n<=0)continue;w.amt[j]-=n;w.moist[k]+=n;if(!w.amt[j])w.setRaw(j,M.AIR,0);else w.touch(j%w.W,(j/w.W)|0);this.transform(k,M.MUD,w.amt[k],'soil wetting');return true;}}}
+   if(m===M.MULCH&&w.moist[k]>30&&tick%300===0){this.transform(k,M.DIRT,w.amt[k],'mulch decomposition');return true;}
+   if(m===M.MYCELIUM&&tick%120===0){
+    if(w.moist[k]<15||T>45){this.transform(k,M.DIRT,w.amt[k],'fungal stress');return true;}
+    if(w.amt[k]>=2)for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.DIRT&&w.moist[j]>=30){w.amt[k]-=2;this.transform(j,M.MYCELIUM,w.amt[j],'fungal growth');break;}}
+   }
+  }
   if(m<19&&m!==M.WATER&&m!==M.SAND&&!MATERIALS[m].flammability)return false;
   if(m===M.HEATER||m===M.COOLER){const target=m===M.HEATER?1400:-60;w.temp[tc]+=(target-w.temp[tc])*.03;w.touch(x,y);return true;}
   if(m===M.BATTERY||m===M.WIRE||m===M.LAMP){if(m===M.BATTERY)w.chunkActive[w.chunkOf(x,y)]=8;return true;}

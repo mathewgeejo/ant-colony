@@ -1,0 +1,16 @@
+import {it,expect} from 'vitest';
+import {createSim} from '../src/sim/scenarios.ts';
+import {M} from '../src/sim/materials.ts';
+import {snapshot,restore} from '../src/sim/persist.ts';
+const empty=()=>createSim({scenario:'empty',seed:42,size:[64,64]});
+const paint=(s:ReturnType<typeof empty>,m:number,x=20,y=20)=>s.applyNow({t:'paint',mat:m,x,y,r:0,replace:true});
+const react=(s:ReturnType<typeof empty>,x=20,y=20)=>s.phys.sandbox.step(x,y,s.w.idx(x,y),1,0);
+const audit=(s:ReturnType<typeof empty>)=>{const a=s.audit();expect(a.inv).toEqual(a.exp);};
+it('loose rock falls while sandstone walls stay fixed',()=>{const s=empty();paint(s,M.ROCK);paint(s,M.SANDSTONE,30);s.step();expect(s.w.get(20,21)).toBe(M.ROCK);expect(s.w.get(30,20)).toBe(M.SANDSTONE);});
+it('dirt absorbs existing water into mud without creating or losing water',()=>{const s=empty();paint(s,M.DIRT);paint(s,M.WATER,21);react(s);expect(s.w.get(20,20)).toBe(M.MUD);expect(s.w.moist[s.w.idx(20,20)]).toBe(64);expect(s.w.get(21,20)).toBe(M.AIR);audit(s);});
+it('permafrost retains pore water during cold exchange then thaws and bakes',()=>{const s=empty();paint(s,M.PERMAFROST);const k=s.w.idx(20,20);s.phys.stepMoisture(0,s.climate);expect(s.w.moist[k]).toBe(100);s.w.temp.fill(10);react(s);expect(s.w.mat[k]).toBe(M.MUD);audit(s);s.w.temp.fill(120);react(s);expect(s.w.mat[k]).toBe(M.MUDSTONE);expect(s.w.moist[k]).toBe(0);audit(s);});
+it('clay soil fires, basalt melts and crushing produces the specified mineral grains',()=>{const s=empty();paint(s,M.CLAY_SOIL);s.w.temp.fill(450);react(s);expect(s.w.get(20,20)).toBe(M.BAKED_CLAY);paint(s,M.BASALT);s.w.temp.fill(1300);react(s);expect(s.w.get(20,20)).toBe(M.LAVA);paint(s,M.SANDSTONE);s.applyNow({t:'smash',x:20,y:20,r:0});expect(s.w.get(20,20)).toBe(M.SAND);audit(s);});
+it('carbonate reacts with finite acid and cinnabar releases contamination and fumes',()=>{const s=empty();paint(s,M.LIMESTONE);paint(s,M.ACID,21);react(s);expect(s.w.get(20,20)).toBe(M.CO2);expect(s.w.amt[s.w.idx(21,20)]).toBe(63);paint(s,M.CINNABAR);s.w.temp.fill(400);react(s);expect(s.w.get(20,20)).toBe(M.METAL);expect(s.w.toxin[s.w.idx(20,20)]).toBeGreaterThan(0);expect(s.w.get(19,20)).toBe(M.SMOKE);audit(s);});
+it('mycelium needs moist substrate and nutrients, and mulch decomposes',()=>{const s=empty();paint(s,M.MYCELIUM);paint(s,M.DIRT,21);s.w.moist[s.w.idx(21,20)]=40;s.w.ledger.source('water','test setup',40);react(s);expect(s.w.get(21,20)).toBe(M.MYCELIUM);expect(s.w.amt[s.w.idx(20,20)]).toBe(38);paint(s,M.MULCH,30);s.w.moist[s.w.idx(30,20)]=50;s.w.ledger.source('water','test setup',50);react(s,30);expect(s.w.get(30,20)).toBe(M.DIRT);audit(s);});
+it('new land materials preserve state and resources through save/load',()=>{const s=empty();paint(s,M.PERMAFROST);paint(s,M.MULCH,30);paint(s,M.MYCELIUM,40);const r=restore(snapshot(s));for(let n=0;n<50;n++){s.step();r.step();}expect(r.hash()).toBe(s.hash());expect(r.w.moist).toEqual(s.w.moist);audit(r);});
+it('both loose and compact clay fire into ceramic and remove pore water explicitly',()=>{for(const m of [M.CLAY_POWDER,M.CLAY]){const s=empty();paint(s,m);s.applyNow({t:'humidity',x:20,y:20,r:0,amount:5});s.w.temp.fill(450);react(s);expect(s.w.get(20,20)).toBe(M.BAKED_CLAY);audit(s);}});

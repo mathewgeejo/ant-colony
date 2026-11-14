@@ -58,6 +58,7 @@ export class World {
   surface: Int16Array; // first non-air row per column (sky exposure)
   ledger = new Ledger();
   dirtyColumns = new Set<number>();
+  lifeCells = new Set<number>();
 
   constructor(W: number, H: number) {
     this.W = W;
@@ -137,9 +138,10 @@ export class World {
    */
   setRaw(i: number, m: number, a = 0): number {
     const c=this.chunkOf(i%this.W,(i/this.W)|0),old=this.mat[i];
-    const delta=(m>=19||m===M.SAND?1:0)-(old>=19||old===M.SAND?1:0);
+    const delta=(m>=19||m===M.SAND||m===M.CLAY?1:0)-(old>=19||old===M.SAND||old===M.CLAY?1:0);
     if(delta)this.chunkReactive[c]=Math.max(0,this.chunkReactive[c]+delta);
     this.mat[i] = m;
+    this.lifeCells.delete(i);if(m>=M.GRASS&&m<=M.MUSHROOM)this.lifeCells.add(i);
     this.amt[i] = a;
     let lost = 0;
     const cap = MOIST_CAP[m];
@@ -155,9 +157,10 @@ export class World {
   swap(i: number, j: number) {
     const m = this.mat[i], a = this.amt[i], w = this.moist[i], f = this.flags[i];
     const ci=this.chunkOf(i%this.W,(i/this.W)|0),cj=this.chunkOf(j%this.W,(j/this.W)|0);
-    if(ci!==cj){const d=(this.mat[j]>=19||this.mat[j]===M.SAND?1:0)-(m>=19||m===M.SAND?1:0);this.chunkReactive[ci]=Math.max(0,this.chunkReactive[ci]+d);this.chunkReactive[cj]=Math.max(0,this.chunkReactive[cj]-d);}
+    if(ci!==cj){const d=(this.mat[j]>=19||this.mat[j]===M.SAND||this.mat[j]===M.CLAY?1:0)-(m>=19||m===M.SAND||m===M.CLAY?1:0);this.chunkReactive[ci]=Math.max(0,this.chunkReactive[ci]+d);this.chunkReactive[cj]=Math.max(0,this.chunkReactive[cj]-d);}
     this.mat[i] = this.mat[j]; this.amt[i] = this.amt[j]; this.moist[i] = this.moist[j];
     this.mat[j] = m; this.amt[j] = a; this.moist[j] = w;
+    this.lifeCells.delete(i);this.lifeCells.delete(j);if(this.mat[i]>=M.GRASS&&this.mat[i]<=M.MUSHROOM)this.lifeCells.add(i);if(this.mat[j]>=M.GRASS&&this.mat[j]<=M.MUSHROOM)this.lifeCells.add(j);
     // nest ownership stays with the location; plug/aphid flags travel with the material
     const MOV = FLAG_PLUG | FLAG_APHID;
     const fi = this.flags[i] & ~MOV, fj = this.flags[j] & ~MOV;
@@ -180,7 +183,7 @@ export class World {
     for (let x = 0; x < this.W; x++) this.recomputeSurface(x);
     this.dirtyColumns.clear();
   }
-  rebuildReactive(){this.chunkReactive.fill(0);for(let k=0;k<this.N;k++)if(this.mat[k]>=19||this.mat[k]===M.SAND)this.chunkReactive[this.chunkOf(k%this.W,(k/this.W)|0)]++;}
+  rebuildReactive(){this.chunkReactive.fill(0);this.lifeCells.clear();for(let k=0;k<this.N;k++){if(this.mat[k]>=19||this.mat[k]===M.SAND||this.mat[k]===M.CLAY)this.chunkReactive[this.chunkOf(k%this.W,(k/this.W)|0)]++;if(this.mat[k]>=M.GRASS&&this.mat[k]<=M.MUSHROOM)this.lifeCells.add(k);}}
   flushSurface() {
     for (const x of this.dirtyColumns) this.recomputeSurface(x);
     this.dirtyColumns.clear();

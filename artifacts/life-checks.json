@@ -1,0 +1,15 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "All 36 reference Life entries have selectable representations",
+    "Ant species selector remains visible in the expanded palette",
+    "Animal introduction uses the actual canvas",
+    "Organism search works inside the Life category",
+    "Animal inspector shows live fish state",
+    "Living garden advances with autonomous organisms",
+    "Portable save/import preserves the live garden and its animals",
+    "Phone layout and scrollable Life palette",
+    "Fictional Life materials are enabled only in Fantasy mode"
+  ],
+  "errors": []
+}

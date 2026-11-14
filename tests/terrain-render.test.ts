@@ -3,6 +3,7 @@ import { TerrainRaster } from '../src/render/terrain.ts';
 import { M } from '../src/sim/materials.ts';
 import { AgentRaster } from '../src/render/agents.ts';
 import type { FrameMsg } from '../src/protocol.ts';
+it('keeps pale snow textures pale when brightness exceeds an RGB channel limit',()=>{const r=new TerrainRaster(32,32);for(let y=0;y<32;y++)for(let x=0;x<32;x++)r.cell(x,y,M.SNOW,0,32);for(let i=0;i<r.data.length;i+=4){expect(r.data[i]).toBeGreaterThan(150);expect(r.data[i+1]).toBeGreaterThan(150);expect(r.data[i+2]).toBeGreaterThan(150);expect(r.data[i+3]).toBe(255);}});
 it('reuses unchanged visible cells and clears an erased material to transparent sky',()=>{
  const r=new TerrainRaster(32,32);
  expect(r.cell(4,4,M.SAND,0,20)).toBe(true);

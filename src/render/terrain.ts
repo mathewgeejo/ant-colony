@@ -1,10 +1,17 @@
 // Cached 3×3 pixel tiles. Terrain updates write pixels, not thousands of Canvas draw calls.
 import { MATERIALS, M } from '../sim/materials.ts';
 export const TILE = 3;
-const rgba = (r:number,g:number,b:number) => (0xff000000 | b<<16 | g<<8 | r)>>>0;
+const rgba = (r:number,g:number,b:number) => (0xff000000 | Math.max(0,Math.min(255,b))<<16 | Math.max(0,Math.min(255,g))<<8 | Math.max(0,Math.min(255,r)))>>>0;
 export function terrainHash(x:number,y:number){let v=Math.imul(x+19,374761393)^Math.imul(y+53,668265263);v=Math.imul(v^(v>>>13),1274126177);return((v^(v>>>16))>>>0)/4294967296;}
 
 const tiles = new Uint32Array(MATERIALS.length * 32 * 9);
+const lifeTiles:Record<number,string>={
+ [M.GRASS]:'a.a.aaa.a',[M.ALGAE]:'.aaaaa.a.',[M.CELL]:'.a.aaa.a.',[M.PLAGUE]:'a.a.a.a.a',
+ [M.SAPLING]:'aaa.a..a.',[M.PINECONE]:'.a.aaa.a.',[M.CACTUS]:'a.aaaa.a.',[M.KELP]:'a.a.a.aa.',
+ [M.CORAL]:'a.aaaa.a.',[M.POLLEN]:'....a....',[M.FLOWER_SEED]:'....aa...',
+ [M.PETAL]:'.a.aaa.a.',[M.VINE]:'aa..aa.a.',[M.BAMBOO_PLANT]:'.a.aaa.a.',
+ [M.MUSHROOM_SPORE]:'....a....',[M.LICHEN]:'aa..aaaa.',[M.MUSHROOM]:'aaa.a..a.',
+};
 for(const def of MATERIALS)for(let variant=0;variant<32;variant++){
   const h=(variant&15)/15,wet=variant>=16,f=(.94+h*.12)*(wet?.9:1);
   const color=def.color.map(v=>Math.round(v*f));
@@ -13,6 +20,14 @@ for(const def of MATERIALS)for(let variant=0;variant<32;variant++){
   const t=h>.5 ? color.map((v,k)=>Math.round(v*.84+[240,211,164][k]*.16)) : color.map((v,k)=>Math.round(v*.77+[18,17,16][k]*.23));
   const pos=(h>.4?1:2)*3+(h>.6?1:0);
   tiles[o+pos]=rgba(t[0],t[1],t[2]);
+  if(def.id===M.SANDSTONE||def.id===M.MUDSTONE||def.id===M.CLAY_SOIL)for(let x=0;x<3;x++)tiles[o+6+x]=rgba(...t as [number,number,number]);
+  if(def.id===M.PERMAFROST){tiles[o+1]=rgba(157,187,198);tiles[o+5]=rgba(199,218,219);}
+  if(def.id===M.MYCELIUM){tiles[o+1]=tiles[o+4]=tiles[o+5]=rgba(208,190,213);}
+  if(def.id===M.MULCH){tiles[o]=tiles[o+4]=rgba(161,106,49);}
+  if(def.id===M.CINNABAR){tiles[o+1]=rgba(205,89,65);tiles[o+8]=rgba(91,52,49);}
+  if(lifeTiles[def.id])for(let i=0;i<9;i++)if(lifeTiles[def.id][i]==='.')tiles[o+i]=0;
+  if(def.id===M.PETAL)tiles[o+4]=rgba(236,204,78);
+  if(def.id===M.MUSHROOM){tiles[o]=tiles[o+1]=tiles[o+2]=rgba(177,105,92);tiles[o+4]=tiles[o+7]=rgba(218,203,168);}
   if(def.id===M.STONE||def.id===M.CLAY)tiles[o+pos+1]=tiles[o+pos];
   if(def.id===M.WATER&&h>.6){tiles[o]=tiles[o+1]=rgba(131,185,200);}
 }

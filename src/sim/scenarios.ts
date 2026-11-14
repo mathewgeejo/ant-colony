@@ -20,6 +20,7 @@ export interface ScenarioDef {
 }
 
 export const SCENARIOS: ScenarioDef[] = [
+  {id:'life-garden',title:'Living garden',mode:'naturalistic',defaultSize:[384,192],blurb:'A provisioned experimental garden with a pond, flowers, decomposers, grazers and predators. Wildlife uses simplified sandbox profiles.',goal:'Inspect animals to see their tasks and stages. Move food, cut a plant, drain the pond or add a wall. Watch locally available resources affect survival and reproduction.'},
   { id:'empty',title:'Empty particle sandbox',mode:'naturalistic',defaultSize:[384,192],blurb:'An empty canvas for falling sand, fluids, heat and circuits. Paint terrain before introducing a queen.',goal:'Choose powders, liquids, gases or energy devices. Draw containers, mix materials and inspect the results.' },
   { id:'physics-lab',title:'Particle physics lab',mode:'naturalistic',defaultSize:[384,192],blurb:'Prepared density tanks, a gated reservoir, combustible wood and a battery circuit. All motion and reactions use the live simulation.',goal:'Open the guide to pour grains, release the reservoir, ignite fuel or break the circuit. Inspect materials and use heat/cool/shock to experiment.' },
   { id: 'sandbox', title: 'Free sandbox', mode: 'naturalistic', defaultSize: [512, 256], blurb: 'A temperate meadow with one newly mated black garden ant queen. Everything else is up to you.', goal: 'Build, break and observe.' },
@@ -213,6 +214,7 @@ export function createSim(opt: CreateOptions): Sim {
   if (def.id === 'stress-test') { settings.naturalPredators = false; settings.maxColonies = 30; gen = { ...gen, plants: 0.9 }; }
   if (def.id === 'inheritance-garden') { Object.assign(climate,{meanTemp:27,deepTemp:25,dayAmp:2,seasonAmp:2,rainChancePerDay:0}); settings.weather=false;settings.naturalPredators=false; }
   if(def.id==='empty'||def.id==='physics-lab'){settings.weather=false;settings.naturalPredators=false;}
+  if(def.id==='life-garden'){Object.assign(climate,{meanTemp:24,deepTemp:22,baseHumidity:.8,dayAmp:2,seasonAmp:1});settings.weather=false;settings.naturalPredators=false;gen={...gen,plants:0,logs:0};}
   if (opt.climate) Object.assign(climate, opt.climate);
   if (opt.settings) Object.assign(settings, opt.settings);
   const sim = new Sim({ W, H, seed, mode, scenario: def.id, climate, settings, customSpecies: opt.customSpecies });
@@ -229,6 +231,31 @@ export function createSim(opt: CreateOptions): Sim {
     sim.foundColony(sp, x, surfaceY(sim, x) - 1, ga, gb, sim.sampleMates(sp, [], 0), 0, 0, null);
   };
   switch (def.id) {
+    case 'life-garden': {
+      const w=sim.w,Y=Math.round(H*.38),X=(n:number)=>Math.round(n*W/384);
+      const put=(x:number,y:number,m:number,n?:number)=>{if(!w.inb(x,y))return;const d=MATERIALS[m];w.setRaw(y*W+x,m,n??(m===M.WATER?64:d.food?d.foodUnits:d.nutrient));if(MOIST_CAP[m])w.moist[y*W+x]=Math.min(MOIST_CAP[m],d.initialMoisture??100);};
+      for(let x=1;x<W-1;x++){for(let y=0;y<Y;y++)put(x,y,M.AIR,0);for(let y=Y;y<Math.min(H,Y+6);y++)put(x,y,M.TOPSOIL,80);}
+      for(let x=X(240);x<=X(310);x++)for(let y=Y-3;y<=Y+10;y++)put(x,y,x===X(240)||x===X(310)||y===Y+10?M.BARRIER:M.WATER);
+      for(const n of [40,41,42,68,69,126,127,140,145,146])put(X(n),Y-1,M.GRASS);
+      for(const n of [54,82]){put(X(n),Y-1,M.PLANT,20);put(X(n),Y-2,M.PETAL,40);put(X(n)+1,Y-1,M.POLLEN);}
+      for(const [n,m] of [[90,M.SAPLING],[94,M.PINECONE],[112,M.CACTUS],[132,M.BAMBOO_PLANT],[156,M.MUSHROOM_SPORE],[162,M.LICHEN],[176,M.FLOWER_SEED],[180,M.SEED],[188,M.BONE],[265,M.ALGAE],[280,M.KELP],[296,M.CORAL]] as const)put(X(n),m===M.ALGAE?Y+1:m===M.KELP||m===M.CORAL?Y+8:Y-1,m);
+      put(X(156),Y,M.ORGANIC,80);put(X(162)-1,Y-1,M.ROCK);put(X(200),Y-1,M.VINE);put(X(200)+1,Y-1,M.WOOD);
+      for(let y=Y-4;y<Y;y++)put(X(102),y,M.WOOD);
+      for(const n of [66,72,122,150,175]){put(X(n),Y-1,M.SEED,8);put(X(n)+1,Y-1,M.PROTEIN,20);}
+      for(const n of [54,82])put(X(n)-1,Y-1,M.HONEY,16);
+      for(let x=X(320);x<X(328);x++){put(x,Y,M.BARRIER);put(x,Y-1,M.WATER);}put(X(323),Y-1,M.CELL,60);
+      if(mode==='fantasy'){put(X(325),Y-1,M.PRIMORDIAL_SOUP,80);put(X(326),Y-1,M.PLAGUE,20);}
+      w.recomputeAllSurface();queenAt(lasius,X(25));
+      const introduce=(key:string,x:number,y:number)=>sim.critters.spawn(sim,key,X(x),y);
+      for(const [key,x] of [['flea',67],['termite',101],['stinkbug',125],['human',74],['rat',65],['slug',140],['snail',146],['spider',172],['springtail',155]] as const)introduce(key,x,Y-1);
+      for(const [key,x] of [['fly',121],['firefly',160],['bee',55],['bird',180]] as const)introduce(key,x,Y-4);
+      introduce('worm',150,Y+2);introduce('fish',275,Y+3);introduce('frog',290,Y+3);
+      // Experimental paired adults are initial conditions, not scripted births.
+      for(const [key,x,y] of [['rat',67,Y-1],['fly',122,Y-4],['bee',56,Y-2],['fish',276,Y+3]] as const){const first=sim.critters.list.find(c=>c.kind===({rat:11,fly:5,bee:7,fish:13}[key])),mate=introduce(key,x,y);if(first&&mate)mate.sex=1-first.sex;}
+      sim.scenarioInfo.actions=[{label:'Cut a drain in the pond floor',cmds:[{t:'erase',x:X(275),y:Y+10,r:1}]},{label:'Add sugar beside the flowers',cmds:[{t:'paint',mat:M.SUGAR,x:X(54),y:Y-3,r:1,replace:false}]}];
+      sim.event('experiment','Living garden: planted beds, water, food and wildlife are introduced experimental conditions. Outcomes remain autonomous.');
+      break;
+    }
     case 'physics-lab': {
       const X=(n:number)=>Math.round(W*n/384),Y=(n:number)=>Math.round(H*n/192);
       const put=(x:number,y:number,m:number)=>{if(!sim.w.inb(x,y))return;const d=MATERIALS[m];sim.setCell(y*W+x,m,m===M.WATER?64:d.food?d.foodUnits:d.nutrient,'lab setup');};

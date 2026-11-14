@@ -6,7 +6,8 @@ import { makeColonyFields } from './colony.ts';
 import { SAVE_VERSION, Sim } from './sim.ts';
 import type { SimConfig } from './sim.ts';
 import { validateSpecies } from './species.ts';
-import { MATERIALS } from './materials.ts';
+import { MATERIALS,M } from './materials.ts';
+import { wildlifeById } from './wildlife-defs.ts';
 
 export interface SaveFile {
   format: 'ant-colony-sandbox';
@@ -38,6 +39,7 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
       chunkActive: w.chunkActive.slice(), chunkVer: w.chunkVer.slice(), moved: w.moved.slice(),
       chunkReactive:w.chunkReactive.slice(),
       dirtyColumns:[...w.dirtyColumns],
+      lifeCells:[...w.lifeCells],
       ledger: { sources: structuredClone(w.ledger.sources), sinks: structuredClone(w.ledger.sinks), initial: { ...w.ledger.initial } },
     },
     phys: { stamp: sim.phys.stamp, moistureCursor: sim.phys.moistureCursor, raining: sim.phys.raining, rainLocal: sim.phys.rainLocal.map((r) => ({ ...r })), slumps: sim.phys.slumps,topologyChanged:sim.phys.sandbox.topologyChanged },
@@ -88,7 +90,12 @@ export function validateSave(file: any): string[] {
   if (!Number.isSafeInteger(s.tick) || s.tick < 0) errs.push('Invalid simulation tick.');
   for (const k of ['mat', 'amt', 'moist', 'flags', 'owner', 'toxin']) if (!s.world?.[k] || s.world[k].length !== W * H) errs.push(`Terrain layer "${k}" is missing or has the wrong size.`);
   if(s.world?.mat?.some((m:number)=>!Number.isInteger(m)||!MATERIALS[m]))errs.push('Terrain contains an unknown material id.');
+  if(s.cfg?.mode!=='fantasy'&&s.world?.mat?.some((m:number)=>m===M.PLAGUE||m===M.PRIMORDIAL_SOUP))errs.push('Plague and Primordial soup require Fantasy mode.');
   if(s.world?.charge&&s.world.charge.length!==W*H)errs.push('Electrical field has the wrong size.');
+  if(s.world?.lifeCells&&(!Array.isArray(s.world.lifeCells)||s.world.lifeCells.some((k:number)=>!Number.isInteger(k)||k<0||k>=W*H||s.world.mat[k]<M.GRASS||s.world.mat[k]>M.MUSHROOM)))errs.push('Living-cell scheduler contains invalid positions.');
+  const animals=s.critters?.list;
+  if(!Array.isArray(animals)||animals.length>384)errs.push('Wildlife records are invalid (maximum 384).');
+  else for(const c of animals){if(!c||![c.id,c.kind,c.x,c.y,c.hp,c.age].every(Number.isFinite)||!Number.isInteger(c.kind)||(c.kind!==0&&c.kind!==1&&!wildlifeById(c.kind))||c.x<0||c.x>=W||c.y<0||c.y>=H||!Number.isInteger(c.x)||!Number.isInteger(c.y))errs.push('A wildlife record has an invalid type, position or health.');if(c?.stage!==undefined&&(!Number.isInteger(c.stage)||c.stage<0||c.stage>3))errs.push('A wildlife life stage is invalid.');}
   if (!Array.isArray(s.rng) || s.rng.length !== 4) errs.push('Random generator state is missing.');
   if (!s.ants || typeof s.ants.n !== 'number') errs.push('Organism data is missing.');
   else if (!Number.isInteger(s.ants.cap) || s.ants.cap < 16 || s.ants.cap > 100000 || !Number.isInteger(s.ants.n) || s.ants.n < 0 || s.ants.n > s.ants.cap) errs.push('Organism capacity is invalid (maximum 100,000).');
@@ -114,7 +121,8 @@ export function restore(file: SaveFile): Sim {
   w.ledger.initial = { ...s.world.ledger.initial };
   w.chunkDirty.fill(1);
   if(s.world.charge)w.charge.set(s.world.charge);
-  if(s.world.chunkReactive)w.chunkReactive.set(s.world.chunkReactive);else w.rebuildReactive();
+  w.rebuildReactive(); // Derived counts also include materials added since older saves.
+  if(s.world.lifeCells)w.lifeCells=new Set(s.world.lifeCells);
   w.dirtyColumns=new Set(s.world.dirtyColumns??[]);
   // Older schema-1 snapshots did not keep the CA activity scheduler.
   if (s.world.chunkActive) w.chunkActive.set(s.world.chunkActive); else w.chunkActive.fill(8);

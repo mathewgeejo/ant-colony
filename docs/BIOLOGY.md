@@ -1,5 +1,9 @@
 # Biology and scientific boundaries
 
+The screenshot Life expansion is documented in [Life content and sources](LIFE-CONTENT.md). New wildlife and flora are generic sandbox profiles, not additional validated species models. Established broad mechanisms (moisture-dependent worms, cellulose feeding, pollen transfer, aquatic fish habitat, larval/adult firefly distinctions, thermal stress and germination) are separated there from authored numeric rules. Plague and Primordial Soup are fictional, Fantasy-only materials. Non-ant offspring record parentage and developmental stage; only the existing ant system models inherited genomes.
+
+The screenshot content expansion adds a generic mycelial substrate with local nutrient-limited growth. It is an authored game abstraction, not an additional researched ant or fungal species profile. Its numerical moisture/heat thresholds are assumptions. [Experimental/modeling research on fungal nutrient translocation](https://pubmed.ncbi.nlm.nih.gov/12234753/) supports the importance of resources; this implementation does not simulate long-range intrahyphal transport. See SCREENSHOT-PROGRESS.md for the unfinished organism scope.
+
 Ant Colony Sandbox is a biologically informed game, **not a predictive scientific model**. Research was checked on 14 November 2026. Numeric rates, normalized loci, energetic coefficients, and cell-scale mechanics are authored game rules, not estimates fitted to field data.
 
 ## What is supported, and what is abstracted

@@ -97,7 +97,7 @@ export function packBrood(sim: Sim): { buf: Int16Array; count: number } {
 export function packCritters(sim: Sim): { buf: Int16Array; count: number } {
   const l = sim.critters.list;
   const buf = new Int16Array(Math.max(5, l.length * 5));
-  l.forEach((c, k) => { buf[k * 5] = c.x; buf[k * 5 + 1] = c.y; buf[k * 5 + 2] = c.px; buf[k * 5 + 3] = c.py; buf[k * 5 + 4] = c.kind | ((c.hp < 0.4 ? 1 : 0) << 4); });
+  l.forEach((c, k) => { buf[k * 5] = c.x; buf[k * 5 + 1] = c.y; buf[k * 5 + 2] = c.px; buf[k * 5 + 3] = c.py; buf[k * 5 + 4] = c.kind | ((c.hp < 0.4 ? 1 : 0) << 8) | (c.stage<<9) | (((sim.tick>>3)&1)<<11) | ((c.dir<0?1:0)<<12) | ((c.infection>0?1:0)<<13); });
   void CRITTER;
   return { buf, count: l.length };
 }

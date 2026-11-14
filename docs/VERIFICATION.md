@@ -1,12 +1,14 @@
 # Verification and measured performance
 
+Screenshot Life expansion: see `docs/LIFE-CONTENT.md` and `artifacts/life-checks.json` for the new mechanics/browser checks. Repeated two-day Living Garden experiments on seeds 1, 19, 42 observed 7, 7 and 10 births, respectively, with balanced food/water ledgers and matching saved continuation in all runs (`artifacts/life-experiments.json`). The starting population was 20 introduced animals; final populations were 11, 11 and 13 after real mortality. These are provisioned experiments and do not guarantee successful breeding in arbitrary conditions. Wildlife pedigree depth is not evidence of heritable trait evolution; non-ant genes are not modeled.
+
 Tests and measurements are reproducible scripts, not promised outcomes. Measurements taken 14 November 2026 on Windows 11 (10.0.26200), Intel Core i3-1115G4 @ 3.00 GHz, four logical cores, 7.75 GiB RAM, Node 22.14.0. Other applications and browser QA were running; this is a reference laptop, not an isolated benchmark rig.
 
 ## Engine checks
 
 The Vitest suite checks blocked movement and terrain editing, repeated-seed food/water accounting, signal transport, maternal allele assortment, no retroactive worker mutation, developmental conditions and larval protein, detached snapshots and deterministic continuation, schema migration and malformed saves, pause behavior, and species validation. Renderer checks cover cached textures and individual ant sprites without stale trails. Sandbox checks cover grain gravity, density, water phases, reactive-chunk wakeup, burning, connected/severed circuits, barrier-blocked blasts, matter transfer, cloner sources, gas escape/walls, corrosion, melting, cooking, electrical persistence and connected fill.
 
-The expanded suite passed **40/40**, including a regression for saving pending surface-column updates between subsystem phases. `npm run typecheck` passed for the complete UI/worker code without a packaging build. The repeated-seed experiment has a four-minute allowance so it can run alongside browser QA on the reference laptop.
+The expanded suite passed **70/70**, including Land mechanics, the 21 Life checks and a regression for saving pending surface-column updates between subsystem phases. `npm run typecheck` passed for the complete UI/worker code without a packaging build. The repeated-seed experiment has a four-minute allowance so it can run alongside browser QA on the reference laptop.
 
 The save/load check advances both original and restored worlds and compares continuation, not just their initial display. It exposed a missing active-chunk scheduler; snapshots now preserve it. Tests also exposed buried-agent movement, incomplete custom validation and protein replacement by sugar; these were corrected. The replay hash covers core state, not every byte of diagnostic output. No cross-browser reproducibility claim.
 

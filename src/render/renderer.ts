@@ -170,10 +170,6 @@ export class Renderer {
       const ab=this.agents!.bounds;
       if(ab.w&&ab.h)c.drawImage(this.agentCanvas,ab.x,ab.y,ab.w,ab.h,ab.x/3,ab.y/3,ab.w/3,ab.h/3);
       if(f.selected>=0){const o=f.selected*7,x=f.ants[o],y=f.ants[o+1];c.strokeStyle='#f6e4a2';c.lineWidth=1/this.zoom;c.strokeRect(x-2.5,y-2,5,4);}
-      for (let k = 0; k < f.critterCount; k++) {
-        const o = k * 5, x = f.critters[o], y = f.critters[o + 1]; c.fillStyle = f.critters[o + 4] & 1 ? '#563d33' : '#dfcdb0'; c.fillRect(x - 1, y - .5, 2, 1);
-        if (f.critters[o + 4] & 1) for (let i = -1; i < 2; i++) { c.fillRect(x + i, y - 1.5, .3, 3); }
-      }
       if (f.raining) { c.fillStyle = '#e2edf199'; for (let k = 0; k < 60; k++) { const x = hash(k, 12) * this.W, y = (hash(k, 15) * 50 + time / 60) % 60; c.fillRect(x, y, .4, 2); } }
     }
     if (this.route.length) { c.strokeStyle = '#f5d28188'; c.lineWidth = .5; c.setLineDash([1, 1]); c.beginPath(); for (let k = 0; k < this.route.length; k += 2) k ? c.lineTo(this.route[k], this.route[k + 1]) : c.moveTo(this.route[k], this.route[k + 1]); c.stroke(); c.setLineDash([]); }

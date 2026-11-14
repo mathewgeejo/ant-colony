@@ -58,7 +58,7 @@ export interface FrameMsg {
   antCount: number;
   brood: Int16Array; // 4 shorts per brood
   broodCount: number;
-  critters: Int16Array; // 5 shorts per critter
+  critters: Int16Array; // x,y,previous x/y, bits: kind[0..7],hurt[8],stage[9..10],animation[11],left[12],infection[13]
   critterCount: number;
   selected: number; // index in ants buffer of the selected ant, or -1
   temp: Float32Array | null; // coarse temperature (sent periodically for renderer tint)

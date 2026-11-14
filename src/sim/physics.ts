@@ -112,7 +112,7 @@ export class Physics {
               if (this.stepWater(x, y, i, st, rng, tick)) moves++;
             } else if (IS_GRANULAR[m]) {
               if (this.stepGranular(x, y, i, m, st, rng)) moves++;
-            } else if (MOIST_CAP[m] > 0 && w.moist[i] >= MOIST_CAP[m] - 2 && y + 1 < H && mat[i + W] === M.AIR) {
+            } else if (m<M.GRASS&&MOIST_CAP[m] > 0 && w.moist[i] >= MOIST_CAP[m] - 2 && y + 1 < H && mat[i + W] === M.AIR) {
               this.maybeSlump(x, y, i, m, rng);
             }
           }
@@ -275,6 +275,7 @@ export class Physics {
       for (let x = 0; x < W; x++) {
         const i = y * W + x;
         const m = mat[i];
+        if(m===M.PERMAFROST)continue;
         if (m === M.WATER) {
           // evaporation of exposed water surfaces
           if (y > 0 && mat[i - W] === M.AIR && w.skyExposed(x, y - 1)) {
@@ -296,7 +297,7 @@ export class Physics {
         if (y + 1 < H) {
           const b = i + W;
           const cb = MOIST_CAP[mat[b]];
-          if (cb > 0 && mat[b] !== M.WATER) {
+          if (cb > 0 && mat[b] !== M.WATER && mat[b] !== M.PERMAFROST) {
             const k = 0.35 * Math.sqrt(Math.max(0.01, Math.min(PERMEABILITY[m], PERMEABILITY[mat[b]])));
             const diff = mi / cap - moist[b] / cb + 0.03;
             let f = Math.trunc(diff * k * Math.min(cap, cb));
@@ -320,7 +321,7 @@ export class Physics {
         if (x + 1 < W) {
           const r = i + 1;
           const cr = MOIST_CAP[mat[r]];
-          if (cr > 0 && mat[r] !== M.WATER) {
+          if (cr > 0 && mat[r] !== M.WATER && mat[r] !== M.PERMAFROST) {
             const k = 0.25 * Math.sqrt(Math.max(0.01, Math.min(PERMEABILITY[m], PERMEABILITY[mat[r]])));
             const diff = mi / cap - moist[r] / cr;
             let f = Math.trunc(diff * k * Math.min(cap, cr));

@@ -5,6 +5,7 @@ import { contactPhase, canStand, inOwnNest, moveTo, updateAnt } from './behavior
 import type { Brood, Colony, LineageRecord, QueenData, Sperm } from './colony.ts';
 import { COLONY_MARKINGS, DESTINY, STAGE, makeColonyFields, newStats } from './colony.ts';
 import { Critters } from './critters.ts';
+import { lifeEcology } from './life-ecology.ts';
 import { ecologyStep } from './ecology.ts';
 import type { Mode, MutationRecord } from './genetics.ts';
 import { LOCI, MODES, NL, NP, P, broodCost, founderGenome, gval, makeEgg, phenotype } from './genetics.ts';
@@ -58,7 +59,7 @@ export type Command =
   | { t: 'rain'; x: number; y: number; r: number }
   | { t: 'queen'; species: string; x: number; y: number }
   | { t: 'colony'; species: string; x: number; y: number; workers: number }
-  | { t: 'critter'; kind: 'spider' | 'springtail'; x: number; y: number }
+  | { t: 'critter'; kind: string; x: number; y: number }
   | { t: 'editGenome'; colonyId: number; locus: number; value: number }
   | { t: 'setting'; key: keyof Settings; value: number | boolean }
   | { t: 'climate'; key: keyof Climate; value: number };
@@ -215,6 +216,7 @@ export class Sim {
     this.flightSchedule(tick);
     const t5 = now();
     if (tick % 60 === 0) ecologyStep(this);
+    lifeEcology(this);
     if (tick % 10 === 0) this.sampleActivity();
     if (tick % DAY_TICKS === 0 && tick > 0) this.daily();
     if (tick % 120 === 0) checkJournal(this);
@@ -245,6 +247,11 @@ export class Sim {
       if (IS_WATER[m] && amt) w.ledger.source('water', cause, amt);
     }
     const lost = w.setRaw(i, m, amt);
+    if(old!==m&&cause.startsWith('player')){
+      const d=MATERIALS[m],n=d.initialMoisture??0;
+      if(n>w.moist[i]){w.ledger.source('water','player material moisture',n-w.moist[i]);w.moist[i]=n;}
+      if(d.initialTemperature!==undefined)w.temp[w.tIdx(i%w.W,(i/w.W)|0)]=d.initialTemperature;
+    }
     if(old!==m&&cause.startsWith('player')){
       const tc=w.tIdx(i%w.W,(i/w.W)|0),hot=m===M.LAVA?1100:m===M.FIRE?350:m===M.STEAM?110:m===M.MOLTEN_GLASS?1200:m===M.MOLTEN_METAL?800:null;
       if(hot!==null)w.temp[tc]=Math.max(w.temp[tc],hot);if(m===M.ICE||m===M.SNOW)w.temp[tc]=Math.min(w.temp[tc],-8);
@@ -286,6 +293,7 @@ export class Sim {
   }
 
   apply(cmd: Command) {
+    if(this.mode!=='fantasy'&&(cmd.t==='paint'||cmd.t==='fill'||cmd.t==='editCell')&&[M.PLAGUE,M.PRIMORDIAL_SOUP].includes(cmd.mat as any)){this.event('sandbox','This fictional biological material requires Fantasy mode.');return;}
     const w = this.w;
     const circle = (x: number, y: number, r: number, fn: (i: number, cx: number, cy: number) => void) => {
       for (let dy = -r; dy <= r; dy++)
@@ -297,7 +305,7 @@ export class Sim {
         }
     };
     switch (cmd.t) {
-      case 'smash':{circle(cmd.x,cmd.y,cmd.r,(i)=>{const old=w.mat[i],m=old===M.STONE?M.GRAVEL:old===M.GLASS?M.GLASS_SHARD:old===M.WOOD?M.SAWDUST:old===M.ICE?M.SNOW:old===M.CLAY?M.CLAY_POWDER:old===M.SUGAR?M.SUGAR_POWDER:old;if(m!==old)this.phys.sandbox.transform(i,m,w.amt[i],'player crushing');});this.navDirty=true;break;}
+      case 'smash':{circle(cmd.x,cmd.y,cmd.r,(i)=>{const old=w.mat[i],m=old===M.STONE?M.GRAVEL:old===M.GLASS?M.GLASS_SHARD:old===M.WOOD?M.SAWDUST:old===M.ICE?M.SNOW:old===M.CLAY?M.CLAY_POWDER:old===M.SUGAR?M.SUGAR_POWDER:old===M.SANDSTONE?M.SAND:old===M.MUDSTONE?M.DIRT:old===M.BASALT?M.ROCK:old===M.TUFF?M.ASH:old===M.LIMESTONE?M.DUST:old===M.BONE?M.DUST:old;if(m!==old)this.phys.sandbox.transform(i,m,w.amt[i],'player crushing');});this.navDirty=true;break;}
       case 'mix':{for(let n=0;n<Math.min(96,(cmd.r*2+1)**2);n++){const x=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,y=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r,xx=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,yy=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r;if(!w.inb(x,y)||!w.inb(xx,yy))continue;const i=y*w.W+x,j=yy*w.W+xx,a=MATERIALS[w.mat[i]],b=MATERIALS[w.mat[j]];if((!a.solid||a.granular)&&(!b.solid||b.granular))w.swap(i,j);}this.navDirty=true;break;}
       case 'move':{const dx=cmd.toX-cmd.x,dy=cmd.toY-cmd.y;for(let iy=0;iy<=cmd.r*2;iy++)for(let ix=0;ix<=cmd.r*2;ix++){const oy=dy>0?cmd.r-iy:iy-cmd.r,ox=dx>0?cmd.r-ix:ix-cmd.r;if(ox*ox+oy*oy>cmd.r*cmd.r+cmd.r)continue;const x=cmd.x+ox,y=cmd.y+oy,xx=x+dx,yy=y+dy;if(!w.inb(x,y)||!w.inb(xx,yy))continue;const i=y*w.W+x,j=yy*w.W+xx,m=MATERIALS[w.mat[i]];if(m.id!==M.AIR&&(!m.solid||m.granular)&&w.mat[j]===M.AIR)w.swap(i,j);}this.navDirty=true;break;}
       case 'editCell':{if(!w.inb(cmd.x,cmd.y)||!MATERIALS[cmd.mat])break;const k=cmd.y*w.W+cmd.x;const n=Math.max(0,Math.min(IS_WATER[cmd.mat]?64:255,Math.round(cmd.amount)));this.setCell(k,(FOOD_OF[cmd.mat]||IS_WATER[cmd.mat])&&!n?M.AIR:cmd.mat,n,'player properties');w.temp[w.tIdx(cmd.x,cmd.y)]=Math.max(-100,Math.min(2000,cmd.temperature));w.charge[k]=Math.max(0,Math.min(255,cmd.charge));w.toxin[k]=Math.max(0,Math.min(255,cmd.toxin));break;}
@@ -393,7 +401,7 @@ export class Sim {
         break;
       }
       case 'critter': {
-        this.critters.spawn(this, cmd.kind, cmd.x, cmd.y);
+        const c=this.critters.spawn(this, cmd.kind, cmd.x, cmd.y);if(!c)this.event('wildlife',`${cmd.kind}: introduction failed. Check habitat, free space and population limits.`);
         break;
       }
       case 'editGenome': {

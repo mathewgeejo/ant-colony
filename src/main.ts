@@ -6,6 +6,8 @@ import './sandbox.css';
 import './arcade.css';
 import { Renderer } from './render/renderer.ts';
 import { MATERIALS, M } from './sim/materials.ts';
+import { WILDLIFE,wildlifeByKey,type WildlifeDef } from './sim/wildlife-defs.ts';
+import { LIFE_MATERIALS } from './sim/life-ecology.ts';
 import { SCENARIOS } from './sim/scenarios.ts';
 import { LOCI, MODES } from './sim/genetics.ts';
 import type { Mode } from './sim/genetics.ts';
@@ -98,30 +100,33 @@ function setTool(t: string, m?: number) {
   tool = t; if (m !== undefined) material = m;
   renderer.editing = !['inspect','pan'].includes(t);
   $('#world').style.cursor = t === 'pan' ? 'grab' : t === 'inspect' ? 'crosshair' : 'none';
-  $('#tool-name').textContent = t === 'paint' ? MATERIALS[material].name : ({humid:'Moisten',cool:'Cool',dry:'Dry',colony:'Established colony'}[t] ?? t[0].toUpperCase() + t.slice(1));
-  $('#hint').textContent = t === 'paint' ? `${MATERIALS[material].description} Drag to paint.` : toolHints[t] ?? '';
+  $('#tool-name').textContent = t === 'paint' ? MATERIALS[material].name : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.name:({humid:'Moisten',cool:'Cool',dry:'Dry',colony:'Established colony'}[t] ?? t[0].toUpperCase() + t.slice(1));
+  $('#hint').textContent = t === 'paint' ? `${MATERIALS[material].description} Drag to paint.` : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.description:toolHints[t] ?? '';
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t && (t !== 'paint' || Number(b.dataset.mat) === material)));
 }
 function palette() {
+  document.body.classList.toggle('life-palette',cat==='life');
   document.querySelectorAll<HTMLElement>('[data-cat]').forEach(b => b.classList.toggle('selected', b.dataset.cat === cat));
   let html = '';
   const matButton = (m: number) => { const d = MATERIALS[m], names:Record<number,string>={[M.TOPSOIL]:'Topsoil',[M.ORGANIC]:'Detritus',[M.SUGAR]:'Sugar',[M.PROTEIN]:'Protein',[M.SEED]:'Seeds'},linear=d.color.map(c=>{const s=c/255;return s<=.04045?s/12.92:((s+.055)/1.055)**2.4;}),lum=linear[0]*.2126+linear[1]*.7152+linear[2]*.0722; return `<button data-tool="paint" data-mat="${m}" style="--element:rgb(${d.color});--element-ink:${lum>.179?'#111820':'#fff9e8'};--element-dark:rgb(${d.color.map(c=>Math.round(c*.45))})" title="${esc(d.description)}"><span class="swatch swatch-${d.key}" style="--swatch:rgb(${d.color})"></span><span>${esc(names[m]??d.name)}</span></button>`; };
   const tb = (t: string, name: string, i: string) => `<button data-tool="${t}"><span class="tool-swatch">${icon(i)}</span><span>${name}</span></button>`;
-  if (cat === 'terrain') html = tb('dig','Dig','shovel') + [M.TOPSOIL,M.SOIL,M.SAND,M.CLAY,M.STONE,M.GRAVEL,M.ORGANIC,M.WOOD,M.ROOT,M.BARRIER].map(matButton).join('') + tb('erase','Erase','close');
+  const animalButton=(d:WildlifeDef)=>{const g=d.frames[0],h=g.length,w=Math.max(...g.map(r=>r.length));let pixels='';for(let y=0;y<h;y++)for(let x=0;x<g[y].length;x++){const c=d.colors[g[y].charCodeAt(x)-97];if(c)pixels+=`<rect x="${x}" y="${y}" width="1" height="1" fill="rgb(${c})"/>`;}return `<button data-tool="animal:${d.key}" title="${esc(d.description)}"><svg class="wildlife-icon" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" aria-hidden="true">${pixels}</svg><span>${d.name}</span></button>`;};
+  if (cat === 'terrain') html = tb('dig','Dig','shovel') + [M.SAND,M.DIRT,M.MUD,M.ROCK,M.STONE,M.SANDSTONE,M.MUDSTONE,M.SNOW,M.GRAVEL,M.CLAY_POWDER,M.CLAY_SOIL,M.PERMAFROST,M.MYCELIUM,M.MULCH,M.BASALT,M.TUFF,M.CINNABAR,M.LIMESTONE,M.TOPSOIL,M.SOIL,M.CLAY,M.ORGANIC,M.WOOD,M.ROOT,M.BARRIER].map(matButton).join('') + tb('erase','Erase','close');
   if(cat==='tools')html=tb('inspect','Inspect','cursor')+tb('pick','Pick','cursor')+tb('erase','Erase','close')+tb('dig','Dig','shovel')+tb('heat','Heat','sun')+tb('cool','Cool','drop')+tb('charge','Shock','sun')+tb('mix','Mix','layers')+tb('smash','Smash','shovel')+tb('drag','Drag','cursor')+tb('pan','Pan','fit');
   if (cat === 'food') html = [M.SUGAR,M.PROTEIN,M.SEED,M.WATER].map(matButton).join('') + tb('rain','Local rain','drop') + '<p class="palette-note">Sugar fuels adults.<br>Protein feeds growing larvae.<br>Harvester ants also process seeds.</p>';
-  if (cat === 'life') html = `<div class="species-picker"><label for="species-search">Choose a species</label><input id="species-search" placeholder="Search species…"><select id="species">${species.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>` + tb('queen','Founding queen','ant') + tb('colony','35-worker colony','ant') + tb('spider','Spider','ant') + tb('springtail','Springtail','ant') + matButton(M.PLANT) + '<p class="palette-note">Introductions are sandbox interventions.<br>New colonies still need food and a safe nest.</p>';
+  if (cat === 'life') html = `<div class="species-picker"><label for="species-search">Choose an ant</label><input id="species-search" placeholder="Search ant species…"><select id="species">${species.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>` + tb('queen','Ant queen','ant') + tb('colony','35-worker colony','ant') + tb('spider','Spider','ant') + tb('springtail','Springtail','ant') + WILDLIFE.map(animalButton).join('')+LIFE_MATERIALS.map(matButton).join('')+'<p class="palette-note">Click once to introduce an animal. Fish need water.<br>Wildlife profiles use compressed, simplified lifecycles.</p>';
   if (cat === 'climate') html = tb('heat','Warm +','sun') + tb('cool','Cool −','sun') + tb('humid','Moisten','drop') + tb('dry','Dry','drop') + tb('rain','Local rain','drop') + tb('toxin','Toxin','close') + '<p class="palette-note">Temperature and humidity affect development,<br>water balance, foraging, and survival.</p>';
   if(['powders','liquids','gases','solids','energy'].includes(cat)){
     const energy=new Set<number>([M.FIRE,M.SPARK,M.WIRE,M.BATTERY,M.LAMP,M.HEATER,M.COOLER,M.CLONER,M.EXPLOSIVE]);
     html=(cat==='energy'?tb('charge','Shock','sun'):'')+MATERIALS.filter(m=>m.id!==M.AIR&&(cat==='energy'?energy.has(m.id):cat==='powders'?m.state==='powder':cat==='liquids'?m.state==='liquid':cat==='gases'?m.state==='gas':m.state==='solid')).map(m=>matButton(m.id)).join('');
   }
   const query=$<HTMLInputElement>('#palette-search').value.trim().toLowerCase();
-  if(query)html=MATERIALS.filter(m=>m.id!==M.AIR&&(m.name+' '+m.description).toLowerCase().includes(query)).map(m=>matButton(m.id)).join('');
+  if(query)html=MATERIALS.filter(m=>m.id!==M.AIR&&(m.name+' '+m.description).toLowerCase().includes(query)).map(m=>matButton(m.id)).join('')+WILDLIFE.filter(d=>(d.name+' '+d.description).toLowerCase().includes(query)).map(animalButton).join('');
   $('#palette').innerHTML = html;
+  if(mode!=='fantasy')for(const id of [M.PLAGUE,M.PRIMORDIAL_SOUP]){const b=document.querySelector<HTMLButtonElement>(`#palette [data-mat="${id}"]`);if(b){b.disabled=true;b.title='Fictional biology: create a Fantasy world to use this material.';}}
   filterPalette();
   setTool(tool);
-  if (cat === 'life') $('#species-search').addEventListener('input', e => { const q = (e.target as HTMLInputElement).value.toLowerCase(); $('#species').innerHTML = species.filter(s => (s.name + s.commonName).toLowerCase().includes(q)).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(''); });
+  if (cat === 'life') document.querySelector('#species-search')?.addEventListener('input', e => { const q = (e.target as HTMLInputElement).value.toLowerCase(); $('#species').innerHTML = species.filter(s => (s.name + s.commonName).toLowerCase().includes(q)).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(''); });
 }
 function filterPalette(){const q=$<HTMLInputElement>('#palette-search').value.toLowerCase().trim();document.querySelectorAll<HTMLElement>('#palette > button').forEach(b=>{b.hidden=!!q&&!((b.textContent??'')+' '+b.title).toLowerCase().includes(q);});}
 $('#palette-search').addEventListener('input',palette);
@@ -142,6 +147,10 @@ function newWorldDialog() {
 }
 function guide() {
   const s = stats?.scenario;
+  if(s?.id==='life-garden'){
+    openModal('Living garden',`<p class="lead">Food, habitat, contact, then offspring.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Inspect an animal.</strong> Choose Inspect and click it. The cell inspector shows its current action, life stage, energy, health and actual parent IDs.</li><li><strong>Keep habitats connected.</strong> Fish and young frogs need water. Ground animals need support; flying animals still cannot cross a solid wall.</li><li><strong>Watch a new generation.</strong> Paired rats, flies, bees and fish start nearby. Contact and sufficient energy allow reproduction. Eggs or newborns develop; insects pass through a pupal stage.</li><li><strong>Intervene.</strong> Drain the pond, remove food, warm a bed or add a barrier. There is no guaranteed survival or breeding outcome.</li></ol><div class="scenario-actions">${s.actions.map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">These wildlife and plant profiles are simplified sandbox organisms, not validated species models. Lifecycles are compressed; non-ant inheritance records parentage without modeling genes. Plague and Primordial soup are explicitly fictional editing materials.</div><button id="guide-close">Observe the garden</button>`,'guide');
+    document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
+  }
   if(['empty','physics-lab'].includes(s?.id)){
     openModal(s.title,`<p class="lead">Draw matter. Change conditions. Watch the result.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Choose a material.</strong> Powders fall, liquids spread and gases rise or settle. Fixed solids form walls.</li><li><strong>Draw a container.</strong> Use barriers or glass. Replace overwrites occupied cells; turn it off to add only into empty space.</li><li><strong>Change temperature or charge.</strong> Heat, Cool and Shock act immediately, even while paused. Shift intensifies. Resume to see melting, burning, flowing and conduction.</li><li><strong>Inspect and compare.</strong> Click cells with Inspect, then Edit to change their properties. Use temperature and charge overlays. Undo restores the previous world.</li></ol><div class="scenario-actions">${(s.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">Batteries, heaters, coolers and cloners are continuous sandbox sources. Material temperatures and reactions are simplified game rules. The full Sandboxels element library and JavaScript mods are not included.</div><p>Right-drag erases. Middle-click picks. Alt-drag pans; scroll zooms. Use Pause and Step to examine individual updates. To start an ant colony, first paint a suitable soil layer, then introduce a queen from Organisms.</p><button id="guide-close">Start experimenting</button>`,'guide');
     document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
@@ -279,7 +288,7 @@ function paint(x:number,y:number){
   else if(tool==='heat'||tool==='cool')cmd={t:'heat',x,y,r,amount:(tool==='heat'?1:-1)*(intensify?10:2)};
   else if(tool==='humid'||tool==='dry')cmd={t:'humidity',x,y,r,amount:tool==='humid'?1:-1};
   else if(tool==='queen'||tool==='colony'){const sp=$<HTMLSelectElement>('#species')?.value??species[0]?.id;if(!sp)return;cmd=tool==='queen'?{t:'queen',species:sp,x,y}:{t:'colony',species:sp,x,y,workers:35};}
-  else if(tool==='spider'||tool==='springtail')cmd={t:'critter',kind:tool,x,y};else return;
+  else if(tool==='spider'||tool==='springtail'||tool.startsWith('animal:'))cmd={t:'critter',kind:tool.startsWith('animal:')?tool.slice(7):tool,x,y};else return;
   queueBrush(cmd);
 }
 const canvas=$<HTMLCanvasElement>('#world');
@@ -303,7 +312,7 @@ canvas.onpointerdown=e=>{
  else if(shape==='fill'){paintShape(w,w,'fill');stroke=false;flushBrush();send({type:'endEdit'});}
  else if(shape!=='brush'&&tool!=='drag')shapeStart={...w};else if(tool!=='drag'){
   paint(w.x,w.y);
-  if(eraseStroke||!['queen','colony','spider','springtail','rain'].includes(tool)){heldBrushAt=performance.now();if(!heldBrushFrame)heldBrushFrame=requestAnimationFrame(holdBrush);}
+  if(eraseStroke||(!tool.startsWith('animal:')&&!['queen','colony','spider','springtail','rain'].includes(tool))){heldBrushAt=performance.now();if(!heldBrushFrame)heldBrushFrame=requestAnimationFrame(holdBrush);}
  }
  lineAnchor=w;beep();
 };
@@ -314,7 +323,7 @@ canvas.onpointermove=e=>{
  if(shapeStart){renderer.preview={...shapeStart,x2:w.x,y2:w.y,kind:$<HTMLSelectElement>('#draw-shape').value};return;}
  if(!stroke||!lastPoint||(w.x===lastPoint.x&&w.y===lastPoint.y))return;
  if(tool==='drag'&&!eraseStroke){queueBrush({t:'move',x:lastPoint.x,y:lastPoint.y,toX:w.x,toY:w.y,r:renderer.brush});lastPoint=w;return;}
- if(!eraseStroke&&['inspect','pick','queen','colony','spider','springtail','rain'].includes(tool))return;
+ if(!eraseStroke&&(tool.startsWith('animal:')||['inspect','pick','queen','colony','spider','springtail','rain'].includes(tool)))return;
  const dx=w.x-lastPoint.x,dy=w.y-lastPoint.y,d=Math.max(Math.abs(dx),Math.abs(dy)),spacing=eraseStroke||['paint','dig','erase'].includes(tool)?Math.max(1,Math.floor(renderer.brush/2)):1;
  if(d<spacing)return;const n=Math.min(100,Math.ceil(d/spacing));for(let k=1;k<=n;k++)paint(Math.round(lastPoint.x+dx*k/n),Math.round(lastPoint.y+dy*k/n));lastPoint=w;
 };
@@ -322,7 +331,7 @@ const pointerEnd=()=>{
  if(heldBrushFrame)cancelAnimationFrame(heldBrushFrame);heldBrushFrame=0;
  const wasEdit=stroke;
  if(shapeStart&&renderer.hover)paintShape(shapeStart,renderer.hover,$<HTMLSelectElement>('#draw-shape').value);
- else if(stroke&&renderer.hover&&lastPoint&&(eraseStroke||!['inspect','pick','drag','queen','colony','spider','springtail','rain'].includes(tool))&&(lastPoint.x!==renderer.hover.x||lastPoint.y!==renderer.hover.y))paint(renderer.hover.x,renderer.hover.y);
+ else if(stroke&&renderer.hover&&lastPoint&&(eraseStroke||(!tool.startsWith('animal:')&&!['inspect','pick','drag','queen','colony','spider','springtail','rain'].includes(tool)))&&(lastPoint.x!==renderer.hover.x||lastPoint.y!==renderer.hover.y))paint(renderer.hover.x,renderer.hover.y);
  shapeStart=null;renderer.preview=null;stroke=false;dragging=false;lastPoint=null;eraseStroke=false;flushBrush();if(wasEdit)send({type:'endEdit'});
 };
 canvas.onpointerup=pointerEnd;canvas.onpointercancel=pointerEnd;canvas.onlostpointercapture=pointerEnd;canvas.onpointerleave=()=>{renderer.hover=null;};
