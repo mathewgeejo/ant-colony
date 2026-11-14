@@ -10,6 +10,8 @@ import { P, thermalPerf } from './genetics.ts';
 import { DIG_RESIST, FOOD_OF, IS_SOLID, IS_LIQUID, CLIMBABLE, M, MOIST_CAP, MATERIALS } from './materials.ts';
 import type { Sim } from './sim.ts';
 import { FLAG_PLUG } from './world.ts';
+import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill } from './warfare.ts';
+import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DY = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -188,6 +190,19 @@ export function step(sim: Sim, i: number) {
       case NAV.DIG_WANDER: {
         if (w.owner[ni] !== owner) wt *= 0.05;
         if (c && c.nestDepth < sim.speciesOf(c).nest.targetDepth) { if (DY[d] > 0) wt *= 2; }
+        break;
+      }
+      case NAV.DELVE: {
+        // inside a foreign nest: push away from its exits (toward brood chambers); outside: head for the goal
+        const ho = w.owner[y * W + x];
+        if (ho && ho !== owner) {
+          if (w.owner[ni] !== ho) wt *= 0.1;
+          else { const dh = sim.nestDist[y * W + x], dn = sim.nestDist[ni]; wt *= dn > dh ? 6 : dn === dh ? 1.2 : 0.35; }
+        } else {
+          const d1 = dist2(nx, ny, tx, ty);
+          wt *= d1 < d0 ? 7 : d1 === d0 ? 1 : 0.12;
+          if (w.owner[ni] && w.owner[ni] !== owner) wt *= 3;
+        }
         break;
       }
     }
@@ -498,7 +513,7 @@ function decide(sim: Sim, i: number) {
   // combat / alarm
   const alarm = c.alarm.get(x, y);
   if (a.fightTarget[i] >= 0) return; // engaged; contact phase resolves
-  if (alarm > 0.3 && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i]) {
+  if (alarm > 0.3 && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i])) {
     const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression);
     if (sim.rng.chance(stimulus(alarm, thr))) {
       a.task[i] = TASK.DEFEND; a.why[i] = WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = 40;
@@ -543,6 +558,7 @@ function decide(sim: Sim, i: number) {
     case TASK.NURSE: return decideNurse(sim, i, c, own);
     case TASK.CARRY_BROOD: return decideCarryBrood(sim, i, c);
     case TASK.WASTE: return decideWaste(sim, i, c, own);
+    case TASK.GUARD: case TASK.WAR: case TASK.RAID: return decideWarTask(sim, i, c, own);
     case TASK.DEFEND: {
       if (--a.timer[i] <= 0 || alarm < 0.05) { a.task[i] = TASK.IDLE; a.nav[i] = own ? NAV.NEST_WANDER : NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; }
       return;
@@ -588,8 +604,9 @@ function chooseTask(sim: Sim, i: number, c: Colony) {
   else if (sp.activity.diurnal && !sim.daytime) blocked = WHY.NIGHT;
   if (blocked) forageS = 0;
   if (!c.hasExit) forageS = 0;
+  forageS *= forageFactor(c);
   const nurseS = s.nurse * (young ? 2 : 1);
-  const digS = Math.max(s.dig, s.exit * 2);
+  const digS = Math.max(s.dig, s.exit * 2, planDigStimulus(c));
   const wasteS = s.waste;
   const p = [
     stimulus(forageS, thr(0, a.pheno[o + P.THR_FORAGE])),
@@ -745,6 +762,13 @@ function digScore(sim: Sim, c: Colony, x: number, y: number, dy: number, exitMod
   } else {
     if (plug) return 0;
     const depthBelow = y - c.entrance.y;
+    // the nest template: planned shafts may open the surface; planned chambers keep a two-cell roof
+    const pk = planKind(sim, c, k);
+    if (pk === 2 || (pk === 1 && y >= w.surface[x] + 2)) {
+      s *= 8 * (1 + 3 * c.digCue.get(x, y - dy));
+      return dy < 0 && pk === 1 ? s * 0.6 : s;
+    }
+    if (c.plan) s *= 0.2;
     // keep the entrance shaft narrow: no widening in the top rows below the surface
     if (depthBelow < 5 || y <= w.surface[x] + 3) return 0;
     const deeper = c.nestDepth < sp.nest.targetDepth;
@@ -783,7 +807,13 @@ function decideDig(sim: Sim, i: number, c: Colony, own: boolean) {
     a.tx[i] = tx; a.ty[i] = ty; a.timer[i] = work; a.nav[i] = NAV.STAY;
     return;
   }
+  if (!exitMode && a.nav[i] === NAV.GOAL && a.why[i] === WHY.PLAN_DIG && a.stuck[i] < 40 && dist2(x, y, a.tx[i], a.ty[i]) > 2) return;
   a.nav[i] = exitMode ? NAV.EXIT : NAV.DIG_WANDER;
+  // nothing worth digging here: walk to an unfinished part of the nest template
+  if (!exitMode && (a.fails[i] & 3) === 0) {
+    const f = frontierTarget(sim, c);
+    if (f) { a.nav[i] = NAV.GOAL; a.tx[i] = f.x; a.ty[i] = f.y; a.why[i] = WHY.PLAN_DIG; }
+  }
   if (++a.fails[i] > 40) { a.fails[i] = 0; a.task[i] = TASK.IDLE; }
 }
 
@@ -818,7 +848,27 @@ function decideHaul(sim: Sim, i: number, c: Colony, own: boolean) {
   const x = a.x[i], y = a.y[i];
   a.stepCount[i] = Math.min(65535, a.stepCount[i] + DECIDE_EVERY);
   const outside = !own && w.skyExposed(x, y);
-  const farEnough = dist2(x, y, c.entrance.x, c.entrance.y) >= (a.carry[i] === M.CORPSE || a.carry[i] === M.WASTE ? 144 : 64);
+  const refuse = a.carry[i] === M.CORPSE || a.carry[i] === M.WASTE;
+  const farEnough = dist2(x, y, c.entrance.x, c.entrance.y) >= (refuse ? 144 : 64);
+  if (outside && c.plan) {
+    if (refuse) {
+      // refuse and corpses go to one midden, away from the entrance
+      const mx = c.plan.midden.x;
+      if (Math.abs(x - mx) > 2) { if (a.stuck[i] < 80) { a.why[i] = WHY.MIDDEN; a.nav[i] = NAV.GOAL; a.tx[i] = mx; a.ty[i] = w.surface[mx] - 1; return; } }
+      else if (dropCarried(sim, i, false)) return;
+    } else if ((a.carry[i] === M.LOOSE || a.carry[i] === M.SAND) && a.stepCount[i] < 360) {
+      // spoil builds the mound (dome) or crater ring around the entrance
+      if (a.why[i] !== WHY.MOUND) { const s = moundSpot(sim, c); if (s) { a.why[i] = WHY.MOUND; a.tx[i] = s.x; a.ty[i] = s.y; a.stuck[i] = 0; } }
+      if (a.why[i] === WHY.MOUND) {
+        const tx = a.tx[i];
+        if (Math.abs(x - tx) <= 1 && Math.abs(y - (w.surface[tx] - 1)) <= 2) {
+          if (depositHeap(sim, tx)) { a.carry[i] = 0; a.task[i] = TASK.IDLE; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0; return; }
+          a.why[i] = WHY.HAUL;
+        } else if (a.stuck[i] < 60) { a.nav[i] = NAV.GOAL; a.ty[i] = w.surface[tx] - 1; return; }
+        else a.why[i] = WHY.HAUL;
+      }
+    }
+  }
   if (outside && farEnough) { if (dropCarried(sim, i, false)) return; }
   if (outside && !farEnough) { a.nav[i] = NAV.EXPLORE; return; }
   if (!own && !outside) a.nav[i] = NAV.UP;
@@ -1186,8 +1236,11 @@ function escapeSolid(sim: Sim, i: number): boolean {
 // ---------------------------------------------------------------- contacts & combat
 
 /** Contact interactions between non-nestmates. Uses the spatial index; walls block contact. */
+let holders = new Uint8Array(0);
 export function contactPhase(sim: Sim) {
   const a = sim.a, w = sim.w, rng = sim.rng;
+  // how many attackers are holding each ant this tick (several workers pin one rival while others bite)
+  if (holders.length < a.cap) holders = new Uint8Array(a.cap); else holders.fill(0, 0, a.n);
   for (let i = 0; i < a.n; i++) {
     if (!a.alive[i] || ((sim.tick + i) & 1)) continue;
     const c = sim.colonies[a.colony[i]];
@@ -1219,10 +1272,15 @@ export function contactPhase(sim: Sim) {
     if (foe < 0) { if (a.fightTarget[i] >= 0) a.fightTarget[i] = -1; continue; }
     if (a.caste[i] === CASTE.QUEEN && friends > 0) continue; // queens avoid fights when workers are present
     const fc = sim.colonies[a.colony[foe]];
+    if (fc && fc !== c && rng.chance(0.25)) noteEncounter(sim, c, fc, x, y, friends, foes);
     // nestmate recognition failed (different colony): fight or retreat
-    const injured = a.health[i] < 0.35;
-    const outnumbered = foes > friends + 2;
-    if ((injured || outnumbered) && a.caste[i] === CASTE.WORKER) {
+    const soldier = isWarTask(a.task[i]);
+    const injured = a.health[i] < (soldier ? 0.25 : 0.35);
+    const outnumbered = foes > friends + (soldier ? 5 : 2);
+    const pinned = holders[i] >= 2;
+    // a raider carrying stolen brood keeps running rather than fighting
+    if (a.carryBrood[i] >= 0 && a.task[i] === TASK.RAID) continue;
+    if ((injured || outnumbered) && !pinned && a.caste[i] === CASTE.WORKER) {
       if (a.task[i] !== TASK.FLEE) {
         a.task[i] = TASK.FLEE; a.why[i] = WHY.FLEE_OUTNUMBERED; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.timer[i] = 60;
         a.fightTarget[i] = -1;
@@ -1230,11 +1288,11 @@ export function contactPhase(sim: Sim) {
       }
       continue;
     }
-    const aggressive = rng.chance(sp.aggression * (0.5 + 0.15 * friends) * (a.task[i] === TASK.DEFEND ? 2 : 1));
+    const aggressive = rng.chance(sp.aggression * (0.5 + 0.15 * friends) * (a.task[i] === TASK.DEFEND ? 2 : aggressionFactor(c, a.task[i])));
     if (!aggressive) continue;
     a.fightTarget[i] = foe;
     a.why[i] = WHY.DEFEND_CONTACT;
-    if (a.task[i] !== TASK.DEFEND && a.caste[i] === CASTE.WORKER) {
+    if (a.task[i] !== TASK.DEFEND && !soldier && a.caste[i] === CASTE.WORKER) {
       if (a.carry[i]) dropCarried(sim, i, false);
       a.task[i] = TASK.DEFEND; a.timer[i] = 30; a.nav[i] = NAV.STAY;
     }
@@ -1245,12 +1303,18 @@ export function contactPhase(sim: Sim) {
     if (foeD > 1) dmg *= 0.5; // spray at range
     dmg *= 1 - Math.min(0.85, a.pheno[fo + P.DEFENSE]);
     if (a.caste[foe] === CASTE.QUEEN) dmg *= 0.5;
+    // a rival already held by nestmates is easier to wound; two or more holders pin it in place
+    if (foeD <= 1) {
+      dmg *= 1 + 0.5 * Math.min(4, holders[foe]);
+      if (holders[foe] < 255) holders[foe]++;
+      if (holders[foe] >= 2) a.moveAcc[foe] = Math.min(a.moveAcc[foe], -0.5);
+    }
     a.health[foe] -= dmg;
     a.energy[i] -= 0.002;
     if (fc) { fc.alarm.add(a.x[foe], a.y[foe], sim.speciesOf(fc).communication.alarmStrength * 0.6); }
     c.stats.fights++;
     sim.noteFight(c, fc);
-    if (a.health[foe] <= 0) { sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1; }
+    if (a.health[foe] <= 0) { if (fc && fc !== c) noteKill(sim, c, fc); sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1; }
   }
 }
 

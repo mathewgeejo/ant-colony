@@ -65,6 +65,19 @@ export interface SpeciesDef {
     targetDepth: number;
     /** colony members per excavated cell before crowding stimulates digging */
     crowdingTarget: number;
+    /** optional architecture template (defaults: dome mound, straight shaft, no disc clearing) */
+    architecture?: {
+      /** spoil heaped as a dome mound with brood galleries (Lasius) or a low crater ring (Pogonomyrmex) */
+      mound: 'dome' | 'crater' | 'none';
+      /** lateral wander of the main shaft in cells (helical-looking shafts) */
+      shaftAmp: number;
+      /** vertical spacing of the first chambers; spacing grows with depth */
+      chamberSpacing: number;
+      /** workers cut vegetation around the entrance */
+      clearsDisc: boolean;
+      /** seeds kept in shallow granary chambers */
+      granaries: boolean;
+    };
   };
   tolerances: {
     /** hydration lost per physiology tick in dry air at 25C (base) */
@@ -151,7 +164,7 @@ export const LASIUS_NIGER: SpeciesDef = {
     cocoon: true, larvalProtein: 2, minHumidity: 0.35,
   },
   activity: { minForageTemp: 10, maxForageTemp: 36, diurnal: false },
-  nest: { targetDepth: 45, crowdingTarget: 0.9 },
+  nest: { targetDepth: 45, crowdingTarget: 0.9, architecture: { mound: 'dome', shaftAmp: 1, chamberSpacing: 5, clearsDisc: false, granaries: false } },
   tolerances: { desiccation: 0.0016, heatMax: 39, coldMin: 2, submersionTicks: 5400 },
   workers: { polymorphism: 'size-variable', lifespanDays: 45 },
   communication: {
@@ -198,7 +211,7 @@ export const POGONOMYRMEX_CALIFORNICUS: SpeciesDef = {
     cocoon: false, larvalProtein: 2.4, minHumidity: 0.2,
   },
   activity: { minForageTemp: 16, maxForageTemp: 44, diurnal: true },
-  nest: { targetDepth: 60, crowdingTarget: 0.8 },
+  nest: { targetDepth: 60, crowdingTarget: 0.8, architecture: { mound: 'crater', shaftAmp: 2, chamberSpacing: 6, clearsDisc: true, granaries: true } },
   tolerances: { desiccation: 0.0009, heatMax: 46, coldMin: 6, submersionTicks: 3600 },
   workers: { polymorphism: 'size-variable', lifespanDays: 50 },
   communication: {

@@ -102,6 +102,14 @@ body:not(.panel-hidden) #sidebar-toggle svg{color:#231503}
 .world-bottom{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;gap:20px;padding:7px 14px;background:#120e0ae6;border-top:2px solid var(--ink);font-size:13px;color:var(--dim);pointer-events:none;z-index:1}
 #hint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #position{white-space:nowrap;color:var(--amber);font-variant-numeric:tabular-nums}
+.cell-card{position:absolute;z-index:4;display:flex;gap:10px;align-items:flex-start;width:290px;padding:8px 8px 10px;background:var(--panel);border:2px solid var(--ink);box-shadow:inset 0 2px 0 var(--raised-hi),5px 5px 0 #0b0806aa}
+#cell-zoom{width:99px;height:99px;flex-shrink:0;image-rendering:pixelated;border:2px solid var(--ink);box-shadow:inset 0 0 0 1px #000}
+.cell-info{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+#cell-name{color:var(--amber);font-size:14px;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#cell-pos{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+#cell-lines p{margin:2px 0;font-size:12px;line-height:1.35;color:var(--text)}
+.cell-more{align-self:flex-start;height:26px;padding:0 8px;font-size:12px;margin-top:4px}
+#cell-close{width:26px;height:26px;flex-shrink:0}#cell-close svg{width:14px}
 .paused-tag{display:none;top:12px;left:50%;transform:translateX(-50%);padding:8px 14px;font:400 16px/1 var(--pixel);color:var(--amber);text-shadow:2px 2px 0 var(--ink);pointer-events:none}
 .paused .paused-tag{display:block}
 #restore-ui{display:none;right:12px;top:12px;height:36px;font:400 16px var(--pixel)}

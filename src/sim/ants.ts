@@ -7,10 +7,12 @@ export const CASTE_NAMES = ['worker', 'queen', 'male', 'gyne (winged queen)'];
 export const TASK = {
   IDLE: 0, FORAGE: 1, RETURN: 2, DIG: 3, HAUL: 4, NURSE: 5, CARRY_BROOD: 6, DEFEND: 7, WASTE: 8,
   FLEE: 9, FOUND_SEARCH: 10, FOUND_DIG: 11, QUEEN_LAY: 12, QUEEN_FORAGE: 13, ALATE: 14, FLIGHT: 15, DRINK: 16, ESCAPE: 17,
+  GUARD: 18, WAR: 19, RAID: 20,
 } as const;
 export const TASK_NAMES = [
   'resting', 'foraging', 'returning', 'excavating', 'hauling spoil', 'nursing brood', 'carrying brood', 'defending', 'removing waste',
   'retreating', 'seeking a nest site', 'digging founding chamber', 'laying eggs', 'foraging (founding queen)', 'waiting to fly', 'nuptial flight', 'drinking', 'escaping water',
+  'guarding the entrance', 'fighting at the front', 'raiding',
 ];
 
 /** Reasons recorded at each decision so the inspector can explain behaviour. */
@@ -20,6 +22,8 @@ export const WHY = {
   FLEE_OUTNUMBERED: 15, WASTE: 16, IDLE_LOW_STIM: 17, THIRST: 18, SUBMERGED: 19, FOUND_SEARCH: 20, FOUND_DIG: 21, LAY: 22,
   QUEEN_FORAGE: 23, ALATE_WAIT: 24, FLIGHT: 25, MEMORY_FAILED: 26, ROUTE_BLOCKED: 27, CONTACT_RECRUITED: 28, TOO_HOT: 29, TOO_COLD: 30,
   NIGHT: 31, LIGHT_RECRUIT: 32, ENERGY: 33,
+  GUARD: 34, WAR_MARCH: 35, WAR_FRONT: 36, RAID_MARCH: 37, RAID_DELVE: 38, RAID_LOOT_BROOD: 39, RAID_LOOT_FOOD: 40, RAID_HOME: 41,
+  ABSORBED: 42, MOUND: 43, MIDDEN: 44, PLAN_DIG: 45, CLEAR_DISC: 46,
 } as const;
 export const WHY_TEXT: string[] = [
   '',
@@ -56,6 +60,19 @@ export const WHY_TEXT: string[] = [
   'Night: this diurnal species does not forage.',
   'Following light pulses from a nestmate (FICTIONAL bioluminescence).',
   'Low energy: feeding from colony stores.',
+  'Guarding the nest entrance: the colony has detected rivals nearby.',
+  'Recruited to the war front, where nestmates last met the enemy.',
+  'Holding the front against a rival colony.',
+  'Marching on a rival nest the colony has located.',
+  'Inside the rival nest, pushing deeper toward its brood chambers.',
+  'Carrying a stolen pupa or larva home; it will be reared as a nestmate.',
+  'Carrying food looted from the rival colony\'s stores.',
+  'Returning from the raid.',
+  'Adopted: its colony was defeated and absorbed; it now carries the victors\' nest odour.',
+  'Adding excavated soil to the nest mound.',
+  'Carrying refuse to the colony\'s midden.',
+  'Excavating a planned chamber or shaft.',
+  'Cutting vegetation to keep the nest disc clear.',
 ];
 
 export const MEM = 32; // route-memory waypoints per ant
@@ -63,7 +80,7 @@ export const MEM = 32; // route-memory waypoints per ant
 /** Navigation modes used by the movement step. */
 export const NAV = {
   WANDER: 0, GOAL: 1, TRAIL_OUT: 2, HOME: 3, ROUTE_OUT: 4, RETRACE: 5, NEST_CUE: 6, EXIT: 7, UP: 8, STAY: 9, EXPLORE: 10, NEST_WANDER: 11,
-  ALARM: 12, DIG_WANDER: 13,
+  ALARM: 12, DIG_WANDER: 13, DELVE: 14,
 } as const;
 
 export class AntStore {

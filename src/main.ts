@@ -56,7 +56,7 @@ $('#app').innerHTML = `
 </header>
 <main class="play-space">
   <div class="world-wrap">
-    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag to erase; middle-drag, Alt-drag or the hand tool pans. Scroll or pinch to zoom. Arrow keys pan, plus and minus zoom."></canvas>
+    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag, middle-drag, Alt-drag or the hand tool pans. Scroll or pinch to zoom. Arrow keys pan, plus and minus zoom."></canvas>
     <div class="world-heading"><span class="live-dot"></span><strong id="world-title">First colony</strong><span id="mode-badge">Naturalistic</span></div>
     <div class="hud-right">
       <button id="sidebar-toggle" title="Open colony observatory" aria-label="Toggle colony panel">${icon('ant')}<span id="colony-peek">Colony</span></button>
@@ -66,7 +66,7 @@ $('#app').innerHTML = `
       <button class="icon-btn" data-tool="inspect" title="Inspect (I)" aria-label="Inspect">${icon('cursor')}</button>
       <button class="icon-btn" data-tool="pan" title="Pan (H) · or middle-drag" aria-label="Pan">${icon('pan')}</button>
       <button class="icon-btn" data-tool="dig" title="Dig (D)" aria-label="Dig">${icon('shovel')}</button>
-      <button class="icon-btn" data-tool="erase" title="Erase (X) · or right-drag" aria-label="Erase">${icon('close')}</button>
+      <button class="icon-btn" data-tool="erase" title="Erase (X)" aria-label="Erase">${icon('close')}</button>
       <span class="sep"></span>
       <button class="icon-btn" data-tool="heat" title="Heat" aria-label="Heat">${icon('sun')}</button>
       <button class="icon-btn" data-tool="cool" title="Cool" aria-label="Cool">${icon('drop')}</button>
@@ -80,6 +80,7 @@ $('#app').innerHTML = `
     </div>
     <div id="overlay-legend" class="overlay-legend" hidden></div>
     <div class="world-bottom"><div id="hint">Click an ant to follow its story. Scroll to look closer.</div><div id="position">512 × 256 cells</div></div>
+    <div id="cell-card" class="cell-card" hidden><canvas id="cell-zoom" width="99" height="99" aria-hidden="true"></canvas><div class="cell-info"><strong id="cell-name"></strong><small id="cell-pos"></small><div id="cell-lines"></div><button id="cell-more" class="cell-more">Open in observatory</button></div><button id="cell-close" class="icon-btn" aria-label="Close cell card">${icon('close')}</button></div>
     <div class="paused-tag" aria-hidden="true">Paused</div>
     <button id="restore-ui">Show controls</button>
   </div>
@@ -128,7 +129,7 @@ function holdBrush(t:number){
   if(renderer.hover&&t-heldBrushAt>=1000/30){paint(renderer.hover.x,renderer.hover.y);heldBrushAt=t;}
   heldBrushFrame=requestAnimationFrame(holdBrush);
 }
-const toolHints: Record<string,string> = { inspect: 'Click an ant or terrain cell to inspect it.', dig: 'Drag to excavate. Food and water stay in place.', pan: 'Drag to move around. Scroll to zoom.', queen: 'Click a surface to introduce one mated founding queen.', colony: 'Sandbox introduction: click to place a queen and 35 workers.', heat: 'Drag to heat the local temperature field immediately. Shift intensifies.', cool: 'Drag to cool the local temperature field immediately. Shift intensifies.', humid: 'Drag to add soil moisture and raise local humidity.', dry: 'Drag to remove moisture and lower humidity.', toxin: 'Drag to apply toxic contamination. It decays over time.', rain: 'Click to start a short local rain shower.', erase: 'Drag to remove material, food, or water.', spider: 'Click an open surface to introduce a spider.', springtail: 'Click an open surface to introduce a decomposer.',pick:'Click a cell to select its material. Middle-click also picks.',charge:'Apply electrical charge. Shift intensifies; conductors carry it to connected devices.',mix:'Shuffle movable particles within the brush. Fixed solids stay in place.',smash:'Crush brittle solids into falling powders: stone, glass, wood, ice, clay and sugar.',drag:'Drag existing powder, liquid or gas into empty space. Matter is moved, not copied.' };
+const toolHints: Record<string,string> = { inspect: 'Left-click a cell or ant to inspect it.', dig: 'Drag to excavate. Food and water stay in place.', pan: 'Drag to move around. Scroll to zoom.', queen: 'Click a surface to introduce one mated founding queen.', colony: 'Sandbox introduction: click to place a queen and 35 workers.', heat: 'Drag to heat the local temperature field immediately. Shift intensifies.', cool: 'Drag to cool the local temperature field immediately. Shift intensifies.', humid: 'Drag to add soil moisture and raise local humidity.', dry: 'Drag to remove moisture and lower humidity.', toxin: 'Drag to apply toxic contamination. It decays over time.', rain: 'Click to start a short local rain shower.', erase: 'Drag to remove material, food, or water.', spider: 'Click an open surface to introduce a spider.', springtail: 'Click an open surface to introduce a decomposer.',pick:'Click a cell to select its material. Middle-click also picks.',charge:'Apply electrical charge. Shift intensifies; conductors carry it to connected devices.',mix:'Shuffle movable particles within the brush. Fixed solids stay in place.',smash:'Crush brittle solids into falling powders: stone, glass, wood, ice, clay and sugar.',drag:'Drag existing powder, liquid or gas into empty space. Matter is moved, not copied.' };
 toolHints.lookup='Click a cell to open its material information.';
 toolHints.mix='Shuffle movable particles. Shift includes flame, spark and smoke; fixed walls stay in place.';
 toolHints.smash='Crush brittle material. Shift grinds rock and gravel further into sand.';
@@ -138,6 +139,7 @@ function setTool(t: string, m?: number) {
   tool = t; if (m !== undefined) material = m;
   renderer.editing = !['inspect','pan'].includes(t);
   $('#world').style.cursor = toolCursor();
+  if (t !== 'inspect') { $('#cell-card').hidden = true; cardCell = null; }
   const chip = $('#tool-chip'); chip.style.background = t === 'paint' ? `rgb(${MATERIALS[material].color})` : ''; chip.classList.toggle('is-tool', t !== 'paint');
   $('#tool-name').textContent = t === 'paint' ? MATERIALS[material].name : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.name:({humid:'Moisten',cool:'Cool',dry:'Dry',colony:'Established colony',color:'Paint color'}[t] ?? t[0].toUpperCase() + t.slice(1));
   $('#hint').textContent = t === 'paint' ? `${MATERIALS[material].description} Drag to paint.` : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.description:t==='color'?'Paint the selected color onto matter. This changes appearance, not its material or inherited traits.':toolHints[t] ?? '';
@@ -195,10 +197,10 @@ function guide() {
     document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
   }
   if(['empty','physics-lab','liquid-lab','powder-lab'].includes(s?.id)){
-    openModal(s.title,`<p class="lead">Draw matter. Change conditions. Watch the result.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Choose a material.</strong> Powders fall, liquids spread and gases rise or settle. Fixed solids form walls.</li><li><strong>Draw a container.</strong> Use barriers or glass. Replace overwrites occupied cells; turn it off to add only into empty space.</li><li><strong>Change temperature or charge.</strong> Heat, Cool and Shock act immediately, even while paused. Shift intensifies. Resume to see melting, burning, flowing and conduction.</li><li><strong>Inspect and compare.</strong> Click cells with Inspect, then Edit to change their properties. Use temperature and charge overlays. Undo restores the previous world.</li></ol><div class="scenario-actions">${(s.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">Batteries, heaters, coolers and cloners are continuous sandbox sources. Material temperatures and reactions are simplified game rules. The full Sandboxels element library and JavaScript mods are not included.</div><p>Right-drag erases. Middle-click picks. Alt-drag pans; scroll zooms. Use Pause and Step to examine individual updates. To start an ant colony, first paint a suitable soil layer, then introduce a queen from Organisms.</p><button id="guide-close">Start experimenting</button>`,'guide');
+    openModal(s.title,`<p class="lead">Draw matter. Change conditions. Watch the result.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Choose a material.</strong> Powders fall, liquids spread and gases rise or settle. Fixed solids form walls.</li><li><strong>Draw a container.</strong> Use barriers or glass. Replace overwrites occupied cells; turn it off to add only into empty space.</li><li><strong>Change temperature or charge.</strong> Heat, Cool and Shock act immediately, even while paused. Shift intensifies. Resume to see melting, burning, flowing and conduction.</li><li><strong>Inspect and compare.</strong> Click cells with Inspect, then Edit to change their properties. Use temperature and charge overlays. Undo restores the previous world.</li></ol><div class="scenario-actions">${(s.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">Batteries, heaters, coolers and cloners are continuous sandbox sources. Material temperatures and reactions are simplified game rules. The full Sandboxels element library and JavaScript mods are not included.</div><p>Right-drag pans with any tool. Middle-click picks. Scroll zooms. Use Pause and Step to examine individual updates. To start an ant colony, first paint a suitable soil layer, then introduce a queen from Organisms.</p><button id="guide-close">Start experimenting</button>`,'guide');
     document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
   }
-  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · middle-drag, Space-drag or H to pan · click the minimap to jump · wheel or pinch to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
+  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · right-drag, middle-drag, Space-drag or H to pan · click the minimap to jump · wheel or pinch to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
   document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});toast('Experiment intervention applied');closeModal();});
   $('#guide-close').onclick=closeModal;
 }
@@ -255,15 +257,16 @@ function updateStats(s: any) {
   if(selectedColony<0&&s.colonies.length)selectedColony=s.colonies[0].id;
   const c=s.colonies.find((c:any)=>c.id===selectedColony)??s.colonies[0];
   $('#colony-peek').textContent=c?`${c.workers} workers · ${c.brood.reduce((a:number,b:number)=>a+b,0)} brood`:'Introduce a queen';
+  const a=s.selectedAnt, cell=s.selectedCell;
+  if(a)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(a.caste)} #${a.id}<small>${esc(a.colony)}</small></div><p class="reason">${esc(a.why)}</p>${a.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}<details><summary>Traits & inheritance</summary>${a.traits.map((t:any)=>`<div class="ant-trait"><span>${esc(t.name)}<small>${esc(t.kind)}</small></span><b>${esc(t.value)}</b></div>`).join('')}</details>`;
+  else if(cell)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(cell.material)}<small>${cell.x}, ${cell.y}</small></div><p>${esc(cell.description)}</p>${cell.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}`;
+  updateCellCard(s);
   if(document.body.classList.contains('panel-hidden'))return;
   if(c){
     const brood=c.brood.reduce((a:number,b:number)=>a+b,0);
     $('#colony-detail').innerHTML=`<div class="species-line"><i>${esc(c.species)}</i><span class="stage">${esc(c.stage)}</span></div><div class="colony-count"><strong>${c.workers}</strong><span>workers<br><small>${c.queens} queen${c.queens===1?'':'s'} · generation ${c.generation}</small></span><button id="focus-colony" class="icon-btn" aria-label="Focus colony" title="Focus colony">${icon('fit')}</button></div><div class="brood-stages"><div><b>${c.brood[0]}</b><span>Eggs</span></div><span>›</span><div><b>${c.brood[1]}</b><span>Larvae</span></div><span>›</span><div><b>${c.brood[2]}</b><span>Pupae</span></div></div><div class="store-heading">Nest stores <small>food units</small></div><div class="resources"><span><i style="background:#e7bd69"></i>Sugar <b>${c.store.sugar.toFixed(0)}</b></span><span><i style="background:#d98a78"></i>Protein <b>${c.store.protein.toFixed(0)}</b></span><span><i style="background:#a9b473"></i>Seeds <b>${c.store.seed.toFixed(0)}</b></span></div>${c.stage==='founding'?`<div class="reserve-line"><span>Queen reserves</span><b>${c.reserves.toFixed(0)}</b></div><meter min="0" max="120" value="${c.reserves}"></meter>`:''}<p class="colony-note">${esc(c.notes[0]??(brood?'Brood developing in the nest. Inspect a worker to understand its task.':'The queen is looking for a suitable nest site.'))}</p><details class="tasks"><summary>Colony activity</summary>${Object.entries(c.tasks).map(([k,v])=>`<div>${esc(k)}<b>${v}</b></div>`).join('')||'<p>No workers yet.</p>'}<p>${c.stats.workersEclosed} workers emerged · ${c.stats.daughterColonies} daughters founded</p><p>Deaths: ${esc(JSON.stringify(c.stats.adultDeaths))}</p></details>`;
     $('#focus-colony').onclick=()=>renderer.focus(c.entrance.x,c.entrance.y+12);
   }else $('#colony-detail').innerHTML='<p>No living colonies. Introduce a queen from Organisms.</p>';
-  const a=s.selectedAnt, cell=s.selectedCell;
-  if(a)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(a.caste)} #${a.id}<small>${esc(a.colony)}</small></div><p class="reason">${esc(a.why)}</p>${a.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}<details><summary>Traits & inheritance</summary>${a.traits.map((t:any)=>`<div class="ant-trait"><span>${esc(t.name)}<small>${esc(t.kind)}</small></span><b>${esc(t.value)}</b></div>`).join('')}</details>`;
-  else if(cell)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(cell.material)}<small>${cell.x}, ${cell.y}</small></div><p>${esc(cell.description)}</p>${cell.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}`;
   $('#event-count').textContent=String(s.events.length);
   $('#events').innerHTML=s.events.slice(-18).reverse().map((e:any)=>`<div><small>Day ${(e.tick/3600+1).toFixed(1)}</small><p>${esc(e.text)}</p></div>`).join('')||'<p class="muted">A new ecosystem. Events will appear here.</p>';
   if($<HTMLDetailsElement>('#metrics').open)$('#metrics-detail').innerHTML=`<dl>${Object.entries({ 'Render':renderer.renderMs.toFixed(2)+' ms', 'Simulation':s.perf.stepMs.toFixed(2)+' ms/tick', 'Fields':s.perf.fieldMs.toFixed(2)+' ms', 'Active agents':s.ants, 'Active chunks':`${s.perf.activeChunks}/${s.perf.totalChunks}`, 'Signal chunks':s.perf.signalChunks, 'Estimated buffers':s.perf.estMB.toFixed(1)+' MB', 'Command queue':s.perf.pendingCommands, 'Dropped render frames':renderer.droppedFrames, 'Dropped catch-up ticks':s.droppedTicks, 'Resource audit':JSON.stringify(s.audit) }).map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl><p class="muted">Buffer estimate excludes JS objects and canvas. Dropped ticks are discarded catch-up debt; simulation rules keep a fixed timestep.</p>`;
@@ -315,7 +318,7 @@ $('#content-packs').onclick=()=>{openModal('Mods & content packs',`<p>Import dec
 $('#capture-world').onclick=()=>{canvas.toBlob(blob=>{if(!blob)return;const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=`ant-sandbox-${seed}-day${stats?.day??1}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);},'image/png');};
 function toggleGUI(){document.body.classList.toggle('gui-hidden');}
 $('#toggle-gui').onclick=toggleGUI;$('#restore-ui').onclick=toggleGUI;
-$('#collapse').onclick=()=>document.body.classList.toggle('panel-hidden');$('#sidebar-toggle').onclick=()=>{document.body.classList.toggle('panel-hidden');if(stats)updateStats(stats);};
+$('#collapse').onclick=()=>document.body.classList.add('panel-hidden');$('#sidebar-toggle').onclick=()=>{document.body.classList.toggle('panel-hidden');if(stats)updateStats(stats);};
 $('#colony-select').onchange=()=>{selectedColony=Number($<HTMLSelectElement>('#colony-select').value);updateOverlay();};
 $('#overlay').onchange=updateOverlay;
 function updateOverlay(){const kind=$<HTMLSelectElement>('#overlay').value as OverlayKind,c=stats?.colonies.find((c:any)=>c.id===selectedColony);send({type:'overlay',kind,colony:c?.slot??-1,trait:6});const el=$('#overlay-legend');el.hidden=kind==='none';el.textContent=kind==='trail'?'Foraging trail · stronger marks = more signal':kind==='temperature'?'Temperature · blue cool → red hot':kind==='territory'?'Recent visits · colony markings':`${$<HTMLSelectElement>('#overlay').selectedOptions[0].text} · faint → strong`;}
@@ -360,11 +363,13 @@ canvas.onpointerdown=e=>{
  if(e.button===0&&renderer.minimapAt(p.x,p.y)){miniDrag=true;renderer.centerFromMinimap(p.x,p.y);return;}
  // Middle button: drag to pan, click without moving to pick the material.
  if(e.button===1){dragging=true;panMoved=0;panPick=e.altKey?null:w;canvas.style.cursor='grabbing';return;}
- eraseStroke=e.button===2;dragging=!eraseStroke&&(tool==='pan'||e.altKey||space);stroke=!dragging;lastPoint=w;intensify=e.shiftKey||shiftLatched;
+ // Right-drag always moves the camera, whatever tool is selected.
+ if(e.button===2){dragging=true;panMoved=0;canvas.style.cursor='grabbing';return;}
+ eraseStroke=false;dragging=tool==='pan'||e.altKey||space;stroke=!dragging;lastPoint=w;intensify=e.shiftKey||shiftLatched;
  if(dragging){if(space)spacePanned=true;canvas.style.cursor='grabbing';return;}
  if(tool==='pick'&&!eraseStroke){pickAt(w);stroke=false;return;}
  if(tool==='lookup'&&!eraseStroke){if(w.x>=0&&w.y>=0&&w.x<renderer.W&&w.y<renderer.H)elementInfo(renderer.map[w.y*renderer.W+w.x]);stroke=false;return;}
- if(tool==='inspect'&&!eraseStroke){send({type:'selectAnt',...w,radius:Math.max(1,5/renderer.zoom)});$('#inspector').setAttribute('open','');document.body.classList.remove('panel-hidden');stroke=false;return;}
+ if(tool==='inspect'&&!eraseStroke){send({type:'selectAnt',...w,radius:Math.max(1,5/renderer.zoom)});$('#inspector').setAttribute('open','');showCellCard(w,p);stroke=false;return;}
  send({type:'beginEdit'});const shape=eraseStroke?'brush':$<HTMLSelectElement>('#draw-shape').value;
  if(intensify&&lineAnchor&&['paint','dig','erase'].includes(tool)){paintShape(lineAnchor,w,'line');stroke=false;flushBrush();send({type:'endEdit'});}
  else if(shape==='fill'){paintShape(w,w,'fill');stroke=false;flushBrush();send({type:'endEdit'});}
@@ -407,6 +412,31 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();const p=local(e);
  if(!e.ctrlKey&&e.deltaMode===0&&Math.abs(e.deltaX)>Math.abs(e.deltaY)){renderer.ox-=e.deltaX;return;}
  const dy=e.deltaMode===1?e.deltaY*16:e.deltaMode===2?e.deltaY*400:e.deltaY;
  renderer.zoomAt(Math.exp(-Math.max(-120,Math.min(120,dy))*(e.ctrlKey?.01:.0018)),p.x,p.y);},{passive:false});
+// Inspect card: a small floating readout with a magnified view of the clicked cell and its neighbours.
+let cardCell:{x:number;y:number}|null=null;
+function drawCellZoom(){
+ if(!cardCell)return;const z=$<HTMLCanvasElement>('#cell-zoom'),g=z.getContext('2d')!,n=11,s=z.width/n,{x,y}=cardCell;
+ g.imageSmoothingEnabled=false;g.fillStyle='#17120d';g.fillRect(0,0,z.width,z.height);
+ const x0=x-5,y0=y-5,cx0=Math.max(0,x0),cy0=Math.max(0,y0),cx1=Math.min(renderer.W,x0+n),cy1=Math.min(renderer.H,y0+n);
+ if(cx1>cx0&&cy1>cy0){g.fillStyle='#b8c9be';g.fillRect((cx0-x0)*s,(cy0-y0)*s,(cx1-cx0)*s,(cy1-cy0)*s);g.drawImage(renderer.terrain,cx0*3,cy0*3,(cx1-cx0)*3,(cy1-cy0)*3,(cx0-x0)*s,(cy0-y0)*s,(cx1-cx0)*s,(cy1-cy0)*s);}
+ g.lineWidth=3;g.strokeStyle='#0b0806';g.strokeRect(5*s-1.5,5*s-1.5,s+3,s+3);g.lineWidth=1;g.strokeStyle='#ffc23d';g.strokeRect(5*s-.5,5*s-.5,s+1,s+1);
+}
+function showCellCard(w:{x:number;y:number},p:{x:number;y:number}){
+ if(w.x<0||w.y<0||w.x>=renderer.W||w.y>=renderer.H){$('#cell-card').hidden=true;cardCell=null;return;}
+ cardCell=w;const card=$('#cell-card');card.hidden=false;
+ $('#cell-name').textContent=MATERIALS[renderer.map[w.y*renderer.W+w.x]]?.name??'Air';$('#cell-pos').textContent=`Cell ${w.x}, ${w.y}`;$('#cell-lines').innerHTML='';
+ const r=$('.world-wrap').getBoundingClientRect(),cw=card.offsetWidth,ch=card.offsetHeight;
+ card.style.left=`${Math.max(8,Math.min(r.width-cw-8,p.x+18))}px`;card.style.top=`${Math.max(8,Math.min(r.height-ch-40,p.y+18))}px`;
+ drawCellZoom();
+}
+function updateCellCard(s:any){
+ if(!cardCell||$('#cell-card').hidden)return;
+ const a=s.selectedAnt,cell=s.selectedCell;drawCellZoom();
+ if(a){$('#cell-name').textContent=`${a.caste} #${a.id}`;$('#cell-pos').textContent=`${a.colony} · cell ${cardCell.x}, ${cardCell.y}`;$('#cell-lines').innerHTML=`<p>${esc(a.why)}</p>`;}
+ else if(cell&&cell.x===cardCell.x&&cell.y===cardCell.y){$('#cell-name').textContent=cell.material;$('#cell-pos').textContent=`Cell ${cell.x}, ${cell.y}`;$('#cell-lines').innerHTML=cell.lines.slice(0,3).map((l:string)=>`<p>${esc(l)}</p>`).join('');}
+}
+$('#cell-close').onclick=()=>{$('#cell-card').hidden=true;cardCell=null;};
+$('#cell-more').onclick=()=>{document.body.classList.remove('panel-hidden');$('#inspector').setAttribute('open','');if(stats)updateStats(stats);};
 function toggleMinimap(){renderer.showMinimap=!renderer.showMinimap;$('#minimap-toggle').classList.toggle('active',renderer.showMinimap);$('#minimap-toggle').setAttribute('aria-pressed',String(renderer.showMinimap));}
 $('#minimap-toggle').onclick=toggleMinimap;
 let shownZoom=0;(function hud(){if(renderer.zoom!==shownZoom){shownZoom=renderer.zoom;$('#zoom-level').textContent=`${renderer.zoom<10?renderer.zoom.toFixed(1):Math.round(renderer.zoom)}×`;}requestAnimationFrame(hud);})();

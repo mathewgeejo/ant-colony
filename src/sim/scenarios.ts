@@ -30,6 +30,7 @@ export const SCENARIOS: ScenarioDef[] = [
   { id: 'moved-food', title: 'Moved food', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'An established colony exploits a rich sugar patch. Use the scenario button to move the food and watch the colony rediscover it.', goal: 'Let a trail form (signal overlay), then press "Move the sugar". Foragers with route memory return to the old site first.' },
   { id: 'flooded-passage', title: 'Flooded passage', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A colony occupies a lined experimental nest beneath a sealed reservoir. Open its gate to expose the passages to a gravity-fed flood.', goal: 'Press "Open the dam" (or paint water). Inspect submerged ants and brood; rescue requires surviving workers and somewhere dry to go.' },
   { id: 'competing-colonies', title: 'Competing colonies', mode: 'naturalistic', defaultSize: [512, 192], blurb: 'A black garden ant colony and a California harvester ant colony share a meadow with one central food patch.', goal: 'Observe overlapping foraging ranges, encounters at the food patch and the territory overlay.' },
+  { id: 'colony-wars', title: 'Colony wars', mode: 'naturalistic', defaultSize: [640, 192], blurb: 'Four established colonies of two species, unequal in size, share a meadow with contested food. They learn about each other only through encounters, then defend, fight at the front, raid for brood or absorb beaten rivals.', goal: 'Open the observatory and pick a colony: its war room shows its strategy, rivals, losses and battle reports. Use Warp and watch fronts form, raids carry off pupae, and queenless colonies get absorbed.' },
   { id: 'environmental-shift', title: 'Environmental shift', mode: 'speculative', defaultSize: [512, 192], blurb: 'Twelve founding queens start in a temperate meadow. From day 30 the climate becomes hotter and drier and stays that way.', goal: 'Over several reproductive generations, compare founder genotypes for water balance and thermal optimum in the evolution panel.' },
   { id: 'fantasy-divergence', title: 'Fantasy divergence', mode: 'fantasy', defaultSize: [512, 192], blurb: 'FICTIONAL mechanics enabled. Founders carry standing variation for an air-film respiration allele and bioluminescence. Frequent storms flood the ground.', goal: 'Does the fictional trait spread? Toggle "Dry climate" to remove its benefit and keep its cost.' },
   { id: 'stress-test', title: 'Stress test (benchmark)', mode: 'naturalistic', defaultSize: [512, 256], blurb: 'Eight introduced colonies totalling about 5,000 workers, with abundant food. For measuring performance.', goal: 'Check the developer metrics panel.' },
@@ -388,6 +389,21 @@ export function createSim(opt: CreateOptions): Sim {
       patch(sim, M.SUGAR, mid - 3, 3);
       patch(sim, M.SEED, mid + 4, 3, 1);
       patch(sim, M.PROTEIN, mid, 1);
+      break;
+    }
+    case 'colony-wars': {
+      const sites: [SpeciesDef, number, number][] = [[lasius, 0.12, 70], [pogo, 0.38, 40], [lasius, 0.62, 28], [pogo, 0.88, 75]];
+      for (const [sp, f, n] of sites) {
+        const x = Math.round(W * f);
+        const c = sim.establishedColony(sp, x, surfaceY(sim, x) - 1, n);
+        if (c) { c.store.sugar += 30; c.store.protein += 30; c.store.seed += 20; }
+      }
+      for (const f of [0.25, 0.5, 0.75]) { const x = Math.round(W * f); clearPlantsNear(sim, x, 6); patch(sim, M.SUGAR, x - 2, 3); patch(sim, M.PROTEIN, x + 3, 2); patch(sim, M.SEED, x + 6, 2, 1); }
+      const mid = Math.round(W * 0.5);
+      sim.scenarioInfo.actions = [
+        { label: 'Drop a sugar windfall in no-man\'s land', cmds: [{ t: 'paint', mat: M.SUGAR, x: mid, y: surfaceY(sim, mid) - 3, r: 3 } as Command] },
+        { label: 'Drop protein between the two smallest colonies', cmds: [{ t: 'paint', mat: M.PROTEIN, x: Math.round(W * 0.5), y: surfaceY(sim, Math.round(W * 0.5)) - 3, r: 2 } as Command] },
+      ];
       break;
     }
     case 'environmental-shift': {

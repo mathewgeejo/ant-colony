@@ -110,6 +110,58 @@ export interface Colony {
   // running accumulators for daily exposure
   acc: { temp: number; moist: number; n: number; flooded: number; starving: number };
   playerEdited: boolean;
+  /** colony-level conflict memory and strategy (created lazily; absent in older saves) */
+  war?: WarState;
+  /** nest architecture template that guides excavation (created lazily) */
+  plan?: NestPlan;
+}
+
+export type Strategy = 'grow' | 'forage' | 'defend' | 'fortify' | 'war' | 'raid';
+export interface Relation {
+  /** rival colony id */
+  id: number;
+  encounters: number;
+  /** recent kills inflicted on / losses suffered from this rival (decaying) */
+  kills: number; losses: number;
+  /** running totals for battle reports */
+  totalKills: number; totalLosses: number; reportKills: number; reportLosses: number;
+  hostility: number;
+  /** encounter-rate estimate of local force ratio (rival ants per own ant met at contacts) */
+  ratio: number;
+  lastSeen: number;
+  /** last tick rival workers were met close to this colony's own entrance */
+  nearNest: number;
+  frontX: number; frontY: number;
+  nestKnown: boolean; nestX: number; nestY: number;
+  broodStolen: number; broodLost: number;
+}
+export interface WarState {
+  strategy: Strategy;
+  target: number; // rival colony id, 0 none
+  since: number;
+  siegeUntil: number;
+  relations: Relation[];
+  raids: number; raidsWon: number; absorbed: number; broodStolen: number;
+  raid: { active: boolean; target: number; start: number; brood: number; food: number; lossesAtStart: number; party: number };
+  reports: { tick: number; text: string }[];
+  /** short explanation of the current strategy for the observatory */
+  reason: string;
+}
+export interface PlanChamber { x: number; y: number; rx: number; ry: number; kind: 'brood' | 'royal' | 'granary' | 'mound' | 'store' }
+export interface NestPlan {
+  baseY: number; ex: number;
+  /** shaft path parameters: x(y) = ex + round(amp * sin(y * freq + phase)) */
+  amp: number; freq: number; phase: number;
+  depth: number;
+  chambers: PlanChamber[];
+  /** secondary shafts from a chamber up to the surface (extra entrances) */
+  shafts: { x: number; y0: number; y1: number }[];
+  mound: { kind: 'dome' | 'crater' | 'none'; r: number; h: number };
+  midden: { x: number };
+  todo: number; frontier: number[];
+  version: number;
+  /** original ground surface for columns ex-30 .. ex+30; heap height is measured above it */
+  ground: number[];
 }
 
 export function newStats(): ColonyStats {

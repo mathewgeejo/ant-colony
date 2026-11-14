@@ -17,6 +17,8 @@ import type { SpeciesDef } from './species.ts';
 import { BUILTIN_SPECIES } from './species.ts';
 import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
+import { STRATEGY_EVERY, underSiege, updateStrategy } from './warfare.ts';
+import { architectureStep } from './architecture.ts';
 
 export const SAVE_VERSION = 4;
 
@@ -211,6 +213,11 @@ export class Sim {
     const t4 = now();
     // --- colonies ---
     if (tick % 30 === 0) for (const c of this.colonies) if (c && c.alive) this.updateColony(c);
+    for (const c of this.colonies) {
+      if (!c || !c.alive) continue;
+      if (tick % 60 === (c.slot * 11) % 60) architectureStep(this, c);
+      if (tick % STRATEGY_EVERY === (c.slot * 7) % STRATEGY_EVERY) updateStrategy(this, c);
+    }
     if (tick % 300 === 0) {
       for (const c of this.colonies) if (c && c.alive) this.scanNest(c);
       this.computeTrailNeighbours();
@@ -743,7 +750,8 @@ export class Sim {
     const crowd = (c.adults + 0.3 * c.brood.length) / Math.max(1, c.nestVolume / 4);
     c.stim.dig = c.workers > 0 ? Math.max(0, Math.min(1, 0.8 * (crowd / sp.nest.crowdingTarget - 1))) + (c.nestVolume < 40 ? 0.3 : 0) : 0;
     c.stim.waste = c.corpsesInside > 0 ? 0.9 : 0;
-    c.stim.exit = c.workers > 0 && !c.hasExit ? 1 : 0;
+    // a colony that plugged its entrance against attackers keeps it closed until the siege passes
+    c.stim.exit = c.workers > 0 && !c.hasExit && !underSiege(this, c) ? 1 : 0;
     // ---- life stage & reproductive allocation ----
     const season = seasonName(this.tick);
     c.reproductive = c.workers >= sp.reproduction.matureWorkers && (season === 'spring' || season === 'summer') && c.queens.length > 0;
