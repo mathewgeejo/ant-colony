@@ -1,0 +1,22 @@
+{
+  "checks": [
+    "Reset, complete-world Undo and Redo",
+    "Brush edits are undoable",
+    "Rectangle drawing",
+    "Connected fill",
+    "Line drawing",
+    "A drawn circuit powers a lamp",
+    "Editable cell properties",
+    "Global material search",
+    "Right-click erase",
+    "Hide and restore controls",
+    "Portable export and import",
+    "PNG capture",
+    "Phone layout",
+    "Live physics lab reservoir intervention",
+    "Holding the brush continuously pours grains",
+    "Held heat changes temperature while paused"
+  ],
+  "errors": [],
+  "browser": "157.0.4341.46"
+}

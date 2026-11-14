@@ -19,6 +19,7 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   const def = MATERIALS[m];
   const lines: string[] = [];
   const T = w.tempAt(x, y), H = w.humAt(x, y);
+  if(w.charge[k])lines.push(`Electrical charge ${Math.round(w.charge[k]/255*100)}%. Charge propagates through touching conductive cells and attenuates.`);
   lines.push(`Temperature ${T.toFixed(1)} C, air humidity ${pct(H)}.`);
   const cap = MOIST_CAP[m];
   if (m === M.WATER) lines.push(`Water cell holding ${w.amt[k]} of 64 units. Water falls, spreads under pressure, soaks into permeable soil and evaporates where open to the sky.`);
@@ -57,7 +58,7 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   }
   if (sig.length) lines.push(`Signals: ${sig.join('; ')}. Trails are laid on the substrate and fade; alarm and nest odour drift through open air only.`);
   if (m === M.AIR && !w.skyExposed(x, y) && !own) lines.push('Enclosed air pocket.');
-  return { x, y, material: def.name, description: def.description, lines };
+  return { x, y, materialId:m,amount:w.amt[k],temperature:T,charge:w.charge[k],toxin:w.toxin[k],material: def.name, description: def.description, lines };
 }
 
 export function inspectAnt(sim: Sim, i: number): AntInfo | null {

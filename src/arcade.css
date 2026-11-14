@@ -1,0 +1,35 @@
+/* Pixel controls and boxes; the living world's meadow colours are preserved. */
+#app{grid-template-columns:minmax(0,1fr);min-width:0}.workbench,.bench-top,.sandbox-controls{min-width:0;max-width:100%}.workbench{overflow:hidden}.bench-top{overflow:hidden}
+button,select,input,dialog,.quick-tools,.world-heading,.overlay-legend,.brood-stages,.reason,.stage{border-radius:0!important}
+button{box-shadow:inset 1px 1px #ffffff24,inset -1px -1px #0008,2px 2px #101713;transition:none}
+button:active{transform:translate(1px,1px);box-shadow:inset 1px 1px #0008}
+button:disabled{transform:none;opacity:.4;cursor:default}
+button svg{stroke-linecap:square;stroke-linejoin:miter}
+.icon-btn,.text-btn{box-shadow:none}.icon-btn:hover{box-shadow:inset 1px 1px #ffffff30,inset -1px -1px #0008}
+.palette-tabs{min-width:0;max-width:51%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;flex-shrink:1}
+.palette-tabs button{font:10px Silkscreen,monospace;border-width:2px;height:28px;padding:4px 7px;flex-shrink:0}
+#palette{gap:5px;padding-top:8px;padding-bottom:8px;align-content:flex-start}
+#palette>button{position:relative;font:10px Silkscreen,monospace;min-height:28px;height:28px;border:2px solid #69765e;padding:4px 7px;box-shadow:inset 1px 1px #ffffff40,inset -2px -2px #0005,2px 2px #101611}
+#palette>button[data-mat]{background:var(--element);color:var(--element-ink);border-color:var(--element-dark);text-shadow:none}
+#palette>button.active{outline:2px solid #f3e8bd;outline-offset:1px;filter:none}
+#palette>button.active::after{content:'';position:absolute;width:4px;height:4px;right:-3px;top:-3px;background:#fff3b9;border:1px solid #142016}
+#palette>button:hover{filter:brightness(1.12)}
+.sandbox-controls button{font-size:9px;padding:5px 7px}.sandbox-controls{border-bottom:2px solid #68765e}
+.quick-tools{border:2px solid #8a947d;box-shadow:3px 3px #1a2519}
+#sidebar{border:3px solid #8b967e;box-shadow:5px 5px #172218}
+.panel-head{border-bottom:2px solid #69775d}.panel-head>span{font:10px Silkscreen,monospace}
+.brood-stages{border:2px solid #667759;box-shadow:inset 2px 2px #172416}
+.brood-stages b,.colony-count>strong{font-family:Silkscreen,monospace;font-weight:400}
+.colony-count>strong{font-size:32px}.brood-stages b{font-size:16px}
+dialog{border:4px solid #919a82;box-shadow:7px 7px #0e170f,inset 0 0 0 2px #1a281b}
+.modal-head{border-bottom:2px solid #6f7f61}.modal-head h2{font:16px Silkscreen,monospace}
+.notice{border:2px solid #7e8c61;border-left:5px solid #c9b477;box-shadow:2px 2px #172416}
+.primary{font-family:Silkscreen,monospace;font-size:11px;border-width:2px}
+.save-item,.journal-entry,.lineage-node,.scenario-option{border-radius:0}.scenario-option{border-width:2px}
+#toast{border:3px solid #c4c69d;box-shadow:4px 4px #152217}
+#restore-ui{border:2px solid #c1c9a7;font-family:Silkscreen,monospace}
+body #app{grid-template-rows:54px minmax(0,1fr) 158px 30px}body .workbench{height:158px}
+body.gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}
+@media(max-width:1100px){.palette-tabs{max-width:40%}.palette-tabs button{font-size:9px;padding:4px 5px}.element-search{width:112px}.brush-controls input[type=range]{width:50px}}
+@media(max-width:850px){body #app{grid-template-rows:50px minmax(0,1fr) 176px 30px}body .workbench{height:176px}.palette-tabs{max-width:37%}.element-search{width:92px}#palette{height:95px}.topbar nav .text-btn span{display:none}}
+@media(max-width:600px){body #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body .workbench{height:218px}.bench-top{height:66px;align-content:center;gap:4px 7px}.palette-tabs{order:1;max-width:100%;width:100%;height:27px;gap:4px}.palette-tabs button{height:25px;min-height:25px;font-size:9px;padding:3px 6px}.element-search{order:2;flex:0 1 90px;width:90px}.brush-controls{order:3;flex:1;gap:4px}.brush-controls input[type=range]{width:48px}.brush-controls>label[for=brush]{font-size:9px}.overlay-control{order:4}.overlay-control select{width:128px}#palette{height:115px;padding:7px 10px;gap:5px}#palette>button{font-size:9px;padding:4px 6px;gap:4px;min-height:28px;height:28px}.modal-head h2{font-size:13px}.sandbox-controls{height:36px}.sandbox-controls button{font-size:9px;min-height:26px}.panel-head>span{font-size:9px}}

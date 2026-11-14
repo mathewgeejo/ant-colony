@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open the printed local URL. The default starts with **one newly mated Lasius niger queen**, at 10× model speed. Watch her excavate and rear brood; choose 100× or Warp to reach workers sooner. Use the experiment guide in the bottom bar for controls and scenario interventions. One model day is 3,600 ticks, two real minutes at 1×; biological development is further compressed.
+Open the printed local URL. The default starts with **one newly mated Lasius niger queen**, at 1× / 30 TPS so material motion stays readable. Watch her excavate and rear brood; choose 10×, 100× or Warp to reach workers sooner. Use the experiment guide in the bottom bar for controls and scenario interventions. One model day is 3,600 ticks, two real minutes at 1×; biological development is further compressed.
 
 ```sh
 npm run typecheck
@@ -25,7 +25,7 @@ npm run preview
 ## Play
 
 - Drag a selected material to paint; Replace determines whether occupied terrain can be overwritten. Dig removes soil while preserving food and water. Erase removes either.
-- Mouse wheel / + / − zoom. Right-drag, middle-drag or the Pan tool moves the camera. F fits the world; arrow keys pan. Touch users select Pan to drag.
+- Mouse wheel / keyboard + / − zoom. Alt-drag or the Pan tool moves the camera. Right-click erases; middle-click picks a material. F fits the world/content; arrow keys pan. Touch users select Pan to drag.
 - E focuses material search; X selects Erase. The compact element palette and optional overlay inspector are inspired by Sandboxels. On phones, Fit centres a readable colony slice; zoom out for the entire map. New world and Field journal are also accessible inside Settings.
 - Space pauses, `.` single-steps, I inspects, D digs, H selects Pan, [ and ] change brush size. Click an ant to inspect its current reason, needs, route memory and inherited traits.
 - Place sugar for adults and protein for growing larvae; the harvester profile also processes seeds. Add water, alter temperature/moisture, place barriers or introduce rival colonies to change survival conditions.
@@ -37,6 +37,10 @@ npm run preview
 
 See [architecture](docs/ARCHITECTURE.md), [biology and sources](docs/BIOLOGY.md), [species/mutation schemas and scenarios](docs/CONTENT.md), and [verification and performance](docs/VERIFICATION.md).
 
+The [sandbox toolkit](docs/SANDBOX-FEATURES.md) adds complete-world Undo/Redo, Reset, geometry/fill tools, cell editing, capture, TPS controls, and 58 paintable materials with working powders, density, gas motion, fire, phase transitions, electricity, explosions, corrosion, cooking and cloning. This is a tested shared toolkit, not full compatibility with the entire Sandboxels catalog or its JavaScript mods.
+
+For material experiments, choose **New world → Particle physics lab** or **Empty particle sandbox**. Hold the brush to pour grains or liquids; Heat/Cool/Shock act while paused. The lab guide offers ordinary terrain interventions to release a reservoir, ignite wood, pour sand and sever a circuit.
+
 The baseline is a researched *Lasius niger* profile; a contrasting *Pogonomyrmex californicus* profile uses semi-claustral founding and seed nutrition. Some harvester behavior is explicitly extrapolated from a related species. Naturalistic, speculative and fantasy modes have separate ranges and rules. Four fictional loci have costs and active effects; they are labelled fictional. These profiles and the normalized genetics are game abstractions, not predictive models.
 
 ## Reproduce checks
@@ -45,6 +49,7 @@ The baseline is a researched *Lasius niger* profile; a contrasting *Pogonomyrmex
 npm run experiments
 npm run bench -- 120
 npm run screenshots
+npm run sandbox-check
 ```
 
 Experiments and benchmarks write JSON to `artifacts/`. The browser script expects the dev server at `http://127.0.0.1:5175/` and Edge at its standard Windows installation path. Set `GAME_URL` and `BROWSER_PATH` for another server or Chromium installation. It uses an isolated temporary browser profile. Windows PowerShell can start a server on that port with `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5175`.

@@ -1,0 +1,19 @@
+{
+  "acceptMeanMs": 2.066326530612245,
+  "acceptMaxMs": 11.799999952316284,
+  "meanChunks": 53.826530612244895,
+  "packets": 98,
+  "paintLatencyMs": 217.19999992847443,
+  "fps": 56.323285356861774,
+  "renderMs": 2.803109073319856,
+  "stepMs": 14.100000023841858,
+  "fieldMs": 4.93036955386588,
+  "ants": 1,
+  "tick": 181,
+  "workerAchievedSpeed": 1.1731352037228675,
+  "running": true,
+  "frameId": 111,
+  "lastMessage": "",
+  "testSeconds": 6.0865626,
+  "errors": []
+}

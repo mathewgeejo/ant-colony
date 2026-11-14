@@ -240,22 +240,32 @@ export class SpatialIndex {
   bs = 4;
   bw: number; bh: number;
   head: Int32Array;
+  owner:Uint16Array;
   next: Int32Array = new Int32Array(0);
   constructor(W: number, H: number) {
     this.bw = Math.ceil(W / this.bs);
     this.bh = Math.ceil(H / this.bs);
     this.head = new Int32Array(this.bw * this.bh);
+    this.owner=new Uint16Array(this.bw*this.bh);
     this.head.fill(-1);
+    this.owner.fill(0);
   }
   rebuild(a: AntStore) {
     this.head.fill(-1);
+    this.owner.fill(0);
     if (this.next.length < a.cap) this.next = new Int32Array(a.cap);
     for (let i = a.n - 1; i >= 0; i--) {
       if (!a.alive[i]) continue;
       const b = ((a.y[i] >> 2) * this.bw + (a.x[i] >> 2)) | 0;
+      const col=a.colony[i]+1;this.owner[b]=this.owner[b]===0||this.owner[b]===col?col:65535;
       this.next[i] = this.head[b];
       this.head[b] = i;
     }
+  }
+  /** Calls fn for every ant within Chebyshev radius r cells (bucket-coarse, then exact). */
+  hasForeign(x:number,y:number,r:number,colony:number){
+    const x0=Math.max(0,(x-r)>>2),x1=Math.min(this.bw-1,(x+r)>>2),y0=Math.max(0,(y-r)>>2),y1=Math.min(this.bh-1,(y+r)>>2);
+    for(let yy=y0;yy<=y1;yy++)for(let xx=x0;xx<=x1;xx++){const c=this.owner[yy*this.bw+xx];if(c&&c!==colony+1)return true;}return false;
   }
   /** Calls fn for every ant within Chebyshev radius r cells (bucket-coarse, then exact). */
   query(a: AntStore, x: number, y: number, r: number, fn: (j: number) => void) {

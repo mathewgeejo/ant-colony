@@ -20,6 +20,8 @@ export interface ScenarioDef {
 }
 
 export const SCENARIOS: ScenarioDef[] = [
+  { id:'empty',title:'Empty particle sandbox',mode:'naturalistic',defaultSize:[384,192],blurb:'An empty canvas for falling sand, fluids, heat and circuits. Paint terrain before introducing a queen.',goal:'Choose powders, liquids, gases or energy devices. Draw containers, mix materials and inspect the results.' },
+  { id:'physics-lab',title:'Particle physics lab',mode:'naturalistic',defaultSize:[384,192],blurb:'Prepared density tanks, a gated reservoir, combustible wood and a battery circuit. All motion and reactions use the live simulation.',goal:'Open the guide to pour grains, release the reservoir, ignite fuel or break the circuit. Inspect materials and use heat/cool/shock to experiment.' },
   { id: 'sandbox', title: 'Free sandbox', mode: 'naturalistic', defaultSize: [512, 256], blurb: 'A temperate meadow with one newly mated black garden ant queen. Everything else is up to you.', goal: 'Build, break and observe.' },
   { id: 'first-colony', title: 'First colony', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A mild meadow with no predators. A founding queen searches for a site, seals herself in and rears her first workers from body reserves.', goal: 'Watch the queen dig a chamber, lay eggs and rear the first (nanitic) workers. Try warming the chamber with the heat tool.' },
   { id: 'moved-food', title: 'Moved food', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'An established colony exploits a rich sugar patch. Use the scenario button to move the food and watch the colony rediscover it.', goal: 'Let a trail form (signal overlay), then press "Move the sugar". Foragers with route memory return to the old site first.' },
@@ -197,7 +199,7 @@ export interface CreateOptions {
 }
 
 export function createSim(opt: CreateOptions): Sim {
-  const def = SCENARIOS.find((s) => s.id === opt.scenario) ?? SCENARIOS[0];
+  const def = SCENARIOS.find((s) => s.id === opt.scenario) ?? SCENARIOS.find(s=>s.id==='sandbox')!;
   const [W, H] = opt.size ?? def.defaultSize;
   const climate: Climate = { ...DEFAULT_CLIMATE, ...opt.climate };
   const settings: Settings = { ...DEFAULT_SETTINGS, ...opt.settings };
@@ -210,11 +212,13 @@ export function createSim(opt: CreateOptions): Sim {
   if (def.id === 'fantasy-divergence') { climate.rainChancePerDay = 0.6; climate.rainIntensity = 3; gen = { ...gen, ponds: 2 }; }
   if (def.id === 'stress-test') { settings.naturalPredators = false; settings.maxColonies = 30; gen = { ...gen, plants: 0.9 }; }
   if (def.id === 'inheritance-garden') { Object.assign(climate,{meanTemp:27,deepTemp:25,dayAmp:2,seasonAmp:2,rainChancePerDay:0}); settings.weather=false;settings.naturalPredators=false; }
+  if(def.id==='empty'||def.id==='physics-lab'){settings.weather=false;settings.naturalPredators=false;}
   if (opt.climate) Object.assign(climate, opt.climate);
   if (opt.settings) Object.assign(settings, opt.settings);
   const sim = new Sim({ W, H, seed, mode, scenario: def.id, climate, settings, customSpecies: opt.customSpecies });
   sim.createOpts = structuredClone(opt);
-  generateTerrain(sim, seed, gen);
+  if(def.id!=='empty'&&def.id!=='physics-lab')generateTerrain(sim, seed, gen);
+  else sim.w.recomputeAllSurface();
   sim.scenarioInfo = { id: def.id, title: def.title, goal: def.goal, actions: [] };
   const lasius = sim.speciesById('lasius-niger');
   const pogo = sim.speciesById('pogonomyrmex-californicus');
@@ -225,6 +229,28 @@ export function createSim(opt: CreateOptions): Sim {
     sim.foundColony(sp, x, surfaceY(sim, x) - 1, ga, gb, sim.sampleMates(sp, [], 0), 0, 0, null);
   };
   switch (def.id) {
+    case 'physics-lab': {
+      const X=(n:number)=>Math.round(W*n/384),Y=(n:number)=>Math.round(H*n/192);
+      const put=(x:number,y:number,m:number)=>{if(!sim.w.inb(x,y))return;const d=MATERIALS[m];sim.setCell(y*W+x,m,m===M.WATER?64:d.food?d.foodUnits:d.nutrient,'lab setup');};
+      const row=(x0:number,x1:number,y:number,m:number)=>{for(let x=x0;x<=x1;x++)put(x,y,m);};
+      const tank=(x0:number,x1:number,y0:number,y1:number)=>{for(let y=y0;y<=y1;y++){put(x0,y,M.BARRIER);put(x1,y,M.BARRIER);}row(x0,x1,y1,M.BARRIER);};
+      tank(X(25),X(120),Y(75),Y(155));
+      for(let y=Y(135);y<Y(155);y++)row(X(26),X(119),y,M.WATER);
+      for(let y=Y(125);y<Y(135);y++)row(X(26),X(119),y,M.OIL);
+      tank(X(150),X(225),Y(65),Y(155));
+      row(X(150),X(225),Y(102),M.BARRIER);
+      for(let y=Y(78);y<Y(102);y++)row(X(151),X(224),y,M.WATER);
+      for(let y=Y(75);y<=Y(78);y++)row(X(265),X(310),y,M.WOOD);
+      row(X(260),X(316),Y(150),M.BARRIER);
+      row(X(268),X(307),Y(135),M.WIRE);put(X(267),Y(135),M.BATTERY);put(X(308),Y(135),M.LAMP);
+      sim.scenarioInfo.actions=[
+        {label:'Pour sand into the density tank',cmds:[{t:'paint',mat:M.SAND,x:X(70),y:Y(55),r:5,replace:true}]},
+        {label:'Open the reservoir gate',cmds:[{t:'erase',x:X(188),y:Y(102),r:1}]},
+        {label:'Ignite the wood',cmds:[{t:'paint',mat:M.FIRE,x:X(263),y:Y(76),r:2,replace:true}]},
+        {label:'Break the circuit',cmds:[{t:'erase',x:X(287),y:Y(135),r:0}]},
+      ];
+      break;
+    }
     case 'sandbox':
       queenAt(lasius, Math.round(W * 0.5));
       break;
@@ -338,6 +364,7 @@ export function createSim(opt: CreateOptions): Sim {
   void NL;
   sim.w.recomputeAllSurface();
   spinUp(sim);
+  sim.w.rebuildReactive();
   setInitialLedger(sim);
   for (const c of sim.colonies) if (c && c.alive) sim.scanNest(c);
   return sim;

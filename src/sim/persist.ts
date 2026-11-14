@@ -6,6 +6,7 @@ import { makeColonyFields } from './colony.ts';
 import { SAVE_VERSION, Sim } from './sim.ts';
 import type { SimConfig } from './sim.ts';
 import { validateSpecies } from './species.ts';
+import { MATERIALS } from './materials.ts';
 
 export interface SaveFile {
   format: 'ant-colony-sandbox';
@@ -22,29 +23,30 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
   const w = sim.w;
   const cols = sim.colonies.map((c) => {
     if (!c) return null;
-    const o: any = { ...c };
+    const o: any = structuredClone({...c,trail:null,nestOdor:null,alarm:null,digCue:null});
     for (const f of COLONY_FIELDS) o[f] = c[f].serialize();
-    o.brood = c.brood.map((b) => ({ ...b, a: b.a.slice(), b: b.b ? b.b.slice() : null }));
-    o.queens = c.queens.map((q) => ({ ...q, sperm: q.sperm.map((s) => ({ ...s, genome: s.genome.slice() })) }));
     return o;
   });
   const state = {
-    cfg: { ...sim.cfg, climate: { ...sim.cfg.climate }, settings: { ...sim.cfg.settings } },
+    cfg: structuredClone(sim.cfg),
     tick: sim.tick,
     rng: sim.rng.state(),
     world: {
       mat: w.mat.slice(), amt: w.amt.slice(), moist: w.moist.slice(), flags: w.flags.slice(), owner: w.owner.slice(), toxin: w.toxin.slice(),
+      charge:w.charge.slice(),
       temp: w.temp.slice(), heat: w.heat.slice(), hum: w.hum.slice(), humBias: w.humBias.slice(), surface: w.surface.slice(),
       chunkActive: w.chunkActive.slice(), chunkVer: w.chunkVer.slice(), moved: w.moved.slice(),
+      chunkReactive:w.chunkReactive.slice(),
+      dirtyColumns:[...w.dirtyColumns],
       ledger: { sources: structuredClone(w.ledger.sources), sinks: structuredClone(w.ledger.sinks), initial: { ...w.ledger.initial } },
     },
-    phys: { stamp: sim.phys.stamp, moistureCursor: sim.phys.moistureCursor, raining: sim.phys.raining, rainLocal: sim.phys.rainLocal.map((r) => ({ ...r })), slumps: sim.phys.slumps },
+    phys: { stamp: sim.phys.stamp, moistureCursor: sim.phys.moistureCursor, raining: sim.phys.raining, rainLocal: sim.phys.rainLocal.map((r) => ({ ...r })), slumps: sim.phys.slumps,topologyChanged:sim.phys.sandbox.topologyChanged },
     ants: sim.a.serialize(),
     colonies: cols,
     nextColonyId: sim.nextColonyId, broodNextId: sim.broodNextId,
     trailNeighbours: sim.trailNeighbours.map((l) => (l ? l.slice() : l)),
     lineage: structuredClone(sim.lineage), mutations: structuredClone(sim.mutations), mutationCount: sim.mutationCount,
-    events: sim.events.slice(), journal: sim.journal.slice(),
+    events: structuredClone(sim.events), journal: structuredClone(sim.journal),
     swarm: sim.swarm.map((s) => ({ ...s, a: s.a.slice(), b: s.b ? s.b.slice() : null })),
     flightDays: structuredClone(sim.flightDays), flightEnd: { ...sim.flightEnd },
     critters: sim.critters.serialize(), carriedFood: sim.carriedFood.slice(),
@@ -60,14 +62,16 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
   return {
     format: 'ant-colony-sandbox', version: SAVE_VERSION, savedAt: new Date().toISOString(), name,
     summary: { tick: sim.tick, colonies: sim.aliveColonies().length, ants: sim.a.count, scenario: sim.cfg.scenario, mode: sim.mode, seed: sim.cfg.seed },
-    state: structuredClone(state),
+    state,
   };
 }
 
-/** Migrate older save versions forward. Version 1 is current; the hook exists for future schemas. */
+/** Schema 1 predates the electrical field. Unknown versions never enter the simulator. */
 export function migrate(file: SaveFile): SaveFile {
+  if(!file||typeof file!=='object')throw new Error('Not a save file.');
+  if(!Number.isInteger(file.version)||file.version<1)throw new Error('Missing or unsupported save schema version.');
   if (file.version > SAVE_VERSION) throw new Error(`This save was made by a newer version (schema ${file.version}); this build reads up to ${SAVE_VERSION}.`);
-  // (no migrations yet)
+  if(file.version===1){const W=file.state?.cfg?.W,H=file.state?.cfg?.H;if(file.state?.world&&!file.state.world.charge&&Number.isInteger(W)&&W>=32&&W<=2048&&Number.isInteger(H)&&H>=32&&H<=1024)file.state.world.charge=new Uint8Array(W*H);file.version=2;}
   return file;
 }
 
@@ -83,6 +87,8 @@ export function validateSave(file: any): string[] {
   if (!['naturalistic','speculative','fantasy'].includes(s.cfg?.mode)) errs.push('Unknown biology mode.');
   if (!Number.isSafeInteger(s.tick) || s.tick < 0) errs.push('Invalid simulation tick.');
   for (const k of ['mat', 'amt', 'moist', 'flags', 'owner', 'toxin']) if (!s.world?.[k] || s.world[k].length !== W * H) errs.push(`Terrain layer "${k}" is missing or has the wrong size.`);
+  if(s.world?.mat?.some((m:number)=>!Number.isInteger(m)||!MATERIALS[m]))errs.push('Terrain contains an unknown material id.');
+  if(s.world?.charge&&s.world.charge.length!==W*H)errs.push('Electrical field has the wrong size.');
   if (!Array.isArray(s.rng) || s.rng.length !== 4) errs.push('Random generator state is missing.');
   if (!s.ants || typeof s.ants.n !== 'number') errs.push('Organism data is missing.');
   else if (!Number.isInteger(s.ants.cap) || s.ants.cap < 16 || s.ants.cap > 100000 || !Number.isInteger(s.ants.n) || s.ants.n < 0 || s.ants.n > s.ants.cap) errs.push('Organism capacity is invalid (maximum 100,000).');
@@ -107,11 +113,15 @@ export function restore(file: SaveFile): Sim {
   w.ledger.sinks = structuredClone(s.world.ledger.sinks);
   w.ledger.initial = { ...s.world.ledger.initial };
   w.chunkDirty.fill(1);
+  if(s.world.charge)w.charge.set(s.world.charge);
+  if(s.world.chunkReactive)w.chunkReactive.set(s.world.chunkReactive);else w.rebuildReactive();
+  w.dirtyColumns=new Set(s.world.dirtyColumns??[]);
   // Older schema-1 snapshots did not keep the CA activity scheduler.
   if (s.world.chunkActive) w.chunkActive.set(s.world.chunkActive); else w.chunkActive.fill(8);
   if (s.world.chunkVer) w.chunkVer.set(s.world.chunkVer);
   if (s.world.moved) w.moved.set(s.world.moved);
   Object.assign(sim.phys, { stamp: s.phys.stamp, moistureCursor: s.phys.moistureCursor, raining: s.phys.raining, rainLocal: s.phys.rainLocal.map((r: any) => ({ ...r })), slumps: s.phys.slumps });
+  sim.phys.sandbox.topologyChanged=s.phys.topologyChanged??false;
   sim.a = AntStore.restore(s.ants);
   sim.colonies = s.colonies.map((o: any) => {
     if (!o) return null;

@@ -3,7 +3,7 @@
 // budget, and streams compact render frames + periodic stats to the UI thread.
 import type { FrameMsg, OverlayKind, ToWorker } from '../protocol.ts';
 import { createSim, SCENARIOS } from '../sim/scenarios.ts';
-import type { Sim } from '../sim/sim.ts';
+import { Sim } from '../sim/sim.ts';
 import { DAY_TICKS } from '../sim/physics.ts';
 import { packAnts, packBrood, packChunks, packCritters, rasterOverlay } from '../sim/view.ts';
 import { antRoute, colonySummaries, evolutionDetail, inspectAnt, inspectCell } from '../sim/inspect.ts';
@@ -42,6 +42,19 @@ let stepBudgetMs = 12;
 let customSpecies: SpeciesDef[] = [];
 let lastStepMs = 0;
 let frameCount = 0;
+let frameInFlight = 0;
+let frameSerial = 0;
+type HistoryEntry={file:ReturnType<typeof snapshot>;bytes:number};
+let undo:HistoryEntry[]=[],redo:HistoryEntry[]=[],editOpen=false;
+const HISTORY_BYTES=32*1048576;
+function historyEntry():HistoryEntry{
+  const file=snapshot(sim!,'Undo snapshot');let bytes=0;const seen=new Set<object>();
+  const visit=(v:any)=>{if(!v||typeof v!=='object'||seen.has(v))return;seen.add(v);if(ArrayBuffer.isView(v)){bytes+=v.byteLength;return;}for(const x of Object.values(v))visit(x);};visit(file);
+  return{file,bytes};
+}
+function pushHistory(list:HistoryEntry[],entry:HistoryEntry){list.push(entry);while(list.length>1&&(list.length>8||list.reduce((n,e)=>n+e.bytes,0)>HISTORY_BYTES))list.shift();}
+function checkpoint(){if(!sim||editOpen)return;pushHistory(undo,historyEntry());redo=[];editOpen=true;post({type:'history',undo:undo.length,redo:redo.length});}
+function historyMove(from:HistoryEntry[],to:HistoryEntry[]){if(!sim||!from.length)return;sim.flushCommands();pushHistory(to,historyEntry());sim=restore(from.pop()!.file);running=false;editOpen=false;frameInFlight=0;loadedWorld();}
 
 function post(msg: any, transfer: Transferable[] = []) {
   ctx.postMessage(msg, transfer);
@@ -50,10 +63,11 @@ function post(msg: any, transfer: Transferable[] = []) {
 function newWorld(opts: any) {
   try {
     sim = createSim({ ...opts, customSpecies });
+    undo=[];redo=[];editOpen=false;
     fullTerrain = true;
     selectedId = -1; selectedCell = null;
     acc = 0; droppedTicks = 0;
-    post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS });
+    post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab'].includes(sim.cfg.scenario) });
     sendFrame(true);
     sendStats();
   } catch (e) {
@@ -67,6 +81,7 @@ function speciesBrief(s: SpeciesDef) {
 
 function sendFrame(full = false) {
   if (!sim) return;
+  if(frameInFlight && !full && !fullTerrain)return;
   const s = sim;
   const { buf, count } = packChunks(s, full || fullTerrain);
   fullTerrain = false;
@@ -85,7 +100,7 @@ function sendFrame(full = false) {
   if (now - lastTempSent > 1000) { temp = s.w.temp.slice(); lastTempSent = now; }
   const surface = count ? s.w.surface.slice() : null;
   const msg: FrameMsg = {
-    type: 'frame', tick: s.tick, W: s.w.W, H: s.w.H, chunks: buf, chunkCount: count, surface,
+    type: 'frame', id: ++frameSerial, tick: s.tick, W: s.w.W, H: s.w.H, chunks: buf, chunkCount: count, surface,
     ants: ants.buf as unknown as Int16Array, antCount: ants.count, brood: brood.buf, broodCount: brood.count, critters: crit.buf, critterCount: crit.count,
     selected, temp, overlay: ov, overlayKind: overlay.kind, dayPhase: (s.tick % DAY_TICKS) / DAY_TICKS, raining: s.phys.raining > 0,
   };
@@ -94,6 +109,7 @@ function sendFrame(full = false) {
   if (ov) tr.push(ov.buffer);
   if (temp) tr.push(temp.buffer);
   if (surface) tr.push(surface.buffer);
+  frameInFlight=msg.id;
   post(msg, tr);
   frameCount++;
 }
@@ -129,8 +145,9 @@ function sendStats() {
       ...s.perf, stepMs: lastStepMs, budgetMs: stepBudgetMs, activeChunks, totalChunks: s.w.chunkActive.length, signalChunks: liveSignalChunks,
       antCapacity: s.a.cap, heapMB: mem ? mem.usedJSHeapSize / 1048576 : null, pendingCommands: s.pending.length, events: s.events.length,
       lineage: s.lineage.length, mutations: s.mutations.length, commandLog: s.commandLog.length, frames: frameCount,
-      estMB: estimateMB(s),
+      estMB: estimateMB(s),historyMB:[...undo,...redo].reduce((n,e)=>n+e.bytes,0)/1048576,
     },
+    history:{undo:undo.length,redo:redo.length},
     counters: s.counters,
     selectedAnt: selectedId >= 0 ? inspectAnt(s, s.a.findById(selectedId)) : null,
     selectedCell: selectedCell ? inspectCell(s, selectedCell.x, selectedCell.y) : null,
@@ -202,7 +219,7 @@ function loadedWorld() {
   if (!sim) return;
   fullTerrain = true;
   selectedId = -1; selectedCell = null;
-  post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS });
+  post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab'].includes(sim.cfg.scenario) });
   sendFrame(true);
   sendStats();
 }
@@ -212,11 +229,24 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
   try {
     switch (m.type) {
       case 'new': newWorld(m.opts); break;
+      case 'beginEdit': checkpoint();break;
+      case 'endEdit': if(sim)sim.flushCommands();editOpen=false;break;
+      case 'undo': historyMove(undo,redo);break;
+      case 'redo': historyMove(redo,undo);break;
+      case 'clearWorld': {
+        if(!sim)break;checkpoint();const cfg=structuredClone(sim.cfg);cfg.scenario='empty';sim=new Sim(cfg);sim.w.recomputeAllSurface();sim.scenarioInfo={id:'empty',title:'Empty sandbox',goal:'Paint materials and create conditions. Introduce a queen when you are ready.',actions:[]};running=false;editOpen=false;frameInFlight=0;loadedWorld();break;
+      }
+      case 'frameAck': if(frameInFlight===m.id)frameInFlight=0; break;
+      case 'cmds':
+        if(!sim)break;
+        for(const cmd of m.cmds)sim.queue(cmd);
+        if(!running){sim.flushCommands();sendFrame();}
+        break;
       case 'cmd':
         if (!sim) break;
         if (running) sim.queue(m.cmd); else sim.applyNow(m.cmd);
         break;
-      case 'run': running = m.running; acc = 0; last = performance.now(); break;
+      case 'run': running = m.running; if(!running&&sim)sim.flushCommands(); acc = 0; last = performance.now(); break;
       case 'speed': speed = m.speed; acc = 0; break;
       case 'step':
         if (!sim) break;
@@ -243,8 +273,10 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
       case 'scenarioAction': {
         if (!sim) break;
         const act = sim.scenarioInfo.actions[m.index];
-        if (act) for (const c of act.cmds) { if (running) sim.queue(c); else sim.applyNow(c); }
+        if(!act)break;
+        checkpoint();for(const c of act.cmds)sim.queue(c);sim.flushCommands();editOpen=false;
         sim.event('scenario', `Scenario action: ${act?.label ?? '?'}`);
+        sendFrame();sendStats();
         break;
       }
       case 'save': {
@@ -259,6 +291,7 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
         const rec = await db.get(m.slot);
         if (!rec) { post({ type: 'error', text: 'That save slot is empty.' }); break; }
         sim = restore(rec.data);
+        undo=[];redo=[];editOpen=false;
         running = false;
         loadedWorld();
         post({ type: 'loaded', slot: m.slot });
@@ -277,6 +310,7 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
         const text = await gunzipMaybe(m.data);
         const file = decodeJSON(text);
         sim = restore(file);
+        undo=[];redo=[];editOpen=false;
         running = false;
         loadedWorld();
         post({ type: 'loaded', slot: 'file' });

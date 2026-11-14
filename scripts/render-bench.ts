@@ -1,0 +1,10 @@
+import { createSim } from '../src/sim/scenarios.ts';
+import { packAnts } from '../src/sim/view.ts';
+import { AgentRaster } from '../src/render/agents.ts';
+import type { FrameMsg } from '../src/protocol.ts';
+const s=createSim({scenario:'stress-test',seed:42});const a=packAnts(s,null);
+const f={ants:a.buf,antCount:a.count} as unknown as FrameMsg;
+const r=new AgentRaster(s.w.W,s.w.H);
+for(let k=0;k<50;k++)r.draw(f,s.colonies,s.species,false);
+const t=performance.now();for(let k=0;k<200;k++)r.draw(f,s.colonies,s.species,false);
+console.log(JSON.stringify({ants:a.count,agentRasterMs:(performance.now()-t)/200,bounds:r.bounds}));

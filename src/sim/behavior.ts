@@ -7,7 +7,7 @@ import { CASTE, MEM, NAV, TASK, WHY } from './ants.ts';
 import type { Colony } from './colony.ts';
 import { STAGE } from './colony.ts';
 import { P, thermalPerf } from './genetics.ts';
-import { DIG_RESIST, FOOD_OF, IS_SOLID, M, MOIST_CAP, MATERIALS } from './materials.ts';
+import { DIG_RESIST, FOOD_OF, IS_SOLID, IS_GAS, IS_LIQUID, M, MOIST_CAP, MATERIALS } from './materials.ts';
 import type { Sim } from './sim.ts';
 import { FLAG_PLUG } from './world.ts';
 
@@ -17,7 +17,7 @@ export const PHYS_EVERY = 10;
 export const DECIDE_EVERY = 4;
 
 function isOpen(m: number) {
-  return m === M.AIR || m === M.PLANT;
+  return m === M.AIR || m === M.PLANT || IS_GAS[m]===1;
 }
 
 /** A cell an ant can stand in: open, and touching something to hold on to. */
@@ -95,13 +95,13 @@ export function step(sim: Sim, i: number) {
   const W = w.W;
   const here = w.mat[y * W + x];
   // falling: unsupported ants drop
-  if (here !== M.WATER && !supported(sim, x, y)) {
+  if (!IS_LIQUID[here] && !supported(sim, x, y)) {
     if (y + 1 < w.H && !IS_SOLID[w.mat[(y + 1) * W + x]]) { moveTo(sim, i, x, y + 1); return; }
   }
   const nav = a.nav[i];
   if (nav === NAV.STAY) return;
   const big = c ? bigBody(sim, i, c) : false;
-  const inWater = here === M.WATER;
+  const inWater = !!IS_LIQUID[here];
   const hx = a.hx[i], hy = a.hy[i];
   const tx = a.tx[i], ty = a.ty[i];
   const d0 = dist2(x, y, tx, ty);
@@ -117,7 +117,7 @@ export function step(sim: Sim, i: number) {
     const ni = ny * W + nx;
     const nm = w.mat[ni];
     let wt: number;
-    if (nm === M.WATER) {
+    if (IS_LIQUID[nm]) {
       if (!inWater && nav !== NAV.UP) continue;
       wt = 0.3;
     } else if (!canStand(sim, nx, ny, big)) {
@@ -178,7 +178,7 @@ export function step(sim: Sim, i: number) {
       }
       case NAV.UP: {
         if (DY[d] < 0) wt *= 5; else if (DY[d] > 0) wt *= 0.15;
-        if (nm !== M.WATER) wt *= 3;
+        if (!IS_LIQUID[nm]) wt *= 3;
         break;
       }
       case NAV.NEST_WANDER: {
@@ -243,7 +243,7 @@ export function moveTo(sim: Sim, i: number, nx: number, ny: number) {
     const sp = sim.speciesOf(c);
     const q = a.carryQ[i];
     const dep = sp.communication.trailDeposit * a.pheno[i * 29 + P.SIGNAL] * (0.15 + 0.85 * q);
-    if (dep > 0 && w.mat[ni] !== M.WATER) {
+    if (dep > 0 && !IS_LIQUID[w.mat[ni]]) {
       c.trail.add(nx, ny, dep);
       a.energy[i] -= 0.00025 * a.pheno[i * 29 + P.SIGNAL];
     }
@@ -277,7 +277,7 @@ export function updateAnt(sim: Sim, i: number) {
   }
   let speed = a.pheno[i * 29 + P.SPEED] * (0.25 + 0.75 * Math.min(1, perf)) * (a.energy[i] < 0.1 ? 0.4 : 1);
   if (a.caste[i] === CASTE.QUEEN) speed *= 0.6;
-  if (sim.w.mat[a.y[i] * sim.w.W + a.x[i]] === M.WATER) speed *= 0.35;
+  if (IS_LIQUID[sim.w.mat[a.y[i] * sim.w.W + a.x[i]]]) speed *= 0.35;
   if (a.carry[i]) speed *= 0.85;
   a.moveAcc[i] += speed;
   while (a.moveAcc[i] >= 1) {
@@ -475,7 +475,7 @@ function stimulus(s: number, theta: number) {
 function decide(sim: Sim, i: number) {
   const a = sim.a;
   // busy with timed work (digging, feeding): keep working unless submerged
-  if (a.timer[i] > 0 && a.nav[i] === NAV.STAY && sim.w.mat[a.y[i] * sim.w.W + a.x[i]] !== M.WATER) return;
+  if (a.timer[i] > 0 && a.nav[i] === NAV.STAY && !IS_LIQUID[sim.w.mat[a.y[i] * sim.w.W + a.x[i]]]) return;
   const caste = a.caste[i];
   if (caste === CASTE.QUEEN) return decideQueen(sim, i);
   if (caste === CASTE.MALE || caste === CASTE.GYNE) return decideAlate(sim, i);
@@ -487,7 +487,7 @@ function decide(sim: Sim, i: number) {
   const ci = y * w.W + x;
   a.contacts[i] *= sp.communication.returnRateRegulation ? 0.93 : 0.97;
   // --- overrides: survival first ---
-  if (w.mat[ci] === M.WATER) {
+  if (IS_LIQUID[w.mat[ci]]) {
     a.task[i] = a.carryBrood[i] >= 0 ? TASK.CARRY_BROOD : TASK.ESCAPE;
     a.why[i] = WHY.SUBMERGED; a.nav[i] = NAV.UP; a.timer[i] = 0;
     return;
@@ -886,7 +886,7 @@ function decideNurse(sim: Sim, i: number, c: Colony, own: boolean) {
     const d2 = dist2(x, y, b.x, b.y);
     if (d2 > 400) continue; // ~20 cells: nurses respond to brood they can reach locally
     let s = 0;
-    const wet = sim.w.mat[b.y * sim.w.W + b.x] === M.WATER || b.drown > 0;
+    const wet = !!IS_LIQUID[sim.w.mat[b.y * sim.w.W + b.x]] || b.drown > 0;
     if (wet) { s = 10; }
     else if (b.stage === STAGE.LARVA && b.fed < b.need && b.hunger > 0.1) s = 1 + b.hunger;
     else continue;
@@ -945,7 +945,7 @@ function decideCarryBrood(sim: Sim, i: number, c: Colony) {
     return;
   }
   if (cb < 0) { a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER; return; }
-  const inWater = w.mat[y * w.W + x] === M.WATER;
+  const inWater = !!IS_LIQUID[w.mat[y * w.W + x]];
   if (inWater) { a.nav[i] = NAV.UP; return; }
   if (a.nav[i] === NAV.UP) { a.nav[i] = NAV.GOAL; }
   const done = dist2(x, y, a.tx[i], a.ty[i]) <= 2 || --a.timer[i] <= 0 || a.stuck[i] > 60;
@@ -988,7 +988,7 @@ function decideQueen(sim: Sim, i: number) {
   if (!q) return;
   const x = a.x[i], y = a.y[i];
   const ci = y * w.W + x;
-  if (w.mat[ci] === M.WATER) { a.nav[i] = NAV.UP; a.why[i] = WHY.SUBMERGED; return; }
+  if (IS_LIQUID[w.mat[ci]]) { a.nav[i] = NAV.UP; a.why[i] = WHY.SUBMERGED; return; }
   switch (a.task[i]) {
     case TASK.FOUND_SEARCH: {
       // evaluate the ground under the queen; remember the best site seen (bounded search)
@@ -1149,7 +1149,8 @@ export function physiology(sim: Sim, i: number) {
   if (T > heatMax) { dmg += 0.01 * (T - heatMax); cause = 'heat'; }
   if (T < sp.tolerances.coldMin - 4) { dmg += 0.004 * (sp.tolerances.coldMin - 4 - T); cause = 'cold'; }
   if (w.toxin[k] > 0) { dmg += w.toxin[k] / 255 * 0.08; cause = 'toxin'; }
-  if (w.mat[k] === M.WATER) {
+  if(w.charge[k]>80){dmg+=w.charge[k]/255*.08;cause='electrical shock';}
+  if (IS_LIQUID[w.mat[k]]) {
     a.submerged[i] = Math.min(65535, a.submerged[i] + PHYS_EVERY);
     if (a.submerged[i] > sp.tolerances.submersionTicks * a.pheno[o + P.DROWN]) { dmg += 0.05; cause = 'drowning'; }
   } else if (a.submerged[i] > 0) a.submerged[i] = Math.max(0, a.submerged[i] - PHYS_EVERY * 4);
@@ -1192,6 +1193,8 @@ export function contactPhase(sim: Sim) {
     if (a.caste[i] === CASTE.MALE || a.caste[i] === CASTE.GYNE) continue;
     const sp = sim.speciesOf(c);
     const x = a.x[i], y = a.y[i];
+    const flashes=a.pheno[i*29+P.BIOLUM]>0&&a.task[i]===TASK.RETURN&&a.carry[i];
+    if(!flashes&&!sim.idx.hasForeign(x,y,3,a.colony[i])){a.fightTarget[i]=-1;continue;}
     const reach = sp.defense.mode === 'formic-spray' ? 2 : 1;
     let foe = -1, foeD = 99, friends = 0, foes = 0;
     sim.idx.query(a, x, y, 3, (j) => {

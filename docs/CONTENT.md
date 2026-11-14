@@ -22,6 +22,8 @@ All use the same engine; no success event, birth, mutation, trail, fight or mort
 
 | Scenario | Conditions / intervention | What to inspect |
 | --- | --- | --- |
+| Empty particle sandbox | No terrain, organisms, rain or predator arrivals | Drawing, continuous pouring, material reactions and player-created ecosystems |
+| Particle physics lab | Density tank, elevated gated reservoir, wood fuel and a battery/wire/lamp circuit | Actual gravity, liquid separation, gate connectivity, ignition and connected conduction. Buttons edit conditions; they do not script motion. |
 | First colony | One claustral queen; mild meadow, nearby protein, no predators | Founding chamber, eggs→larvae→pupae→workers, reserve depletion, reopened entrance |
 | Moved food | Established colony and sugar patch; button removes old patch and paints another | Actual return deposits, trail decay, private-memory failures, rediscovery. Some seeds take much longer or lose workers. |
 | Flooded passage | Barrier-lined overhead reservoir and connected experimental nest; button opens gate | Water occupancy and moisture separately, nest exposure, escaping ants, brood rescue when workers can reach a dry destination |

@@ -4,6 +4,8 @@
 import { IS_GRANULAR, IS_SOLID, M, MOIST_CAP, PERMEABILITY, THERMAL, WATER_UNITS, MATERIALS } from './materials.ts';
 import type { Rng } from './rng.ts';
 import { CS, TS, World } from './world.ts';
+import { SandboxPhysics } from './sandbox-physics.ts';
+import { IS_GAS, IS_LIQUID, DENSITY } from './materials.ts';
 
 export interface Climate {
   meanTemp: number; // annual mean surface air temperature (degC)
@@ -53,7 +55,7 @@ export function seasonName(tick: number) {
 
 /** Can water occupy / flow into this cell? */
 function waterOpen(m: number) {
-  return m === M.AIR;
+  return m === M.AIR || IS_GAS[m]===1;
 }
 
 export class Physics {
@@ -68,7 +70,11 @@ export class Physics {
   constructor(w: World, rng: Rng) {
     this.w = w;
     this.rng = rng;
+    this.activeSnapshot = new Uint8Array(w.chunkActive.length);
+    this.sandbox=new SandboxPhysics(w,rng);
   }
+  sandbox:SandboxPhysics;
+  private activeSnapshot: Uint8Array;
 
   /** One fixed-step update of the terrain CA over active chunks only. */
   stepCA(tick: number) {
@@ -80,7 +86,9 @@ export class Physics {
     const leftFirst = (tick & 1) === 0;
     let active = 0;
     // snapshot activity so newly touched chunks are processed next tick (stable order)
-    const act = new Uint8Array(chunkActive);
+    const act = this.activeSnapshot;
+    act.set(chunkActive);
+    this.sandbox.begin(tick,act);
     for (let c = 0; c < act.length; c++) if (act[c]) { active++; chunkActive[c]--; }
     this.stats.activeChunks = active;
     let moves = 0;
@@ -99,6 +107,7 @@ export class Physics {
             if (moved[i] === st) continue;
             const m = mat[i];
             if (m === M.AIR) continue;
+            if(this.sandbox.step(x,y,i,st,tick))continue;
             if (m === M.WATER) {
               if (this.stepWater(x, y, i, st, rng, tick)) moves++;
             } else if (IS_GRANULAR[m]) {
@@ -119,6 +128,7 @@ export class Physics {
     if (y + 1 < H) {
       const b = i + W;
       const mb = mat[b];
+      if(IS_LIQUID[mb]&&DENSITY[mb]<DENSITY[M.WATER]){w.swap(i,b);moved[b]=st;return true;}
       if (waterOpen(mb)) {
         w.swap(i, b);
         moved[b] = st;
@@ -196,7 +206,7 @@ export class Physics {
     const cohesion = MATERIALS[m].cohesion + (m === M.SAND || m === M.LOOSE ? Math.min(0.75, wet * 2.5) : 0);
     const b = i + W;
     const mb = mat[b];
-    if (mb === M.AIR || mb === M.WATER) {
+    if (IS_GAS[mb] || (IS_LIQUID[mb]&&DENSITY[m]>DENSITY[mb])) {
       // unsupported: falls unless cohesive (damp) and keyed into a solid neighbour (arching)
       const held = cohesion > 0.6 && ((x > 0 && IS_SOLID[mat[i - 1]]) || (x < W - 1 && IS_SOLID[mat[i + 1]]));
       if (held && !rng.chance(0.00002)) return false;
@@ -217,7 +227,7 @@ export class Physics {
       // grains do not slide sideways into excavated passages (workers keep tunnel mouths clear);
       // unsupported material above a passage can still fall straight in
       if (w.owner[b + d] || w.owner[i + d]) continue;
-      if ((md === M.AIR || md === M.WATER) && (mat[i + d] === M.AIR || mat[i + d] === M.WATER)) {
+      if ((IS_GAS[md] || (IS_LIQUID[md]&&DENSITY[m]>DENSITY[md])) && (IS_GAS[mat[i+d]] || IS_LIQUID[mat[i+d]])) {
         w.swap(i, b + d);
         moved[b + d] = st;
         return true;
@@ -389,14 +399,15 @@ export class Physics {
         if (ty < TH - 1) { lap += temp[c + TW]; n++; }
         lap -= n * T;
         let v = T + 0.2 * th * lap;
-        if (mat[ci] === M.AIR && w.skyExposed(Math.min(W - 1, cx), Math.min(w.H - 1, cy))) v += 0.25 * (airT - v);
+        if (IS_GAS[mat[ci]] && w.skyExposed(Math.min(W - 1, cx), Math.min(w.H - 1, cy))) v += 0.25 * (airT - v);
         else if (ty === 0) v += 0.1 * (airT - v);
         if (ty === TH - 1) v += 0.05 * (climate.deepTemp - v);
         v += 0.06 * heat[c];
         heat[c] *= 0.9985;
         if (Math.abs(heat[c]) < 0.01) heat[c] = 0;
         th = 0;
-        next[c] = Math.max(-15, Math.min(60, v));
+        next[c] = Math.max(-100, Math.min(2000, v));
+        if(Math.abs(next[c]-T)>.1){const ch=w.chunkOf(Math.min(W-1,cx),Math.min(w.H-1,cy));if(w.chunkReactive[ch])w.chunkActive[ch]=8;}
       }
     }
     temp.set(next);

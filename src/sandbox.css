@@ -1,6 +1,14 @@
 /* Compact experimental workbench, inspired by the direct element palette in Sandboxels. */
 :root{--panel:#242628;--raised:#303335;--edge:#505459;--muted:#adb0aa;--gold:#e3c386;background:#1b1d1e;color:#e1e2dc}
 [hidden]{display:none!important}
+.sandbox-controls{display:flex;gap:5px;align-items:center;height:36px;padding:3px 14px;border-bottom:2px solid #465247;overflow-x:auto;scrollbar-width:thin;white-space:nowrap}
+.sandbox-controls button{font:10px Silkscreen,monospace;padding:5px 8px;min-height:26px;border:2px solid #71806b;background:#354336;box-shadow:inset 1px 1px #ffffff33,inset -1px -1px #0008,2px 2px #101a12;border-radius:0}
+.sandbox-controls button:active{transform:translate(1px,1px);box-shadow:inset 1px 1px #0006}.sandbox-controls button:disabled{opacity:.4;cursor:default}.sandbox-controls button.selected{background:#687344;color:#fff4c6;border-color:#c4c88c}
+.sandbox-controls label{font-size:10px;display:flex;gap:5px;align-items:center}.sandbox-controls select{height:25px;min-height:25px;font-size:10px;padding:2px 4px}
+body #app{grid-template-rows:54px minmax(0,1fr) 158px 30px}body .workbench{height:158px}
+#restore-ui{display:none;position:absolute;right:12px;top:12px;z-index:5;font-size:12px}
+body.gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}body.gui-hidden .topbar,body.gui-hidden .workbench,body.gui-hidden footer,body.gui-hidden aside,body.gui-hidden .world-heading,body.gui-hidden .world-weather,body.gui-hidden .quick-tools,body.gui-hidden .world-bottom,body.gui-hidden #sidebar-toggle{display:none}body.gui-hidden #restore-ui{display:block}
+@media(max-width:600px){body #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body .workbench{height:218px}.sandbox-controls{padding:3px 9px}}
 @media(max-width:600px){#palette{align-content:flex-start}}
 button,select,input{border-radius:2px}
 button{background:#303335;border-color:#505459}

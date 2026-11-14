@@ -8,7 +8,7 @@ import { Critters } from './critters.ts';
 import { ecologyStep } from './ecology.ts';
 import type { Mode, MutationRecord } from './genetics.ts';
 import { LOCI, MODES, NL, NP, P, broodCost, founderGenome, gval, makeEgg, phenotype } from './genetics.ts';
-import { FOOD_OF, IS_SOLID, M, MATERIALS, MOIST_CAP, WATER_UNITS } from './materials.ts';
+import { FOOD_OF, IS_SOLID, IS_WATER, IS_LIQUID, M, MATERIALS, MOIST_CAP, WATER_UNITS } from './materials.ts';
 import type { Climate } from './physics.ts';
 import { DAY_TICKS, DEFAULT_CLIMATE, Physics, SEASON_DAYS, airTemperature, isDaytime, seasonName, yearFrac } from './physics.ts';
 import { Rng } from './rng.ts';
@@ -17,7 +17,7 @@ import { BUILTIN_SPECIES } from './species.ts';
 import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface Settings {
   /** fraction of mates drawn from an off-map background population (drift buffer) */
@@ -44,6 +44,11 @@ export interface SimConfig {
 }
 
 export type Command =
+  | { t:'fill';mat:number;x:number;y:number }
+  | { t:'charge';x:number;y:number;r:number;amount?:number }
+  | {t:'editCell';x:number;y:number;mat:number;amount:number;temperature:number;charge:number;toxin:number}
+  | {t:'mix'|'smash';x:number;y:number;r:number}
+  | {t:'move';x:number;y:number;toX:number;toY:number;r:number}
   | { t: 'paint'; mat: number; x: number; y: number; r: number; replace?: boolean }
   | { t: 'dig'; x: number; y: number; r: number }
   | { t: 'erase'; x: number; y: number; r: number }
@@ -150,12 +155,17 @@ export class Sim {
 
   /** Apply a player command immediately while paused (logged at the current tick for replay). */
   applyNow(cmd: Command) {
-    this.commandLog.push({ tick: this.tick, cmd });
-    this.apply(cmd);
-    if (cmd.t === 'paint' || cmd.t === 'dig' || cmd.t === 'erase') {
-      this.w.flushSurface();
-      for (const c of this.colonies) if (c && c.alive) this.scanNest(c);
+    this.queue(cmd);this.flushCommands();
+  }
+
+  /** One navigation invalidation per input batch, including edits made while paused. */
+  flushCommands(){
+    for(const cmd of this.pending){
+      this.commandLog.push({tick:this.tick,cmd});this.apply(cmd);
+      if(cmd.t==='paint'||cmd.t==='dig'||cmd.t==='erase'||cmd.t==='fill'||cmd.t==='editCell')this.navDirty=true;
     }
+    this.pending.length=0;
+    if(this.navDirty){this.w.flushSurface();for(const c of this.colonies)if(c&&c.alive)this.scanNest(c);this.navDirty=false;}
   }
 
   step() {
@@ -164,18 +174,7 @@ export class Sim {
       const s = this.scheduled[k];
       if (s.tick === this.tick) { this.apply(s.cmd); if (s.note) this.event('scenario', s.note); }
     }
-    for (const cmd of this.pending) {
-      this.commandLog.push({ tick: this.tick, cmd });
-      this.apply(cmd);
-      if (cmd.t === 'paint' || cmd.t === 'dig' || cmd.t === 'erase') this.navDirty = true;
-    }
-    this.pending.length = 0;
-    if (this.navDirty) {
-      // terrain edits invalidate cached navigation helpers (nest exit-distance fields)
-      this.w.flushSurface();
-      for (const c of this.colonies) if (c && c.alive) this.scanNest(c);
-      this.navDirty = false;
-    }
+    this.flushCommands();
     if (this.commandLog.length > 20000) { this.commandLog.splice(0, this.commandLog.length - 20000); this.replayable = false; }
     const tick = this.tick;
     this.airT = airTemperature(this.climate, tick);
@@ -184,6 +183,7 @@ export class Sim {
     if (this.settings.weather) this.phys.stepWeather(tick, this.climate);
     else if (this.phys.rainLocal.length) this.phys.stepWeather(tick, { ...this.climate, rainChancePerDay: 0 });
     this.phys.stepCA(tick);
+    if(this.phys.sandbox.topologyChanged){this.navDirty=true;this.phys.sandbox.topologyChanged=false;}
     const t1 = now();
     this.phys.stepMoisture(tick, this.climate);
     if ((tick & 7) === 0) this.phys.stepTemperature(tick, this.climate);
@@ -239,12 +239,16 @@ export class Sim {
     if (!internal) {
       const f = FOOD_OF[old];
       if (f && w.amt[i]) w.ledger.sink(foodKey(f), cause, w.amt[i]);
-      if (old === M.WATER && w.amt[i]) w.ledger.sink('water', cause, w.amt[i]);
+      if (IS_WATER[old] && w.amt[i]) w.ledger.sink('water', cause, w.amt[i]);
       const nf = FOOD_OF[m];
       if (nf && amt) w.ledger.source(foodKey(nf), cause, amt);
-      if (m === M.WATER && amt) w.ledger.source('water', cause, amt);
+      if (IS_WATER[m] && amt) w.ledger.source('water', cause, amt);
     }
     const lost = w.setRaw(i, m, amt);
+    if(old!==m&&cause.startsWith('player')){
+      const tc=w.tIdx(i%w.W,(i/w.W)|0),hot=m===M.LAVA?1100:m===M.FIRE?350:m===M.STEAM?110:m===M.MOLTEN_GLASS?1200:m===M.MOLTEN_METAL?800:null;
+      if(hot!==null)w.temp[tc]=Math.max(w.temp[tc],hot);if(m===M.ICE||m===M.SNOW)w.temp[tc]=Math.min(w.temp[tc],-8);
+    }
     if (lost) w.ledger.sink('water', cause === 'excavated' ? 'excavation' : cause, lost);
     if (IS_SOLID[m] && this.occ[i]) this.displaceAntsAt(i);
   }
@@ -293,6 +297,20 @@ export class Sim {
         }
     };
     switch (cmd.t) {
+      case 'smash':{circle(cmd.x,cmd.y,cmd.r,(i)=>{const old=w.mat[i],m=old===M.STONE?M.GRAVEL:old===M.GLASS?M.GLASS_SHARD:old===M.WOOD?M.SAWDUST:old===M.ICE?M.SNOW:old===M.CLAY?M.CLAY_POWDER:old===M.SUGAR?M.SUGAR_POWDER:old;if(m!==old)this.phys.sandbox.transform(i,m,w.amt[i],'player crushing');});this.navDirty=true;break;}
+      case 'mix':{for(let n=0;n<Math.min(96,(cmd.r*2+1)**2);n++){const x=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,y=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r,xx=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,yy=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r;if(!w.inb(x,y)||!w.inb(xx,yy))continue;const i=y*w.W+x,j=yy*w.W+xx,a=MATERIALS[w.mat[i]],b=MATERIALS[w.mat[j]];if((!a.solid||a.granular)&&(!b.solid||b.granular))w.swap(i,j);}this.navDirty=true;break;}
+      case 'move':{const dx=cmd.toX-cmd.x,dy=cmd.toY-cmd.y;for(let iy=0;iy<=cmd.r*2;iy++)for(let ix=0;ix<=cmd.r*2;ix++){const oy=dy>0?cmd.r-iy:iy-cmd.r,ox=dx>0?cmd.r-ix:ix-cmd.r;if(ox*ox+oy*oy>cmd.r*cmd.r+cmd.r)continue;const x=cmd.x+ox,y=cmd.y+oy,xx=x+dx,yy=y+dy;if(!w.inb(x,y)||!w.inb(xx,yy))continue;const i=y*w.W+x,j=yy*w.W+xx,m=MATERIALS[w.mat[i]];if(m.id!==M.AIR&&(!m.solid||m.granular)&&w.mat[j]===M.AIR)w.swap(i,j);}this.navDirty=true;break;}
+      case 'editCell':{if(!w.inb(cmd.x,cmd.y)||!MATERIALS[cmd.mat])break;const k=cmd.y*w.W+cmd.x;const n=Math.max(0,Math.min(IS_WATER[cmd.mat]?64:255,Math.round(cmd.amount)));this.setCell(k,(FOOD_OF[cmd.mat]||IS_WATER[cmd.mat])&&!n?M.AIR:cmd.mat,n,'player properties');w.temp[w.tIdx(cmd.x,cmd.y)]=Math.max(-100,Math.min(2000,cmd.temperature));w.charge[k]=Math.max(0,Math.min(255,cmd.charge));w.toxin[k]=Math.max(0,Math.min(255,cmd.toxin));break;}
+      case 'fill': {
+        if(!w.inb(cmd.x,cmd.y)||!MATERIALS[cmd.mat])break;
+        const start=cmd.y*w.W+cmd.x,old=w.mat[start];if(old===cmd.mat)break;
+        const seen=new Uint8Array(w.N),queue=new Uint32Array(w.N);let head=0,tail=1;queue[0]=start;seen[start]=1;
+        const def=MATERIALS[cmd.mat],amt=def.food?def.foodUnits:IS_WATER[cmd.mat]?WATER_UNITS:def.nutrient;
+        while(head<tail){const k=queue[head++],x=k%w.W;this.setCell(k,cmd.mat,amt,'player fill');w.owner[k]=0;
+          for(let d=0;d<4;d++){const j=d===0?k-1:d===1?k+1:d===2?k-w.W:k+w.W;if(j<0||j>=w.N||seen[j]||Math.abs(j%w.W-x)>1||w.mat[j]!==old)continue;seen[j]=1;queue[tail++]=j;}
+        }
+        this.navDirty=true;break;
+      }
       case 'paint': {
         const m = cmd.mat;
         const def = MATERIALS[m];
@@ -301,7 +319,7 @@ export class Sim {
           if (old === m) return;
           if (!cmd.replace && old !== M.AIR) return;
           if (old === M.PLANT && m !== M.AIR) w.flags[i] &= ~8;
-          const amt = def.food ? def.foodUnits : m === M.WATER ? WATER_UNITS : def.nutrient;
+          const amt = def.food ? def.foodUnits : IS_WATER[m] ? WATER_UNITS : def.nutrient;
           this.setCell(i, m, amt, 'player');
           w.flags[i] |= FLAG_PLAYER;
           if (m !== M.AIR) w.owner[i] = 0;
@@ -314,7 +332,7 @@ export class Sim {
         circle(cmd.x, cmd.y, cmd.r, (i) => {
           const old = w.mat[i];
           if (old === M.AIR) return;
-          if (cmd.t === 'dig' && (FOOD_OF[old] || old === M.WATER)) return;
+          if (cmd.t === 'dig' && (FOOD_OF[old] || IS_LIQUID[old])) return;
           // erased moisture is removed by the player (ledgered)
           if (w.moist[i]) { w.ledger.sink('water', 'player', w.moist[i]); w.moist[i] = 0; }
           this.setCell(i, M.AIR, 0, 'player');
@@ -330,7 +348,9 @@ export class Sim {
             const tx = tx0 + dx, ty = ty0 + dy;
             if (tx < 0 || ty < 0 || tx >= w.TW || ty >= w.TH) continue;
             const c = ty * w.TW + tx;
+            w.temp[c] = Math.max(-100, Math.min(2000, w.temp[c] + cmd.amount));
             w.heat[c] = Math.max(-25, Math.min(25, w.heat[c] + cmd.amount));
+            w.touch(Math.min(w.W - 1, tx * TS + 2), Math.min(w.H - 1, ty * TS + 2));
           }
         break;
       }
@@ -354,6 +374,7 @@ export class Sim {
         circle(cmd.x, cmd.y, cmd.r, (i, cx, cy) => { w.toxin[i] = 255; w.touch(cx, cy); });
         break;
       }
+      case 'charge':{circle(cmd.x,cmd.y,cmd.r,(i,cx,cy)=>{w.charge[i]=Math.max(0,Math.min(255,Math.round(cmd.amount??255)));w.touch(cx,cy);});break;}
       case 'rain': {
         this.phys.rainLocal.push({ x: cmd.x, w: Math.max(3, cmd.r), ticks: 600 });
         break;
@@ -814,7 +835,7 @@ export class Sim {
       b.tempSum += T; b.tempN++;
       let died = '';
       // flooding
-      if (w.mat[bi] === M.WATER) {
+      if (IS_LIQUID[w.mat[bi]]) {
         b.drown += 30;
         if (b.drown > (b.stage === STAGE.EGG ? 2400 : 1500)) died = 'drowned';
       } else if (b.drown > 0) b.drown = Math.max(0, b.drown - 10);
@@ -967,7 +988,7 @@ export class Sim {
     let best = { x, y }, bestS = -1e9;
     const score = (cx: number, cy: number) => {
       const k = cy * w.W + cx;
-      if (w.mat[k] === M.WATER) return -100;
+      if (IS_LIQUID[w.mat[k]]) return -100;
       let s = -Math.abs(w.tempAt(cx, cy) - sp.development.tOpt) * 0.5;
       s += Math.min(0.3, w.humAt(cx, cy) - sp.development.minHumidity) * 4;
       for (let dy = 0; dy <= 3; dy++) if (w.get(cx, cy + dy) === M.WATER || w.get(cx - 1, cy + dy) === M.WATER) s -= 8;
@@ -1011,7 +1032,7 @@ export class Sim {
       const k = queue[h];
       const x = k % w.W, y = (k / w.W) | 0;
       const m = w.mat[k];
-      if (m === M.WATER) flooded++;
+      if (IS_LIQUID[m]) flooded++;
       vol++;
       if (out.length < 4096) out.push(k);
       if (y > maxY) maxY = y;
@@ -1032,7 +1053,7 @@ export class Sim {
         if (nk < 0 || nk >= w.N || seen.has(nk)) continue;
         if (Math.abs((nk % w.W) - x) > 1) continue;
         const nm = w.mat[nk];
-        if ((nm === M.AIR || nm === M.WATER || nm === M.PLANT) && (w.owner[nk] === own)) { seen.add(nk); queue.push(nk); }
+        if (!IS_SOLID[nm] && (w.owner[nk] === own)) { seen.add(nk); queue.push(nk); }
       }
     }
     c.nestVolume = vol;

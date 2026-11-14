@@ -1,0 +1,49 @@
+{
+  "browser": "157.0.4341.46",
+  "info": {
+    "tick": 2781,
+    "ants": 41,
+    "fps": 59.99879998479734,
+    "renderMs": 0.3637447625850949,
+    "sim": {
+      "antMs": 0.018908610862558364,
+      "caMs": 0.04501206119410706,
+      "fieldMs": 0.33155643722729056,
+      "colonyMs": 0.00018475021983240588,
+      "signalMs": 0.005907021170203791,
+      "ecoMs": 0.003614795999280095,
+      "stepMs": 0.7000000476837158,
+      "budgetMs": 12,
+      "activeChunks": 2,
+      "totalChunks": 288,
+      "signalChunks": 6,
+      "antCapacity": 2048,
+      "heapMB": null,
+      "pendingCommands": 0,
+      "events": 13,
+      "lineage": 1,
+      "mutations": 0,
+      "commandLog": 2,
+      "frames": 1062,
+      "estMB": 2.099609375
+    },
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    }
+  },
+  "checks": [
+    "pause freezes ticks",
+    "single step advances one tick",
+    "painting changes terrain",
+    "digging changes traversability",
+    "zoom controls",
+    "IndexedDB save and load",
+    "signal overlay",
+    "moved food intervention",
+    "lineage journal",
+    "phone viewport fits",
+    "flood intervention and speed changes"
+  ],
+  "errors": []
+}

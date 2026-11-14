@@ -1,15 +1,10 @@
 import type { FrameMsg, OverlayKind } from '../protocol.ts';
-import { MATERIALS, M } from '../sim/materials.ts';
-import { spriteFor, paintGrid, antColors, orientGrid } from './sprites.ts';
+import { M } from '../sim/materials.ts';
+import { TerrainRaster, TILE, terrainHash as hash } from './terrain.ts';
+import { AgentRaster } from './agents.ts';
 import type { RGB } from './sprites.ts';
 
-const TILE = 3;
 const marks: RGB[] = [[239, 181, 86], [116, 190, 211], [215, 128, 152], [165, 192, 109], [190, 160, 219]];
-const hash = (x: number, y: number) => {
-  let v = Math.imul(x + 19, 374761393) ^ Math.imul(y + 53, 668265263);
-  v = Math.imul(v ^ (v >>> 13), 1274126177);
-  return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
-};
 export class Renderer {
   ctx: CanvasRenderingContext2D;
   terrain = document.createElement('canvas');
@@ -27,12 +22,22 @@ export class Renderer {
   width = 0; height = 0;
   hover: { x: number; y: number } | null = null;
   brush = 3;
+  preview:{x:number;y:number;x2:number;y2:number;kind:string}|null=null;
   editing = false;
   labels = true; patterns = false; lowDetail = false;
+  cutaway=true;
   renderMs = 0; fps = 60; droppedFrames = 0;
+  updateMs = 0;
+  private raster: TerrainRaster | null = null;
+  private terrainImage: ImageData | null = null;
   overlay: OverlayKind = 'none';
   overlayData: Uint8Array | null = null;
-  sprites = new Map<string, HTMLCanvasElement>();
+  private agentCanvas=document.createElement('canvas');
+  private agentCtx=this.agentCanvas.getContext('2d')!;
+  private agents:AgentRaster|null=null;
+  private agentImage:ImageData|null=null;
+  private lastAgentFrame=-1;
+  private lastLowDetail=false;
   private prev = performance.now();
   private observer: ResizeObserver;
   constructor(public canvas: HTMLCanvasElement) {
@@ -51,11 +56,20 @@ export class Renderer {
   reset(W: number, H: number) {
     this.W = W; this.H = H; this.map = new Uint8Array(W * H);
     this.terrain.width = W * TILE; this.terrain.height = H * TILE;
+    this.raster = new TerrainRaster(W,H);
+    this.terrainImage = new ImageData(this.raster.data,W*TILE,H*TILE);
     this.terrainCtx.fillStyle = '#29251e'; this.terrainCtx.fillRect(0, 0, W * TILE, H * TILE);
     this.field.width = W; this.field.height = H;
-    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.sprites.clear(); this.fit();
+    this.agents=new AgentRaster(W,H);this.agentImage=new ImageData(this.agents.data,W*3,H*3);
+    this.agentCanvas.width=W*3;this.agentCanvas.height=H*3;this.lastAgentFrame=-1;
+    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.fit();
   }
   fit() {
+    if(!this.cutaway){
+      let x0=this.W,y0=this.H,x1=-1,y1=-1;
+      for(let y=0;y<this.H;y++)for(let x=0;x<this.W;x++)if(this.map[y*this.W+x]!==M.AIR){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}
+      if(x1>=0){this.zoom=Math.min(8,this.width/(x1-x0+20),this.height/(y1-y0+20));this.ox=this.width/2-(x0+x1+1)/2*this.zoom;this.oy=this.height/2-(y0+y1+1)/2*this.zoom;return;}
+    }
     // A phone shows a readable slice centred on the colony; wheel/buttons can reveal the full map.
     if (this.width < 600) {
       this.zoom = Math.max(3.5, this.height / this.H);
@@ -75,11 +89,13 @@ export class Renderer {
     this.ox = x - wx * this.zoom; this.oy = y - wy * this.zoom;
   }
   accept(f: FrameMsg) {
+    const start=performance.now();
     this.frame = f;
     if (f.surface) this.surface = f.surface;
     if (f.chunks) {
       const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16);
       let o = 0;
+      let minX=this.W,minY=this.H,maxX=-1,maxY=-1;
       for (let c = 0; c < f.chunkCount; c++) {
         const ci = bytes[o] | bytes[o + 1] << 8; o += 2;
         const cx = ci % cw * 16, cy = Math.floor(ci / cw) * 16;
@@ -87,9 +103,10 @@ export class Renderer {
           const m = bytes[o++], q = bytes[o++], x = cx + dx, y = cy + dy;
           if (x >= this.W || y >= this.H) continue;
           this.map[y * this.W + x] = m;
-          this.cell(x, y, m, q);
+          if(this.raster!.cell(x,y,m,q,this.cutaway?this.surface[x]:this.H)){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
         }
       }
+      if(maxX>=0)this.terrainCtx.putImageData(this.terrainImage!,0,0,minX*TILE,minY*TILE,(maxX-minX+1)*TILE,(maxY-minY+1)*TILE);
     }
     if (f.overlayKind !== this.overlay) { this.overlay = f.overlayKind; this.fieldCtx.clearRect(0, 0, this.W, this.H); }
     if (f.overlay) {
@@ -100,6 +117,7 @@ export class Renderer {
         let rgb = [85, 203, 221];
         if (this.overlay === 'temperature') rgb = [Math.min(255, v * 2), 160 - v / 3, Math.max(35, 255 - v)];
         else if (this.overlay === 'trail') rgb = [213, 186, 255];
+        else if(this.overlay==='charge')rgb=[255,223,98];
         else if (this.overlay === 'alarm' || this.overlay === 'mortality' || this.overlay === 'toxin') rgb = [255, 110, 114];
         else if (this.overlay === 'food') rgb = v < 120 ? [255, 209, 94] : v < 180 ? [245, 137, 114] : [191, 214, 121];
         else if (this.overlay === 'territory') rgb = marks[(v - 1) % marks.length];
@@ -108,43 +126,7 @@ export class Renderer {
       }
       this.fieldCtx.putImageData(img, 0, 0);
     }
-  }
-  private cell(x: number, y: number, m: number, q: number) {
-    const c = this.terrainCtx, X = x * TILE, Y = y * TILE;
-    c.clearRect(X, Y, TILE, TILE);
-    if (m === M.AIR) {
-      if (y < this.surface[x]) return;
-      c.fillStyle = (q & 64) ? '#30291f' : '#332c23'; c.fillRect(X, Y, TILE, TILE);
-      return;
-    }
-    const def = MATERIALS[m]; if (!def) return;
-    const h = hash(x, y), f = .94 + h * .12;
-    const rgb = def.color.map(v => Math.round(v * f));
-    c.fillStyle = `rgb(${rgb})`; c.fillRect(X, Y, TILE, TILE);
-    if (m === M.PLANT) {
-      c.clearRect(X, Y, TILE, TILE); c.fillStyle = q & 16 ? '#acc861' : '#70934e'; c.fillRect(X + 1, Y, 1, 3); c.fillRect(X + (h > .5 ? 2 : 0), Y, 1, 1);
-    } else if (m === M.WATER) { c.fillStyle = '#83b9c8'; if (h > .6) c.fillRect(X, Y, 2, 1); }
-    else {
-      c.fillStyle = `rgba(${h > .5 ? '240,211,164,.16' : '18,17,16,.23'})`;
-      c.fillRect(X + (h > .6 ? 1 : 0), Y + (h > .4 ? 1 : 2), m === M.STONE || m === M.CLAY ? 2 : 1, 1);
-      if ((m === M.TOPSOIL || m === M.SOIL) && (q & 15) > 10) { c.fillStyle = '#272b291d'; c.fillRect(X, Y, 3, 3); }
-    }
-    if (q & 32) { c.fillStyle = '#c1cf5a'; c.fillRect(X, Y, 1, 1); }
-  }
-  private sprite(slot: number, caste: number, anim: number, orient: number) {
-    const key = `${slot}/${caste}/${anim}/${orient}`;
-    let s = this.sprites.get(key);
-    if (!s) {
-      const col = this.colonies.find(c => c.slot === slot);
-      const sp = this.species.find(s => s.id === col?.speciesId);
-      const v = sp?.visual ?? { body: [50, 38, 29], head: [34, 27, 23], gaster: [62, 45, 32], sprite: 'formicine' };
-      const def = spriteFor(v.sprite, caste);
-      const grid = orientGrid(def.wings ? [...def.wings,...def.frames[anim]] : def.frames[anim], orient);
-      s = document.createElement('canvas'); s.width = Math.max(...grid.map(r => r.length)); s.height = grid.length;
-      paintGrid(s.getContext('2d')!, grid, 0, 0, antColors({ ...v, marking: col?.marking ?? marks[slot % marks.length] }, caste));
-      this.sprites.set(key, s);
-    }
-    return s;
+    this.updateMs+=.1*(performance.now()-start-this.updateMs);
   }
   private draw = (time: number) => {
     const start = performance.now(), dt = time - this.prev; this.prev = time;
@@ -158,7 +140,7 @@ export class Renderer {
     c.fillStyle = '#d4ded0';
     for (let k = 0; k < 8; k++) { const x = k * 73 + 9, y = 8 + hash(k, 1) * 20; c.fillRect(x, y, 20, 3); c.fillRect(x + 4, y - 3, 12, 3); }
     c.fillStyle = '#a1b99d';
-    for (let k = 0; k < 24; k++) { const x = k * 24; const sy = this.surface[Math.min(this.W - 1, x)] || 60; c.fillRect(x, sy - 2 - hash(k, 3) * 6, 25, 8); }
+    if(this.cutaway)for (let k = 0; k < 24; k++) { const x = k * 24; const sy = this.surface[Math.min(this.W - 1, x)] || 60; c.fillRect(x, sy - 2 - hash(k, 3) * 6, 25, 8); }
     c.drawImage(this.terrain, 0, 0, this.W, this.H);
     // Living surface fringe follows the real terrain boundary.
     for (let x = 0; x < this.W; x++) {
@@ -177,28 +159,17 @@ export class Renderer {
         c.fillStyle = stage === 0 ? '#f4ead0' : stage === 1 ? '#e5d39e' : '#c9af78';
         c.fillRect(x - .35, y - .25, stage === 0 ? .65 : 1, .5); if (stage === 1) c.fillRect(x, y - .5, .4, .3);
       }
-      for (let k = 0; k < f.antCount; k++) {
-        const o = k * 7, x = f.ants[o], y = f.ants[o + 1];
-        const sx = this.ox + x * this.zoom, sy = this.oy + y * this.zoom;
-        if (sx < -20 || sx > this.width + 20 || sy < -20 || sy > this.height + 20) continue;
-        const bits = f.ants[o + 4] & 65535, slot = bits & 255, caste = bits >> 8 & 3, carry = bits >> 10 & 7, effects = f.ants[o + 5];
-        const dx = x - f.ants[o + 2], dy = y - f.ants[o + 3];
-        const orient = Math.abs(dy) > Math.abs(dx) ? dy < 0 ? 4 : 6 : dx < 0 ? 1 : 0;
-        if (effects & 256) { c.fillStyle = '#a6f5db55'; c.fillRect(x - 2, y - 2, 4, 4); }
-        if (this.lowDetail && caste === 0) { c.fillStyle = '#1f1c17'; c.fillRect(x, y, 1, .5); }
-        else {
-          const spr = this.sprite(slot, caste, effects & 1, orient);
-          const scale = caste === 1 ? .42 : .32;
-          c.drawImage(spr, x + .5 - spr.width * scale / 2, y + .5 - spr.height * scale / 2, spr.width * scale, spr.height * scale);
-        }
-        if (effects & 512) { c.fillStyle = '#c0c4bd'; c.fillRect(x - .5, y - .8, 1, .5); }
-        if (effects & 1024) { c.strokeStyle = '#9ed5df'; c.lineWidth = .2; c.strokeRect(x - 1, y - 1, 2, 2); }
-        if (effects & 2048) { c.fillStyle = '#edaa66'; c.fillRect(x, y - .6, .6, .5); }
-        if (carry) { c.fillStyle = ['','#f5cc6b','#ce8d76','#bba65c','#9d7950','#aaa28b','#f2e5b6'][carry]; c.fillRect(x + .8, y - .8, .7, .7); }
-        if (bits & 8192) { c.fillStyle = '#f2aa76'; c.fillRect(x - 1, y - 1, .5, .5); }
-        if (bits & 16384) { c.fillStyle = '#b99867'; c.fillRect(x + 1, y + .5, .5, .5); }
-        if (f.selected === k) { c.strokeStyle = '#f6e4a2'; c.lineWidth = 1 / this.zoom; c.strokeRect(x - 2.5, y - 2, 5, 4); }
+      if(this.lastAgentFrame!==f.id||this.lastLowDetail!==this.lowDetail){
+        const old=this.agents!.bounds,x=old.x,y=old.y,w=old.w,h=old.h;
+        this.agents!.draw(f,this.colonies,this.species,this.lowDetail);
+        const b=this.agents!.bounds,x0=w?Math.min(x,b.x):b.x,y0=h?Math.min(y,b.y):b.y;
+        const x1=Math.max(x+w,b.x+b.w),y1=Math.max(y+h,b.y+b.h);
+        if(x1>x0&&y1>y0)this.agentCtx.putImageData(this.agentImage!,0,0,x0,y0,x1-x0,y1-y0);
+        this.lastAgentFrame=f.id;this.lastLowDetail=this.lowDetail;
       }
+      const ab=this.agents!.bounds;
+      if(ab.w&&ab.h)c.drawImage(this.agentCanvas,ab.x,ab.y,ab.w,ab.h,ab.x/3,ab.y/3,ab.w/3,ab.h/3);
+      if(f.selected>=0){const o=f.selected*7,x=f.ants[o],y=f.ants[o+1];c.strokeStyle='#f6e4a2';c.lineWidth=1/this.zoom;c.strokeRect(x-2.5,y-2,5,4);}
       for (let k = 0; k < f.critterCount; k++) {
         const o = k * 5, x = f.critters[o], y = f.critters[o + 1]; c.fillStyle = f.critters[o + 4] & 1 ? '#563d33' : '#dfcdb0'; c.fillRect(x - 1, y - .5, 2, 1);
         if (f.critters[o + 4] & 1) for (let i = -1; i < 2; i++) { c.fillRect(x + i, y - 1.5, .3, 3); }
@@ -207,6 +178,7 @@ export class Renderer {
     }
     if (this.route.length) { c.strokeStyle = '#f5d28188'; c.lineWidth = .5; c.setLineDash([1, 1]); c.beginPath(); for (let k = 0; k < this.route.length; k += 2) k ? c.lineTo(this.route[k], this.route[k + 1]) : c.moveTo(this.route[k], this.route[k + 1]); c.stroke(); c.setLineDash([]); }
     if (this.hover && this.editing) { c.strokeStyle = '#fff4d7'; c.lineWidth = 1 / this.zoom; c.strokeRect(this.hover.x - this.brush, this.hover.y - this.brush, this.brush * 2 + 1, this.brush * 2 + 1); }
+    if(this.preview){const p=this.preview;c.strokeStyle='#f9e6aa';c.lineWidth=1/this.zoom;c.setLineDash([2,2]);if(p.kind==='line'){c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x2,p.y2);c.stroke();}else c.strokeRect(Math.min(p.x,p.x2),Math.min(p.y,p.y2),Math.abs(p.x2-p.x),Math.abs(p.y2-p.y));c.setLineDash([]);}
     c.restore();
     if (this.labels) for (const col of this.colonies) {
       if (!col.alive) continue;

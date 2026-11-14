@@ -12,7 +12,8 @@
     "test": "vitest run",
     "bench": "node --experimental-strip-types --no-warnings scripts/bench.ts",
     "experiments": "node --experimental-strip-types --no-warnings scripts/experiments.ts",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "sandbox-check": "node scripts/sandbox-controls.mjs"
   },
   "repository": {
     "type": "git",

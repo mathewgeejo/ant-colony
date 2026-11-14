@@ -7,11 +7,12 @@
 //    at a rate scaled by the substrate material's signalPersistence.
 //  - 'air': volatile (alarm, nest/brood odour). Diffuses only between open air
 //    cells; solids and water block it. Decays quickly.
-import { IS_SOLID, M, SIGNAL_PERSIST } from './materials.ts';
+import { IS_SOLID, IS_GAS, IS_LIQUID, M, SIGNAL_PERSIST } from './materials.ts';
 import { CS, CSHIFT, World } from './world.ts';
 
 const EPS = 0.004;
 const AREA = CS * CS;
+const openGas=(m:number)=>!!IS_GAS[m]||m===M.PLANT;
 
 export type Transport = 'surface' | 'air';
 
@@ -93,7 +94,7 @@ export class SparseField {
           const i = y * W + x;
           if (x >= W || y >= H) { c[k] = 0; continue; }
           const here = mat[i];
-          if (IS_SOLID[here] || here === M.WATER) { c[k] = 0; continue; } // washed away / buried
+          if (IS_SOLID[here] || IS_LIQUID[here]) { c[k] = 0; continue; } // washed away / buried
           // substrate: most persistent adjacent solid
           let p = 0.6;
           if (y + 1 < H && IS_SOLID[mat[i + W]]) p = SIGNAL_PERSIST[mat[i + W]];
@@ -113,14 +114,14 @@ export class SparseField {
           const x = cx0 + (k & (CS - 1)), y = cy0 + (k >> CSHIFT);
           if (x >= W || y >= H) { s[k] = 0; continue; }
           const i = y * W + x;
-          if (mat[i] !== M.AIR && mat[i] !== M.PLANT) { s[k] = 0; continue; }
+          if (!openGas(mat[i])) { s[k] = 0; continue; }
           const v = c[k];
           let acc = 0, n = 0;
           // exchange only with open neighbours: walls and water block volatiles
-          if (x > 0 && (mat[i - 1] === M.AIR || mat[i - 1] === M.PLANT)) { acc += this.get(x - 1, y); n++; }
-          if (x + 1 < W && (mat[i + 1] === M.AIR || mat[i + 1] === M.PLANT)) { acc += this.get(x + 1, y); n++; }
-          if (y > 0 && (mat[i - W] === M.AIR || mat[i - W] === M.PLANT)) { acc += this.get(x, y - 1); n++; }
-          if (y + 1 < H && (mat[i + W] === M.AIR || mat[i + W] === M.PLANT)) { acc += this.get(x, y + 1); n++; }
+          if (x > 0 && openGas(mat[i - 1])) { acc += this.get(x - 1, y); n++; }
+          if (x + 1 < W && openGas(mat[i + 1])) { acc += this.get(x + 1, y); n++; }
+          if (y > 0 && openGas(mat[i - W])) { acc += this.get(x, y - 1); n++; }
+          if (y + 1 < H && openGas(mat[i + W])) { acc += this.get(x, y + 1); n++; }
           let nv = (v + d * (acc - n * v)) * this.decay;
           if (nv < EPS) nv = 0;
           s[k] = nv;

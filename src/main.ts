@@ -3,6 +3,7 @@ import '@fontsource/atkinson-hyperlegible/700.css';
 import '@fontsource/silkscreen/400.css';
 import './style.css';
 import './sandbox.css';
+import './arcade.css';
 import { Renderer } from './render/renderer.ts';
 import { MATERIALS, M } from './sim/materials.ts';
 import { SCENARIOS } from './sim/scenarios.ts';
@@ -35,7 +36,7 @@ $('#app').innerHTML = `
 </header>
 <main class="play-space">
   <div class="world-wrap">
-    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag or use the hand tool to pan. Scroll to zoom. Use arrow keys to pan, plus and minus to zoom."></canvas>
+    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag to erase; Alt-drag or use the hand tool to pan. Scroll to zoom. Use arrow keys to pan, plus and minus to zoom."></canvas>
     <div class="world-heading"><span class="live-dot"></span><strong id="world-title">First colony</strong><span id="mode-badge">Naturalistic</span></div>
     <div class="world-weather">${icon('sun')}<span id="weather">21°C · mild</span></div>
     <div class="quick-tools"><button class="icon-btn active" data-tool="inspect" title="Inspect (I)" aria-label="Inspect">${icon('cursor')}</button><button class="icon-btn" data-tool="dig" title="Dig (D)" aria-label="Dig">${icon('shovel')}</button><button class="icon-btn" data-tool="pan" title="Pan (H)" aria-label="Pan">✥</button><span></span><button class="icon-btn" id="zoom-in" aria-label="Zoom in">${icon('plus')}</button><button class="icon-btn" id="zoom-out" aria-label="Zoom out">${icon('minus')}</button><button class="icon-btn" id="fit" title="Fit world (F)" aria-label="Fit world">${icon('fit')}</button></div>
@@ -61,13 +62,36 @@ $('.palette-tabs').insertAdjacentHTML('afterend','<label class="element-search">
 $('.quick-tools').insertAdjacentHTML('afterbegin',`<button class="icon-btn" data-tool="erase" title="Erase material (X)" aria-label="Erase">${icon('close')}</button>`);
 $('.quick-tools').insertAdjacentHTML('beforeend',`<span></span><button class="icon-btn" data-tool="heat" title="Heat" aria-label="Heat">${icon('sun')}</button><button class="icon-btn" data-tool="cool" title="Cool" aria-label="Cool">${icon('drop')}</button>`);
 $('.topbar nav').insertAdjacentHTML('beforeend',`<button id="fullscreen" class="icon-btn" title="Fullscreen" aria-label="Toggle fullscreen">${icon('fit')}</button>`);
+$('.workbench').insertAdjacentHTML('afterbegin',`<div class="sandbox-controls" aria-label="Sandbox controls"><button data-click="play" id="quick-play">Pause</button><button data-click="step" title="Single step">&gt;</button><button id="brush-minus" title="Smaller brush">−</button><button id="brush-plus" title="Larger brush">+</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="clear-world">Reset</button><button id="replace-toggle" class="selected">Replace</button><button id="edit-cell">Edit</button><button id="element-info">Info</button><button id="search-elements">Search</button><button data-click="save-menu">Saves</button><button id="content-packs">Mods</button><button data-click="settings">Settings</button><button id="capture-world">Capture</button><button id="toggle-gui">Hide UI</button><label>Draw <select id="draw-shape"><option value="brush">Brush</option><option value="line">Line</option><option value="box">Rectangle</option><option value="fill">Fill</option></select></label></div>`);
+$('.palette-tabs').insertAdjacentHTML('beforeend','<button data-cat="powders">Powders</button><button data-cat="liquids">Liquids</button><button data-cat="gases">Gases</button><button data-cat="solids">Solids</button><button data-cat="energy">Energy</button>');
+$('.palette-tabs').insertAdjacentHTML('afterbegin','<button data-cat="tools">Tools</button>');
+$('.sandbox-controls').insertAdjacentHTML('beforeend','<button id="set-tps">TPS</button>');
+$('#overlay').insertAdjacentHTML('beforeend','<option value="charge">Electrical charge</option>');
+$<HTMLSelectElement>('#speed').value='1';
+$('.world-wrap').insertAdjacentHTML('beforeend','<button id="restore-ui">Show controls</button>');
 const renderer = new Renderer($('#world'));
 const worker = new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' });
 const send = (m: ToWorker) => worker.postMessage(m);
+let brushQueue:Command[]=[];
+let brushFlush=0;
+function queueBrush(cmd:Command){
+  brushQueue.push(cmd);
+  if(!brushFlush)brushFlush=requestAnimationFrame(flushBrush);
+}
+function flushBrush(){if(brushFlush)cancelAnimationFrame(brushFlush);brushFlush=0;if(!brushQueue.length)return;const cmds=brushQueue;brushQueue=[];send({type:'cmds',cmds});}
 let stats: any = null, evolution: any = null, species: any[] = [], running = true, tool = 'inspect', cat = 'terrain', material: number = M.SOIL;
 let selectedColony = -1, scenario = 'first-colony', seed = 42, mode: Mode = 'naturalistic', modalKind = '', journalTab = 'discoveries';
 let sound = false, audio: AudioContext | null = null, stroke = false, dragging = false, lastPoint: {x: number; y: number} | null = null, space = false;
-const toolHints: Record<string,string> = { inspect: 'Click an ant or terrain cell to inspect it.', dig: 'Drag to excavate. Food and water stay in place.', pan: 'Drag to move around. Scroll to zoom.', queen: 'Click a surface to introduce one mated founding queen.', colony: 'Sandbox introduction: click to place a queen and 35 workers.', heat: 'Drag to warm local soil and air.', cool: 'Drag to cool local soil and air.', humid: 'Drag to add soil moisture and raise local humidity.', dry: 'Drag to remove moisture and lower humidity.', toxin: 'Drag to apply toxic contamination. It decays over time.', rain: 'Click to start a short local rain shower.', erase: 'Drag to remove material, food, or water.', spider: 'Click an open surface to introduce a spider.', springtail: 'Click an open surface to introduce a decomposer.' };
+let shapeStart:{x:number;y:number}|null=null;
+let eraseStroke=false,intensify=false,lineAnchor:{x:number;y:number}|null=null;
+let heldBrushFrame=0,heldBrushAt=0;
+function holdBrush(t:number){
+  heldBrushFrame=0;
+  if(!stroke||dragging||shapeStart)return;
+  if(renderer.hover&&t-heldBrushAt>=1000/30){paint(renderer.hover.x,renderer.hover.y);heldBrushAt=t;}
+  heldBrushFrame=requestAnimationFrame(holdBrush);
+}
+const toolHints: Record<string,string> = { inspect: 'Click an ant or terrain cell to inspect it.', dig: 'Drag to excavate. Food and water stay in place.', pan: 'Drag to move around. Scroll to zoom.', queen: 'Click a surface to introduce one mated founding queen.', colony: 'Sandbox introduction: click to place a queen and 35 workers.', heat: 'Drag to heat the local temperature field immediately. Shift intensifies.', cool: 'Drag to cool the local temperature field immediately. Shift intensifies.', humid: 'Drag to add soil moisture and raise local humidity.', dry: 'Drag to remove moisture and lower humidity.', toxin: 'Drag to apply toxic contamination. It decays over time.', rain: 'Click to start a short local rain shower.', erase: 'Drag to remove material, food, or water.', spider: 'Click an open surface to introduce a spider.', springtail: 'Click an open surface to introduce a decomposer.',pick:'Click a cell to select its material. Middle-click also picks.',charge:'Apply electrical charge. Shift intensifies; conductors carry it to connected devices.',mix:'Shuffle movable particles within the brush. Fixed solids stay in place.',smash:'Crush brittle solids into falling powders: stone, glass, wood, ice, clay and sugar.',drag:'Drag existing powder, liquid or gas into empty space. Matter is moved, not copied.' };
 function toast(text: string, error = false) { const el = $('#toast'); el.textContent = text; el.classList.toggle('error', error); el.classList.add('show'); setTimeout(() => el.classList.remove('show'), error ? 8000 : 3800); }
 function beep() { if (!sound) return; audio ??= new AudioContext(); void audio.resume(); const osc = audio.createOscillator(), gain = audio.createGain(); osc.type = 'sine'; osc.frequency.value = 550; gain.gain.value = .025; osc.connect(gain).connect(audio.destination); osc.start(); gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .07); osc.stop(audio.currentTime + .08); }
 function setTool(t: string, m?: number) {
@@ -81,20 +105,28 @@ function setTool(t: string, m?: number) {
 function palette() {
   document.querySelectorAll<HTMLElement>('[data-cat]').forEach(b => b.classList.toggle('selected', b.dataset.cat === cat));
   let html = '';
-  const matButton = (m: number) => { const d = MATERIALS[m], names:Record<number,string>={[M.TOPSOIL]:'Topsoil',[M.ORGANIC]:'Detritus',[M.SUGAR]:'Sugar',[M.PROTEIN]:'Protein',[M.SEED]:'Seeds'}; return `<button data-tool="paint" data-mat="${m}" style="--element:rgb(${d.color});--element-dark:rgb(${d.color.map(c=>Math.round(c*.45))})" title="${esc(d.description)}"><span class="swatch swatch-${d.key}" style="--swatch:rgb(${d.color})"></span><span>${esc(names[m]??d.name)}</span></button>`; };
+  const matButton = (m: number) => { const d = MATERIALS[m], names:Record<number,string>={[M.TOPSOIL]:'Topsoil',[M.ORGANIC]:'Detritus',[M.SUGAR]:'Sugar',[M.PROTEIN]:'Protein',[M.SEED]:'Seeds'},linear=d.color.map(c=>{const s=c/255;return s<=.04045?s/12.92:((s+.055)/1.055)**2.4;}),lum=linear[0]*.2126+linear[1]*.7152+linear[2]*.0722; return `<button data-tool="paint" data-mat="${m}" style="--element:rgb(${d.color});--element-ink:${lum>.179?'#111820':'#fff9e8'};--element-dark:rgb(${d.color.map(c=>Math.round(c*.45))})" title="${esc(d.description)}"><span class="swatch swatch-${d.key}" style="--swatch:rgb(${d.color})"></span><span>${esc(names[m]??d.name)}</span></button>`; };
   const tb = (t: string, name: string, i: string) => `<button data-tool="${t}"><span class="tool-swatch">${icon(i)}</span><span>${name}</span></button>`;
   if (cat === 'terrain') html = tb('dig','Dig','shovel') + [M.TOPSOIL,M.SOIL,M.SAND,M.CLAY,M.STONE,M.GRAVEL,M.ORGANIC,M.WOOD,M.ROOT,M.BARRIER].map(matButton).join('') + tb('erase','Erase','close');
+  if(cat==='tools')html=tb('inspect','Inspect','cursor')+tb('pick','Pick','cursor')+tb('erase','Erase','close')+tb('dig','Dig','shovel')+tb('heat','Heat','sun')+tb('cool','Cool','drop')+tb('charge','Shock','sun')+tb('mix','Mix','layers')+tb('smash','Smash','shovel')+tb('drag','Drag','cursor')+tb('pan','Pan','fit');
   if (cat === 'food') html = [M.SUGAR,M.PROTEIN,M.SEED,M.WATER].map(matButton).join('') + tb('rain','Local rain','drop') + '<p class="palette-note">Sugar fuels adults.<br>Protein feeds growing larvae.<br>Harvester ants also process seeds.</p>';
   if (cat === 'life') html = `<div class="species-picker"><label for="species-search">Choose a species</label><input id="species-search" placeholder="Search species…"><select id="species">${species.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>` + tb('queen','Founding queen','ant') + tb('colony','35-worker colony','ant') + tb('spider','Spider','ant') + tb('springtail','Springtail','ant') + matButton(M.PLANT) + '<p class="palette-note">Introductions are sandbox interventions.<br>New colonies still need food and a safe nest.</p>';
   if (cat === 'climate') html = tb('heat','Warm +','sun') + tb('cool','Cool −','sun') + tb('humid','Moisten','drop') + tb('dry','Dry','drop') + tb('rain','Local rain','drop') + tb('toxin','Toxin','close') + '<p class="palette-note">Temperature and humidity affect development,<br>water balance, foraging, and survival.</p>';
+  if(['powders','liquids','gases','solids','energy'].includes(cat)){
+    const energy=new Set<number>([M.FIRE,M.SPARK,M.WIRE,M.BATTERY,M.LAMP,M.HEATER,M.COOLER,M.CLONER,M.EXPLOSIVE]);
+    html=(cat==='energy'?tb('charge','Shock','sun'):'')+MATERIALS.filter(m=>m.id!==M.AIR&&(cat==='energy'?energy.has(m.id):cat==='powders'?m.state==='powder':cat==='liquids'?m.state==='liquid':cat==='gases'?m.state==='gas':m.state==='solid')).map(m=>matButton(m.id)).join('');
+  }
+  const query=$<HTMLInputElement>('#palette-search').value.trim().toLowerCase();
+  if(query)html=MATERIALS.filter(m=>m.id!==M.AIR&&(m.name+' '+m.description).toLowerCase().includes(query)).map(m=>matButton(m.id)).join('');
   $('#palette').innerHTML = html;
   filterPalette();
   setTool(tool);
   if (cat === 'life') $('#species-search').addEventListener('input', e => { const q = (e.target as HTMLInputElement).value.toLowerCase(); $('#species').innerHTML = species.filter(s => (s.name + s.commonName).toLowerCase().includes(q)).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join(''); });
 }
 function filterPalette(){const q=$<HTMLInputElement>('#palette-search').value.toLowerCase().trim();document.querySelectorAll<HTMLElement>('#palette > button').forEach(b=>{b.hidden=!!q&&!((b.textContent??'')+' '+b.title).toLowerCase().includes(q);});}
-$('#palette-search').addEventListener('input',filterPalette);
-function setRunning(r: boolean) { running = r; send({type:'run',running:r}); $('#play').innerHTML = icon(r ? 'pause' : 'play'); $('#play').setAttribute('aria-label', r ? 'Pause simulation' : 'Play simulation'); $('#play').title = `${r ? 'Pause' : 'Play'} (Space)`; $('#play').classList.toggle('active', r); }
+$('#palette-search').addEventListener('input',palette);
+$('#palette-search').addEventListener('keydown',e=>{if(e.key==='Enter'){const b=document.querySelector<HTMLButtonElement>('#palette>button:not([hidden])');if(b){b.click();$<HTMLInputElement>('#palette-search').blur();$('#world').focus();}}});
+function setRunning(r: boolean) { running = r; send({type:'run',running:r}); $('#play').innerHTML = icon(r ? 'pause' : 'play'); $('#play').setAttribute('aria-label', r ? 'Pause simulation' : 'Play simulation'); $('#play').title = `${r ? 'Pause' : 'Play'} (Space)`; $('#play').classList.toggle('active', r);$('#quick-play').textContent=r?'Pause':'Play'; }
 function openModal(title: string, body: string, kind = '') { modalKind = kind; $('#modal-title').textContent = title; $('#modal-body').innerHTML = body; if (!($('#modal') as HTMLDialogElement).open) ($('#modal') as HTMLDialogElement).showModal(); }
 function closeModal() { ($('#modal') as HTMLDialogElement).close(); modalKind = ''; }
 $('#modal-close').onclick = closeModal;
@@ -110,7 +142,11 @@ function newWorldDialog() {
 }
 function guide() {
   const s = stats?.scenario;
-  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · right-drag or H to pan · wheel to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
+  if(['empty','physics-lab'].includes(s?.id)){
+    openModal(s.title,`<p class="lead">Draw matter. Change conditions. Watch the result.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Choose a material.</strong> Powders fall, liquids spread and gases rise or settle. Fixed solids form walls.</li><li><strong>Draw a container.</strong> Use barriers or glass. Replace overwrites occupied cells; turn it off to add only into empty space.</li><li><strong>Change temperature or charge.</strong> Heat, Cool and Shock act immediately, even while paused. Shift intensifies. Resume to see melting, burning, flowing and conduction.</li><li><strong>Inspect and compare.</strong> Click cells with Inspect, then Edit to change their properties. Use temperature and charge overlays. Undo restores the previous world.</li></ol><div class="scenario-actions">${(s.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">Batteries, heaters, coolers and cloners are continuous sandbox sources. Material temperatures and reactions are simplified game rules. The full Sandboxels element library and JavaScript mods are not included.</div><p>Right-drag erases. Middle-click picks. Alt-drag pans; scroll zooms. Use Pause and Step to examine individual updates. To start an ant colony, first paint a suitable soil layer, then introduce a queen from Organisms.</p><button id="guide-close">Start experimenting</button>`,'guide');
+    document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
+  }
+  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · Alt-drag or H to pan · wheel to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
   document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});toast('Experiment intervention applied');closeModal();});
   $('#guide-close').onclick=closeModal;
 }
@@ -123,7 +159,7 @@ function saves(list: any[] = []) {
 }
 function settings() {
   const c=stats?.climate??{};
-  openModal('Settings & field notes', `<div class="settings-grid"><section><h3>Presentation</h3><label><input id="labels" type="checkbox" ${renderer.labels?'checked':''}> Colony flags and labels</label><label><input id="patterns" type="checkbox" ${renderer.patterns?'checked':''}> Pattern marks on overlays</label><label><input id="detail" type="checkbox" ${renderer.lowDetail?'checked':''}> Reduce rendering detail (same simulation)</label><label><input id="sound" type="checkbox" ${sound?'checked':''}> Quiet tool sounds</label></section><section><h3>Ecosystem rules</h3><label><input id="weather-setting" type="checkbox" ${stats?.settings?.weather?'checked':''}> Seasonal weather</label><label><input id="predators" type="checkbox" ${stats?.settings?.naturalPredators?'checked':''}> Natural predator arrivals</label><label>Mean air temperature <output id="temp-val">${c.meanTemp}°C</output><input id="global-temp" type="range" min="0" max="38" value="${c.meanTemp}"></label><label>Surface humidity <output id="hum-val">${Math.round(c.baseHumidity*100)}%</output><input id="global-hum" type="range" min="10" max="95" value="${c.baseHumidity*100}"></label></section></div><details><summary>What the simulation abstracts</summary><p>The 2D slice constrains every route and flood to one plane. Ants walk on adjacent surfaces. Nest exit distance and colony task stimuli are bounded navigation and resource-accounting helpers; workers cannot query distant food. Surface trails decay without gas diffusion. Nest odour and alarm diffuse through open cells. Stored food and feeding are colony-scale approximations.</p><p>Learning changes task thresholds within a lifetime. Larval conditions influence realised size. Inheritance changes only offspring genotypes; mutation is random and never chosen to solve a pressure. Naturalistic trait effects and numeric rates are game assumptions.</p><p>Haploid males develop from unfertilised eggs; female offspring combine a maternal gamete with a stored paternal genome. Mating, flight seasons, recombination, and colony size are simplified. Off-map fathers are labelled background parents.</p></details><details><summary>Species and custom content</summary>${species.map(s=>`<h3><i>${esc(s.name)}</i></h3><p>${esc(s.summary)} ${esc(s.founding)} founding.</p><p class="muted">${s.simplifications.map(esc).join(' ')}</p>`).join('')}<p>Import declarative JSON matching the SpeciesDef schema in src/sim/species.ts. Executable content is never loaded.</p><button id="import-species">Import species JSON</button></details><details><summary>Research and known limits</summary><p>Sources and full assumptions are in docs/BIOLOGY.md. No real-time gas or oxygen simulation, full colony migration, parasites, bridge-building, or predictive evolution. Trail, moisture, temperature, and nutrition are real mechanics; future content is never displayed as an active capability.</p><p><a href="https://pubmed.ncbi.nlm.nih.gov/22972897/" target="_blank" rel="noreferrer">Czaczkes et al.: Lasius route learning</a><br><a href="https://doi.org/10.1007/s00442-002-0960-2" target="_blank" rel="noreferrer">Johnson: semi-claustral founding</a><br><a href="https://antwiki.org/wiki/Lasius_niger" target="_blank" rel="noreferrer">AntWiki: Lasius niger</a></p></details><div class="notice">Biologically informed sandbox. Associations in a run are not scientific evidence of causation. All editing tools are available immediately; discoveries only record observations.</div>`, 'settings');
+  openModal('Settings & field notes', `<div class="settings-grid"><section><h3>Presentation</h3><label><input id="labels" type="checkbox" ${renderer.labels?'checked':''}> Colony flags and labels</label><label><input id="patterns" type="checkbox" ${renderer.patterns?'checked':''}> Pattern marks on overlays</label><label><input id="detail" type="checkbox" ${renderer.lowDetail?'checked':''}> Reduce rendering detail (same simulation)</label><label><input id="sound" type="checkbox" ${sound?'checked':''}> Quiet tool sounds</label></section><section><h3>Ecosystem rules</h3><label><input id="weather-setting" type="checkbox" ${stats?.settings?.weather?'checked':''}> Seasonal weather</label><label><input id="predators" type="checkbox" ${stats?.settings?.naturalPredators?'checked':''}> Natural predator arrivals</label><label>Mean air temperature <output id="temp-val">${c.meanTemp}°C</output><input id="global-temp" type="range" min="0" max="38" value="${c.meanTemp}"></label><label>Surface humidity <output id="hum-val">${Math.round(c.baseHumidity*100)}%</output><input id="global-hum" type="range" min="10" max="95" value="${c.baseHumidity*100}"></label></section></div><details><summary>What the simulation abstracts</summary><p>The 2D slice constrains every route and flood to one plane. Ants walk on adjacent surfaces. Nest exit distance and colony task stimuli are bounded navigation and resource-accounting helpers; workers cannot query distant food. Surface trails decay without gas diffusion. Nest odour and alarm diffuse through open cells. Stored food and feeding are colony-scale approximations.</p><p>Learning changes task thresholds within a lifetime. Larval conditions influence realised size. Inheritance changes only offspring genotypes; mutation is random and never chosen to solve a pressure. Naturalistic trait effects and numeric rates are game assumptions.</p><p>Haploid males develop from unfertilised eggs; female offspring combine a maternal gamete with a stored paternal genome. Mating, flight seasons, recombination, and colony size are simplified. Off-map fathers are labelled background parents.</p></details><details><summary>Species and custom content</summary>${species.map(s=>`<h3><i>${esc(s.name)}</i></h3><p>${esc(s.summary)} ${esc(s.founding)} founding.</p><p class="muted">${s.simplifications.map(esc).join(' ')}</p>`).join('')}<p>Import declarative JSON matching the SpeciesDef schema in src/sim/species.ts. Executable content is never loaded.</p><button id="import-species">Import species JSON</button></details><details><summary>Research and known limits</summary><p>Sources and full assumptions are in docs/BIOLOGY.md. No oxygen-budget or ventilation simulation, full colony migration, parasites, bridge-building, or predictive evolution. Trail, moisture, temperature, and nutrition are real mechanics; future content is never displayed as an active capability.</p><p><a href="https://pubmed.ncbi.nlm.nih.gov/22972897/" target="_blank" rel="noreferrer">Czaczkes et al.: Lasius route learning</a><br><a href="https://doi.org/10.1007/s00442-002-0960-2" target="_blank" rel="noreferrer">Johnson: semi-claustral founding</a><br><a href="https://antwiki.org/wiki/Lasius_niger" target="_blank" rel="noreferrer">AntWiki: Lasius niger</a></p></details><div class="notice">Biologically informed sandbox. Associations in a run are not scientific evidence of causation. All editing tools are available immediately; discoveries only record observations.</div>`, 'settings');
   $('#modal-body').insertAdjacentHTML('afterbegin','<div class="button-row"><button id="settings-new">New world</button><button id="settings-journal">Field journal</button><button id="settings-guide">Experiment guide</button></div>');
   $('#settings-new').onclick=newWorldDialog;$('#settings-journal').onclick=()=>{evolution=null;journal();};$('#settings-guide').onclick=guide;
   for(const [id,key] of [['labels','labels'],['patterns','patterns'],['detail','lowDetail']] as const) $( '#'+id).onchange=()=>{renderer[key]=$<HTMLInputElement>('#'+id).checked;};
@@ -154,6 +190,8 @@ function journal() {
 
 function updateStats(s: any) {
   stats=s; running=s.running;
+  $<HTMLButtonElement>('#undo').disabled=!s.history?.undo;$<HTMLButtonElement>('#redo').disabled=!s.history?.redo;
+  $('#quick-play').textContent=s.running?'Pause':'Play';
   $('#day').textContent=`Day ${s.day}`; $('#season').textContent=`${s.season} · ${s.clock}`;
   $('#weather').textContent=`${s.airT.toFixed(0)}°C · ${s.raining?'raining':s.daytime?'daylight':'night'}`;
   $('#status').textContent=`${s.ants.toLocaleString()} ants · ${s.colonies.filter((c:any)=>c.alive).length} colonies · ${s.running?(s.achievedSpeed.toFixed(1)+'× achieved'):'paused'}`;
@@ -164,6 +202,7 @@ function updateStats(s: any) {
   if(selectedColony<0&&s.colonies.length)selectedColony=s.colonies[0].id;
   const c=s.colonies.find((c:any)=>c.id===selectedColony)??s.colonies[0];
   $('#colony-peek').textContent=c?`${c.workers} workers · ${c.brood.reduce((a:number,b:number)=>a+b,0)} brood`:'Introduce a queen';
+  if(document.body.classList.contains('panel-hidden'))return;
   if(c){
     const brood=c.brood.reduce((a:number,b:number)=>a+b,0);
     $('#colony-detail').innerHTML=`<div class="species-line"><i>${esc(c.species)}</i><span class="stage">${esc(c.stage)}</span></div><div class="colony-count"><strong>${c.workers}</strong><span>workers<br><small>${c.queens} queen${c.queens===1?'':'s'} · generation ${c.generation}</small></span><button id="focus-colony" class="icon-btn" aria-label="Focus colony" title="Focus colony">${icon('fit')}</button></div><div class="brood-stages"><div><b>${c.brood[0]}</b><span>Eggs</span></div><span>›</span><div><b>${c.brood[1]}</b><span>Larvae</span></div><span>›</span><div><b>${c.brood[2]}</b><span>Pupae</span></div></div><div class="store-heading">Nest stores <small>food units</small></div><div class="resources"><span><i style="background:#e7bd69"></i>Sugar <b>${c.store.sugar.toFixed(0)}</b></span><span><i style="background:#d98a78"></i>Protein <b>${c.store.protein.toFixed(0)}</b></span><span><i style="background:#a9b473"></i>Seeds <b>${c.store.seed.toFixed(0)}</b></span></div>${c.stage==='founding'?`<div class="reserve-line"><span>Queen reserves</span><b>${c.reserves.toFixed(0)}</b></div><meter min="0" max="120" value="${c.reserves}"></meter>`:''}<p class="colony-note">${esc(c.notes[0]??(brood?'Brood developing in the nest. Inspect a worker to understand its task.':'The queen is looking for a suitable nest site.'))}</p><details class="tasks"><summary>Colony activity</summary>${Object.entries(c.tasks).map(([k,v])=>`<div>${esc(k)}<b>${v}</b></div>`).join('')||'<p>No workers yet.</p>'}<p>${c.stats.workersEclosed} workers emerged · ${c.stats.daughterColonies} daughters founded</p><p>Deaths: ${esc(JSON.stringify(c.stats.adultDeaths))}</p></details>`;
@@ -179,15 +218,16 @@ function updateStats(s: any) {
 
 worker.onmessage=e=>{
   const m=e.data;
-  if(m.type==='ready'){send({type:'new',opts:{scenario,seed}});send({type:'speed',speed:10});setRunning(true);}
+  if(m.type==='ready'){send({type:'new',opts:{scenario,seed}});send({type:'speed',speed:1});setRunning(true);}
   if(m.type==='world'){
     evolution = null;
-    species=m.species;mode=m.mode;seed=m.seed;scenario=m.scenario.id;renderer.species=species;
+    species=m.species;mode=m.mode;seed=m.seed;scenario=m.scenario.id;renderer.species=species;if(m.cutaway!==undefined)renderer.cutaway=m.cutaway;
     if(!m.keepView)renderer.reset(m.W,m.H);
     $('#world-title').textContent=m.scenario.title;$('#mode-badge').textContent=MODES[mode].label;$('#seed-label').textContent=String(seed);$('#position').textContent=`${m.W} × ${m.H} cells`;palette();
   }
-  if(m.type==='frame')renderer.accept(m);
+  if(m.type==='frame'){try{renderer.accept(m);}finally{send({type:'frameAck',id:m.id});}}
   if(m.type==='stats')updateStats(m);
+  if(m.type==='history'){$<HTMLButtonElement>('#undo').disabled=!m.undo;$<HTMLButtonElement>('#redo').disabled=!m.redo;}
   if(m.type==='evolution'){const first=!evolution;evolution=m.data;if(first&&modalKind==='journal')journal();}
   if(m.type==='error')toast(m.text,true);
   if(m.type==='saved'){toast('World saved in this browser');send({type:'listSaves'});}
@@ -202,7 +242,26 @@ $('#speed').onchange=()=>send({type:'speed',speed:Number($<HTMLSelectElement>('#
 $('#new').onclick=newWorldDialog;$('.brand').onclick=e=>{e.preventDefault();renderer.fit();};$('#journal').onclick=()=>{evolution=null;journal();};$('#settings').onclick=settings;$('#save-menu').onclick=()=>send({type:'listSaves'});$('#scenario-help').onclick=guide;
 $('#zoom-in').onclick=()=>renderer.zoomAt(1.3);$('#zoom-out').onclick=()=>renderer.zoomAt(1/1.3);$('#fit').onclick=()=>renderer.fit();
 $('#fullscreen').onclick=()=>{const action=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();void action.catch(()=>toast('Fullscreen is unavailable in this browser window.',true));};
-$('#collapse').onclick=()=>document.body.classList.toggle('panel-hidden');$('#sidebar-toggle').onclick=()=>document.body.classList.toggle('panel-hidden');
+document.querySelectorAll<HTMLElement>('[data-click]').forEach(b=>b.onclick=()=>$('#'+b.dataset.click).click());
+$('#undo').onclick=()=>{flushBrush();send({type:'undo'});setRunning(false);};$('#redo').onclick=()=>{flushBrush();send({type:'redo'});setRunning(false);};
+$('#clear-world').onclick=()=>{flushBrush();send({type:'clearWorld'});setRunning(false);toast('World cleared. Undo restores the previous ecosystem.');};
+$('#brush-minus').onclick=()=>changeBrush(-1);$('#brush-plus').onclick=()=>changeBrush(1);
+function changeBrush(d:number){$<HTMLInputElement>('#brush').value=String(Math.max(0,Math.min(15,renderer.brush+d)));$('#brush').dispatchEvent(new Event('input'));}
+$('#replace-toggle').onclick=()=>{const c=$<HTMLInputElement>('#replace');c.checked=!c.checked;$('#replace-toggle').classList.toggle('selected',c.checked);};
+$('#replace').onchange=()=>$('#replace-toggle').classList.toggle('selected',$<HTMLInputElement>('#replace').checked);
+$('#search-elements').onclick=()=>$('#palette-search').focus();
+$('#set-tps').onclick=()=>{openModal('Target simulation rate',`<p>TPS is fixed simulation ticks per second. Rendering remains independent; work stays within its compute budget. Actual throughput can be lower.</p><label>Target TPS<input id="tps-value" type="number" min="1" max="9000" value="${Math.min(9000,Math.round((stats?.speed??10)*30))}"></label><button id="tps-apply" class="primary">Set tick rate</button>`);$('#tps-apply').onclick=()=>{const tps=Number($<HTMLInputElement>('#tps-value').value);if(!Number.isFinite(tps)||tps<1||tps>9000)return toast('Enter a rate from 1 to 9000 TPS.',true);send({type:'speed',speed:tps/30});const sel=$<HTMLSelectElement>('#speed'),o=document.createElement('option');o.value=String(tps/30);o.textContent=`${tps} TPS`;sel.append(o);sel.value=o.value;closeModal();};};
+$('#edit-cell').onclick=()=>{
+ const c=stats?.selectedCell;if(!c){setTool('inspect');document.body.classList.remove('panel-hidden');toast('Select a cell in the world, then press Edit.');return;}
+ openModal(`Edit cell ${c.x}, ${c.y}`,`<p>Sandbox override. Food and water changes are recorded as player sources/sinks. Temperature affects the local 4 × 4 field tile.</p><label>Material<select id="cell-mat">${MATERIALS.map(m=>`<option value="${m.id}" ${m.id===c.materialId?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label><div class="form-grid"><label>Quantity<input id="cell-amount" type="number" min="0" max="255" value="${c.amount}"></label><label>Temperature °C<input id="cell-temp" type="number" min="-100" max="2000" value="${c.temperature.toFixed(1)}"></label><label>Charge 0–255<input id="cell-charge" type="number" min="0" max="255" value="${c.charge}"></label><label>Contamination<input id="cell-toxin" type="number" min="0" max="255" value="${c.toxin}"></label></div><button id="cell-apply" class="primary">Apply properties</button>`);
+ $('#cell-apply').onclick=()=>{const nums=['cell-mat','cell-amount','cell-temp','cell-charge','cell-toxin'].map(id=>Number($<HTMLInputElement>('#'+id).value));if(nums.some(v=>!Number.isFinite(v)))return toast('Use finite numbers for cell properties.',true);send({type:'beginEdit'});send({type:'cmd',cmd:{t:'editCell',x:c.x,y:c.y,mat:nums[0],amount:nums[1],temperature:nums[2],charge:nums[3],toxin:nums[4]}});send({type:'endEdit'});closeModal();};
+};
+$('#element-info').onclick=()=>{const m=MATERIALS[material];openModal(m.name,`<p>${esc(m.description)}</p><dl><dt>State</dt><dd>${m.state}</dd><dt>Relative density</dt><dd>${m.density}</dd><dt>Conductivity</dt><dd>${m.conductivity??0}</dd><dt>Dig resistance</dt><dd>${m.digResist}</dd><dt>Permeability</dt><dd>${m.permeability}</dd><dt>Moisture capacity</dt><dd>${m.moistureCap}</dd><dt>Thermal diffusivity</dt><dd>${m.thermal}</dd></dl>`);};
+$('#content-packs').onclick=()=>{openModal('Mods & content packs',`<p>Import declarative species packs. Packs configure existing biology and traits; arbitrary scripts are not executed.</p><p>Sandboxels JavaScript mods use another engine and are not compatible with this game.</p>${species.map(s=>`<p><strong>${esc(s.name)}</strong> · ${s.builtin?'built-in':'imported pack'}</p>`).join('')}<button id="pack-file" class="primary">Import species JSON</button>`);$('#pack-file').onclick=()=>$<HTMLInputElement>('#species-file').click();};
+$('#capture-world').onclick=()=>{canvas.toBlob(blob=>{if(!blob)return;const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=`ant-sandbox-${seed}-day${stats?.day??1}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);},'image/png');};
+function toggleGUI(){document.body.classList.toggle('gui-hidden');}
+$('#toggle-gui').onclick=toggleGUI;$('#restore-ui').onclick=toggleGUI;
+$('#collapse').onclick=()=>document.body.classList.toggle('panel-hidden');$('#sidebar-toggle').onclick=()=>{document.body.classList.toggle('panel-hidden');if(stats)updateStats(stats);};
 $('#colony-select').onchange=()=>{selectedColony=Number($<HTMLSelectElement>('#colony-select').value);updateOverlay();};
 $('#overlay').onchange=updateOverlay;
 function updateOverlay(){const kind=$<HTMLSelectElement>('#overlay').value as OverlayKind,c=stats?.colonies.find((c:any)=>c.id===selectedColony);send({type:'overlay',kind,colony:c?.slot??-1,trait:6});const el=$('#overlay-legend');el.hidden=kind==='none';el.textContent=kind==='trail'?'Foraging trail · stronger marks = more signal':kind==='temperature'?'Temperature · blue cool → red hot':kind==='territory'?'Recent visits · colony markings':`${$<HTMLSelectElement>('#overlay').selectedOptions[0].text} · faint → strong`;}
@@ -213,26 +272,68 @@ $('#file-input').onchange=()=>void importFile($('#file-input'));$('#species-file
 function paint(x:number,y:number){
   if(x<0||y<0||x>=renderer.W||y>=renderer.H)return;
   const r=renderer.brush;let cmd:Command;
-  if(tool==='paint')cmd={t:'paint',mat:material,x,y,r,replace:$<HTMLInputElement>('#replace').checked};
-  else if(tool==='dig'||tool==='erase'||tool==='toxin'||tool==='rain')cmd={t:tool,x,y,r};
-  else if(tool==='heat'||tool==='cool')cmd={t:'heat',x,y,r,amount:tool==='heat'?2:-2};
+  if(eraseStroke)cmd={t:'erase',x,y,r};
+  else if(tool==='paint')cmd={t:'paint',mat:material,x,y,r,replace:$<HTMLInputElement>('#replace').checked};
+  else if(tool==='dig'||tool==='erase'||tool==='toxin'||tool==='rain'||tool==='mix'||tool==='smash')cmd={t:tool,x,y,r};
+  else if(tool==='charge')cmd={t:'charge',x,y,r,amount:intensify?255:96};
+  else if(tool==='heat'||tool==='cool')cmd={t:'heat',x,y,r,amount:(tool==='heat'?1:-1)*(intensify?10:2)};
   else if(tool==='humid'||tool==='dry')cmd={t:'humidity',x,y,r,amount:tool==='humid'?1:-1};
   else if(tool==='queen'||tool==='colony'){const sp=$<HTMLSelectElement>('#species')?.value??species[0]?.id;if(!sp)return;cmd=tool==='queen'?{t:'queen',species:sp,x,y}:{t:'colony',species:sp,x,y,workers:35};}
   else if(tool==='spider'||tool==='springtail')cmd={t:'critter',kind:tool,x,y};else return;
-  send({type:'cmd',cmd});
+  queueBrush(cmd);
 }
 const canvas=$<HTMLCanvasElement>('#world');
+function paintShape(a:{x:number;y:number},b:{x:number;y:number},shape:string){
+ if(shape==='fill'){queueBrush({t:'fill',mat:material,x:b.x,y:b.y});return;}
+ if(shape==='box'){const loX=Math.min(a.x,b.x),loY=Math.min(a.y,b.y),hiX=Math.max(a.x,b.x),hiY=Math.max(a.y,b.y),spacing=Math.max(1,renderer.brush);for(let y=loY;y<=hiY;y+=spacing)for(let x=loX;x<=hiX;x+=spacing)paint(x,y);paint(hiX,hiY);return;}
+ const n=Math.max(Math.abs(b.x-a.x),Math.abs(b.y-a.y),1);for(let k=0;k<=n;k++)paint(Math.round(a.x+(b.x-a.x)*k/n),Math.round(a.y+(b.y-a.y)*k/n));
+}
 const local=(e:PointerEvent|WheelEvent)=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
 canvas.oncontextmenu=e=>e.preventDefault();
-canvas.onpointerdown=e=>{canvas.focus();canvas.setPointerCapture(e.pointerId);const p=local(e);dragging=e.button===2||e.button===1||tool==='pan'||space;stroke=!dragging;lastPoint=renderer.world(p.x,p.y);if(!dragging){if(tool==='inspect'){send({type:'selectAnt',...lastPoint,radius:Math.max(1,5/renderer.zoom)});$('#inspector').setAttribute('open','');document.body.classList.remove('panel-hidden');}else{paint(lastPoint.x,lastPoint.y);beep();}}};
-canvas.onpointermove=e=>{const p=local(e),w=renderer.world(p.x,p.y);renderer.hover=w;$('#position').textContent=`${w.x}, ${w.y} · ${renderer.zoom.toFixed(1)}× zoom`;if(dragging){renderer.ox+=e.movementX;renderer.oy+=e.movementY;}else if(stroke&&tool!=='inspect'&&!['queen','colony','spider','springtail','rain'].includes(tool)&&lastPoint&&(w.x!==lastPoint.x||w.y!==lastPoint.y)){const dx=w.x-lastPoint.x,dy=w.y-lastPoint.y,n=Math.min(100,Math.max(Math.abs(dx),Math.abs(dy)));for(let k=1;k<=n;k++)paint(Math.round(lastPoint.x+dx*k/n),Math.round(lastPoint.y+dy*k/n));lastPoint=w;}};
-const pointerEnd=()=>{stroke=false;dragging=false;lastPoint=null;};canvas.onpointerup=pointerEnd;canvas.onpointercancel=pointerEnd;canvas.onlostpointercapture=pointerEnd;canvas.onpointerleave=()=>{renderer.hover=null;};
+function pickAt(w:{x:number;y:number}){if(w.x<0||w.y<0||w.x>=renderer.W||w.y>=renderer.H)return;const m=renderer.map[w.y*renderer.W+w.x];if(m===M.AIR){setTool('erase');return;}const d=MATERIALS[m];cat=d.category==='food'?'food':d.state==='powder'?'powders':d.state==='liquid'?'liquids':d.state==='gas'?'gases':'solids';palette();setTool('paint',m);}
+canvas.onpointerdown=e=>{
+ e.preventDefault();canvas.focus();const p=local(e),w=renderer.world(p.x,p.y);renderer.hover=w;
+ if(e.button===1&&!e.altKey){pickAt(w);return;}canvas.setPointerCapture(e.pointerId);
+ eraseStroke=e.button===2;dragging=!eraseStroke&&(tool==='pan'||e.altKey||space);stroke=!dragging;lastPoint=w;intensify=e.shiftKey;
+ if(dragging)return;
+ if(tool==='pick'&&!eraseStroke){pickAt(w);stroke=false;return;}
+ if(tool==='inspect'&&!eraseStroke){send({type:'selectAnt',...w,radius:Math.max(1,5/renderer.zoom)});$('#inspector').setAttribute('open','');document.body.classList.remove('panel-hidden');stroke=false;return;}
+ send({type:'beginEdit'});const shape=eraseStroke?'brush':$<HTMLSelectElement>('#draw-shape').value;
+ if(e.shiftKey&&lineAnchor&&['paint','dig','erase'].includes(tool)){paintShape(lineAnchor,w,'line');stroke=false;flushBrush();send({type:'endEdit'});}
+ else if(shape==='fill'){paintShape(w,w,'fill');stroke=false;flushBrush();send({type:'endEdit'});}
+ else if(shape!=='brush'&&tool!=='drag')shapeStart={...w};else if(tool!=='drag'){
+  paint(w.x,w.y);
+  if(eraseStroke||!['queen','colony','spider','springtail','rain'].includes(tool)){heldBrushAt=performance.now();if(!heldBrushFrame)heldBrushFrame=requestAnimationFrame(holdBrush);}
+ }
+ lineAnchor=w;beep();
+};
+canvas.onpointermove=e=>{
+ const p=local(e),w=renderer.world(p.x,p.y);renderer.hover=w;intensify=e.shiftKey;
+ $('#position').textContent=`${w.x}, ${w.y} · ${renderer.zoom.toFixed(1)}× zoom`;
+ if(dragging){renderer.ox+=e.movementX;renderer.oy+=e.movementY;return;}
+ if(shapeStart){renderer.preview={...shapeStart,x2:w.x,y2:w.y,kind:$<HTMLSelectElement>('#draw-shape').value};return;}
+ if(!stroke||!lastPoint||(w.x===lastPoint.x&&w.y===lastPoint.y))return;
+ if(tool==='drag'&&!eraseStroke){queueBrush({t:'move',x:lastPoint.x,y:lastPoint.y,toX:w.x,toY:w.y,r:renderer.brush});lastPoint=w;return;}
+ if(!eraseStroke&&['inspect','pick','queen','colony','spider','springtail','rain'].includes(tool))return;
+ const dx=w.x-lastPoint.x,dy=w.y-lastPoint.y,d=Math.max(Math.abs(dx),Math.abs(dy)),spacing=eraseStroke||['paint','dig','erase'].includes(tool)?Math.max(1,Math.floor(renderer.brush/2)):1;
+ if(d<spacing)return;const n=Math.min(100,Math.ceil(d/spacing));for(let k=1;k<=n;k++)paint(Math.round(lastPoint.x+dx*k/n),Math.round(lastPoint.y+dy*k/n));lastPoint=w;
+};
+const pointerEnd=()=>{
+ if(heldBrushFrame)cancelAnimationFrame(heldBrushFrame);heldBrushFrame=0;
+ const wasEdit=stroke;
+ if(shapeStart&&renderer.hover)paintShape(shapeStart,renderer.hover,$<HTMLSelectElement>('#draw-shape').value);
+ else if(stroke&&renderer.hover&&lastPoint&&(eraseStroke||!['inspect','pick','drag','queen','colony','spider','springtail','rain'].includes(tool))&&(lastPoint.x!==renderer.hover.x||lastPoint.y!==renderer.hover.y))paint(renderer.hover.x,renderer.hover.y);
+ shapeStart=null;renderer.preview=null;stroke=false;dragging=false;lastPoint=null;eraseStroke=false;flushBrush();if(wasEdit)send({type:'endEdit'});
+};
+canvas.onpointerup=pointerEnd;canvas.onpointercancel=pointerEnd;canvas.onlostpointercapture=pointerEnd;canvas.onpointerleave=()=>{renderer.hover=null;};
 canvas.addEventListener('wheel',e=>{e.preventDefault();const p=local(e);renderer.zoomAt(e.deltaY<0?1.12:1/1.12,p.x,p.y);},{passive:false});
 document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();if(key===' '&&!e.repeat){space=true;setRunning(!running);}if(key==='.'){$('#step').click();}if(key==='i')setTool('inspect');if(key==='d')setTool('dig');if(key==='h')setTool('pan');if(key==='f')renderer.fit();if(key==='+'||key==='=')renderer.zoomAt(1.2);if(key==='-')renderer.zoomAt(1/1.2);if(key==='arrowleft')renderer.ox+=40;if(key==='arrowright')renderer.ox-=40;if(key==='arrowup')renderer.oy+=40;if(key==='arrowdown')renderer.oy-=40;if(key==='['||key===']'){$<HTMLInputElement>('#brush').value=String(Math.max(0,Math.min(15,renderer.brush+(key==='['?-1:1))));$('#brush').dispatchEvent(new Event('input'));}});
 document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;if(e.key.toLowerCase()==='e'){e.preventDefault();$('#palette-search').focus();}if(e.key.toLowerCase()==='x')setTool('erase');});
 document.addEventListener('keyup',e=>{if(e.key===' ')space=false;});
+document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;const k=e.key.toLowerCase();if(k==='p')setRunning(!running);if(k==='>')$('#step').click();if(k==='c')$('#capture-world').click();if(k==='\\')settings();if(['1','2','3','4'].includes(k)){$<HTMLSelectElement>('#overlay').value=['none','temperature','trail','charge'][Number(k)-1];updateOverlay();}});
+document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea'))return;if(e.key==='F1'){e.preventDefault();toggleGUI();}if(e.key==='F2'){e.preventDefault();$('#capture-world').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'#redo':'#undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('#redo').click();}});
 let hiddenRunning=false;document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenRunning=running;if(running)setRunning(false);}else if(hiddenRunning){setRunning(true);hiddenRunning=false;}});
-setInterval(()=>{$('#fps').textContent=`${Math.round(renderer.fps)} fps · ${renderer.renderMs.toFixed(1)} ms render`;},1000);
+setInterval(()=>{$('#fps').textContent=`${Math.round(renderer.fps)} fps · ${renderer.renderMs.toFixed(1)} ms draw · ${renderer.updateMs.toFixed(1)} ms terrain`;},1000);
 // Read-only diagnostics used by the browser acceptance checks.
 Object.defineProperty(window,'__antSandbox',{value:{get stats(){return stats;},get renderer(){return renderer;}}});
 palette();

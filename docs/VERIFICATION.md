@@ -4,9 +4,9 @@ Tests and measurements are reproducible scripts, not promised outcomes. Measurem
 
 ## Engine checks
 
-The Vitest suite covers 14 checks: blocked movement/terrain editing, water accounting, repeated foraging food accounting, surface signal decay/washout, airborne walls, maternal allele assortment, no retroactive worker genotype/phenotype edits, thermal development thresholds, larval protein requirements, save/load continuing-state agreement, seeded replay, corrupt-save rejection, pause/read-only state, and custom-content validation.
+The Vitest suite checks blocked movement and terrain editing, repeated-seed food/water accounting, signal transport, maternal allele assortment, no retroactive worker mutation, developmental conditions and larval protein, detached snapshots and deterministic continuation, schema migration and malformed saves, pause behavior, and species validation. Renderer checks cover cached textures and individual ant sprites without stale trails. Sandbox checks cover grain gravity, density, water phases, reactive-chunk wakeup, burning, connected/severed circuits, barrier-blocked blasts, matter transfer, cloner sources, gas escape/walls, corrosion, melting, cooking, electrical persistence and connected fill.
 
-A complete expanded run passed 14/14. Under concurrent browser work another run exceeded the original two-minute test timeout during its repeated-seed experiment; it did not report an invariant failure. That experiment now has a four-minute allowance and fewer redundant ticks. Run `npm test` for the current result. `npm run typecheck` checks the complete UI/worker code without a packaging build.
+The expanded suite passed **40/40**, including a regression for saving pending surface-column updates between subsystem phases. `npm run typecheck` passed for the complete UI/worker code without a packaging build. The repeated-seed experiment has a four-minute allowance so it can run alongside browser QA on the reference laptop.
 
 The save/load check advances both original and restored worlds and compares continuation, not just their initial display. It exposed a missing active-chunk scheduler; snapshots now preserve it. Tests also exposed buried-agent movement, incomplete custom validation and protein replacement by sugar; these were corrected. The replay hash covers core state, not every byte of diagnostic output. No cross-browser reproducibility claim.
 
@@ -23,16 +23,18 @@ The flood scenario was revised after testing showed an uphill pool infiltrated b
 | Measurement | Observed |
 | --- | --- |
 | Wall time | 120 s |
-| Fixed ticks completed | 21,416 |
-| Mean time per tick including periodic packing | 5.60 ms |
-| First sampled 5 seconds | 9.35 ms/tick at 4,968 ants |
-| Final population | 2,942 ants; population was not held artificially constant |
-| JS heap sampled | 11.9–26.4 MiB |
-| Array buffers sampled | 7.3–13.3 MiB |
-| Signal chunks sampled | 39–127 |
+| Fixed ticks completed | 14,261 |
+| Mean time per tick including periodic packing | 8.42 ms |
+| First sampled 5 seconds | 8.10 ms/tick at 4,968 ants |
+| Final population | 3,741 ants; population was not held artificially constant |
+| JS heap sampled | 15.1–32.0 MiB |
+| Array buffers sampled | 7.8–13.9 MiB |
+| Signal chunks sampled | 38–123 |
 | Resource audit | Sugar, protein, seed and water matched ledger expectations |
 
 Population declined through the actual survival rules; this does not prove constant-5,000-agent long-term throughput. Garbage collection caused sawtooth memory samples rather than monotonic sampled growth. Two minutes without a crash is useful short stability evidence, **not proof against a long-session leak**. Full lineage records are cumulative. Use `npm run bench -- 300` or longer to extend the recorded experiment.
+
+This rerun includes the added material physics (`artifacts/benchmark.json`). The earlier engine sample is retained in `artifacts/benchmark-before-sandbox.json`. The last 25 seconds overlapped local checking work and slowed substantially; compare the actual sample series rather than inferring an isolated A/B speedup from their overall means.
 
 The supported default is a compact 384×192 founding world; 512×256 is available. Large 768×384 is labelled experimental. Rendering detail can be reduced without changing simulation rules. Warp is compute-budget limited; lower achieved speed is visible. A 60-FPS/5,000-agent guarantee is not made on this laptop.
 
@@ -40,4 +42,18 @@ The supported default is a compact 384×192 founding world; 512×256 is availabl
 
 `scripts/screenshots.mjs` uses an isolated Edge/Chromium profile against the dev server. It checks pause, exact single step, pointer painting and digging, zoom, IndexedDB save/load, overlays, moved food, lineage, phone layout, flood intervention and speed. It writes screenshots and an outcome JSON in `artifacts/`. The Sandboxels-inspired UI keeps a full-width canvas, dense material buttons/search and an optional overlay inspector. Documentation-only changes do not require rebuilding; source edits during QA trigger Vite reloads, which can interrupt a browser test.
 
-The focused `scripts/ui-preview.mjs` check passed category switching, material filtering and observatory toggling, with actual screenshots at 1440×900 and 390×844 and no horizontal overflow. Earlier browser checks passed painting, digging, zoom, pause/single-step and IndexedDB save/load. The extended scenario browser script timed out after Warp; end-to-end automation of all scenarios is therefore incomplete. Mechanical route/reproduction/flood tests ran headlessly. Portable serialization is unit-tested; browser file download/import and full-screen permission behavior should also be checked manually on a deployment. No claim that all browsers or accessibility combinations have been certified.
+The focused `scripts/ui-preview.mjs` check passed category switching, material filtering and observatory toggling, with screenshots at 1440×900 and 390×844 and no horizontal overflow. After the rendering optimizations, the extended `scripts/screenshots.mjs` run passed pause/step, painting/digging, zoom, IndexedDB save/load, moved food, overlays, lineage, phone layout, flood intervention and speed changes (`artifacts/browser-checks.json`).
+
+`scripts/sandbox-controls.mjs` passed 16 checks: Reset and complete-world Undo/Redo, undoable brush edits, rectangles, connected fill, lines, a drawn battery/wire/lamp circuit, cell editing, global search, right-click erase, hide/restore UI, actual portable export/import, PNG download, phone layout, the lab reservoir intervention, continuous held-brush grain pouring and held heat changing temperature while paused. See `artifacts/sandbox-controls.json`, the desktop/mobile PNGs and `artifacts/physics-lab.png`. Full-screen permission behavior still needs a manual check on a deployment. No claim that all browsers or accessibility combinations have been certified.
+
+## Input and rendering optimization
+
+`scripts/performance-ui.mjs` repeats a 10× workload at 1440×900 in isolated Edge. The earlier renderer spent **71.06 ms mean / 204 ms maximum** accepting a terrain packet and displayed **10.6 FPS** (`performance-before.json`). Cached pixel textures, one regional upload, acknowledged worker frames, and batched brush input reduced the measured terrain acceptance cost to **0.33 ms mean / 1.5 ms maximum** in `performance-pixels.json`, with **60 FPS** in that sample. Later samples with Undo and the expanded physics have higher costs under concurrent laptop load; these are retained rather than replacing the earlier evidence.
+
+Individual sprite writes now share a reusable pixel layer. In the expanded 5,000-agent browser stress sample (`performance-sandbox-stress.json`), terrain acceptance averaged **1.2 ms**, drawing **1.42 ms**, and the sampled rate was **46.9 FPS**. Automated end-to-end paint latency was **623 ms** in that loaded stress run; large populations and full-state Undo snapshots can still cause input delay. This is not a claim of 60 FPS or instant painting at 5,000 agents. The ordinary founding world defaults to 30 TPS; accelerated rates have a fixed computation budget and report achieved throughput.
+
+The final ordinary-world 10× request (`performance-sandbox-final.json`) sampled **2.07 ms** terrain acceptance, **56.3 FPS**, and **217 ms** automated end-to-end paint latency. Achieved simulation speed was only **1.17×** in that short loaded run, so smooth rendering does not imply the simulation met the requested 10× rate. This is why requested and achieved speeds are shown separately.
+
+At the supported **1× default**, the final check (`performance-sandbox-default.json`) sampled **55.8 FPS**, **1.86 ms** mean terrain acceptance and **31.8 ms from the actual pointer event to updated terrain data**. Its automation round-trip paint time was **77.5 ms**; the script now separates native event handling from automation transport. The terrain-data measurement precedes the next display refresh and is not a universal end-to-end display-latency guarantee.
+
+The separate `scripts/snapshot-bench.ts` isolates Undo checkpoint serialization for 4,968 ants in Node. Twelve snapshots averaged **15.10 ms** (3.74–28.82 ms); this excludes browser message scheduling, rendering, history bookkeeping and restore. The record is `artifacts/snapshot-benchmark.json`. Input delay in a browser cannot be attributed entirely to snapshot copying from this measurement.

@@ -12,11 +12,18 @@ export interface NewWorldOptions {
   climate?: Partial<Climate>;
 }
 
-export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait';
+export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge';
 
 export type ToWorker =
   | { type: 'new'; opts: NewWorldOptions }
   | { type: 'cmd'; cmd: Command }
+  | { type: 'cmds'; cmds: Command[] }
+  | { type: 'frameAck'; id: number }
+  | { type: 'beginEdit' }
+  | { type: 'endEdit' }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'clearWorld' }
   | { type: 'run'; running: boolean }
   | { type: 'speed'; speed: number }
   | { type: 'step'; ticks: number }
@@ -39,6 +46,7 @@ export type ToWorker =
 
 export interface FrameMsg {
   type: 'frame';
+  id: number;
   tick: number;
   W: number;
   H: number;
@@ -69,6 +77,7 @@ export const CARRY_KIND = { NONE: 0, SUGAR: 1, PROTEIN: 2, SEED: 3, SPOIL: 4, CO
 
 export interface CellInfo {
   x: number; y: number;
+  materialId:number;amount:number;temperature:number;charge:number;toxin:number;
   material: string;
   description: string;
   lines: string[];

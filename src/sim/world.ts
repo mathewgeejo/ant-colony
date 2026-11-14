@@ -1,4 +1,4 @@
-import { IS_SOLID, M, MOIST_CAP, WATER_UNITS, MATERIALS } from './materials.ts';
+import { IS_SOLID, IS_GAS, IS_WATER, FOOD_OF, M, MOIST_CAP, WATER_UNITS, MATERIALS } from './materials.ts';
 
 export const CS = 16; // chunk size (cells)
 export const CSHIFT = 4;
@@ -45,6 +45,7 @@ export class World {
   flags: Uint8Array;
   owner: Uint8Array;
   toxin: Uint8Array;
+  charge:Uint8Array;
   temp: Float32Array; // coarse, degC
   heat: Float32Array; // coarse, player-applied heat source offset (degC), decays
   hum: Float32Array; // coarse, relative air humidity 0..1
@@ -52,6 +53,7 @@ export class World {
   chunkDirty: Uint8Array;
   chunkActive: Uint8Array;
   chunkVer: Uint32Array;
+  chunkReactive:Uint32Array;
   moved: Uint32Array;
   surface: Int16Array; // first non-air row per column (sky exposure)
   ledger = new Ledger();
@@ -71,6 +73,7 @@ export class World {
     this.flags = new Uint8Array(this.N);
     this.owner = new Uint8Array(this.N);
     this.toxin = new Uint8Array(this.N);
+    this.charge=new Uint8Array(this.N);
     const tn = this.TW * this.TH;
     this.temp = new Float32Array(tn).fill(20);
     this.heat = new Float32Array(tn);
@@ -80,6 +83,7 @@ export class World {
     this.chunkDirty = new Uint8Array(cn).fill(1);
     this.chunkActive = new Uint8Array(cn).fill(8);
     this.chunkVer = new Uint32Array(cn);
+    this.chunkReactive=new Uint32Array(cn);
     this.moved = new Uint32Array(this.N);
     this.surface = new Int16Array(W);
   }
@@ -132,6 +136,9 @@ export class World {
    * callers are responsible for recording them in the ledger (see Sim.setCell).
    */
   setRaw(i: number, m: number, a = 0): number {
+    const c=this.chunkOf(i%this.W,(i/this.W)|0),old=this.mat[i];
+    const delta=(m>=19||m===M.SAND?1:0)-(old>=19||old===M.SAND?1:0);
+    if(delta)this.chunkReactive[c]=Math.max(0,this.chunkReactive[c]+delta);
     this.mat[i] = m;
     this.amt[i] = a;
     let lost = 0;
@@ -147,6 +154,8 @@ export class World {
   /** Swap two cells' material/amt/moisture (used by CA moves; conserves everything). */
   swap(i: number, j: number) {
     const m = this.mat[i], a = this.amt[i], w = this.moist[i], f = this.flags[i];
+    const ci=this.chunkOf(i%this.W,(i/this.W)|0),cj=this.chunkOf(j%this.W,(j/this.W)|0);
+    if(ci!==cj){const d=(this.mat[j]>=19||this.mat[j]===M.SAND?1:0)-(m>=19||m===M.SAND?1:0);this.chunkReactive[ci]=Math.max(0,this.chunkReactive[ci]+d);this.chunkReactive[cj]=Math.max(0,this.chunkReactive[cj]-d);}
     this.mat[i] = this.mat[j]; this.amt[i] = this.amt[j]; this.moist[i] = this.moist[j];
     this.mat[j] = m; this.amt[j] = a; this.moist[j] = w;
     // nest ownership stays with the location; plug/aphid flags travel with the material
@@ -162,7 +171,7 @@ export class World {
     let y = 0;
     while (y < this.H) {
       const m = this.mat[y * this.W + x];
-      if (m !== M.AIR && m !== M.PLANT) break;
+      if (!IS_GAS[m] && m !== M.PLANT) break;
       y++;
     }
     this.surface[x] = y;
@@ -171,6 +180,7 @@ export class World {
     for (let x = 0; x < this.W; x++) this.recomputeSurface(x);
     this.dirtyColumns.clear();
   }
+  rebuildReactive(){this.chunkReactive.fill(0);for(let k=0;k<this.N;k++)if(this.mat[k]>=19||this.mat[k]===M.SAND)this.chunkReactive[this.chunkOf(k%this.W,(k/this.W)|0)]++;}
   flushSurface() {
     for (const x of this.dirtyColumns) this.recomputeSurface(x);
     this.dirtyColumns.clear();
@@ -186,7 +196,7 @@ export class World {
     const { mat, amt, moist, N } = this;
     for (let i = 0; i < N; i++) {
       t += moist[i];
-      if (mat[i] === M.WATER) t += amt[i];
+      if (IS_WATER[mat[i]]) t += amt[i];
     }
     return t;
   }
@@ -195,10 +205,10 @@ export class World {
     let s = 0, p = 0, d = 0;
     const { mat, amt, N } = this;
     for (let i = 0; i < N; i++) {
-      const m = mat[i];
-      if (m === M.SUGAR) s += amt[i];
-      else if (m === M.PROTEIN) p += amt[i];
-      else if (m === M.SEED) d += amt[i];
+      const f=FOOD_OF[mat[i]];
+      if (f===1) s += amt[i];
+      else if (f===2) p += amt[i];
+      else if (f===3) d += amt[i];
     }
     return [s, p, d];
   }

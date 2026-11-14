@@ -10,7 +10,7 @@ try{
  await p.evaluate(()=>document.querySelector('[data-cat="food"]').click());
  assert.equal(await p.evaluate(()=>!!document.querySelector('[data-mat="1"]')),true);checks.push('Food and water category');
  await p.evaluate(()=>{const s=document.querySelector('#palette-search');s.value='protein';s.dispatchEvent(new Event('input'));});
- assert.equal(await p.evaluate(()=>!document.querySelector('[data-mat="12"]').hidden&&document.querySelector('[data-mat="1"]').hidden),true);checks.push('Material search filters buttons');
+ assert.equal(await p.evaluate(()=>!document.querySelector('[data-mat="12"]').hidden&&(!document.querySelector('[data-mat="1"]')||document.querySelector('[data-mat="1"]').hidden)),true);checks.push('Material search filters buttons');
  await p.evaluate(()=>{const s=document.querySelector('#palette-search');s.value='';s.dispatchEvent(new Event('input'));document.querySelector('[data-cat="terrain"]').click();document.querySelector('#sidebar-toggle').click();});
  assert.equal(await p.evaluate(()=>document.body.classList.contains('panel-hidden')),false);checks.push('Observatory opens over full-width world');
  await p.evaluate(()=>document.querySelector('#collapse').click());

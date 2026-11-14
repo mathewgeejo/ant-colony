@@ -2,7 +2,7 @@
 import { CASTE, TASK } from './ants.ts';
 import { CRITTER } from './critters.ts';
 import { NP, P } from './genetics.ts';
-import { FOOD_OF, M, MATERIALS, MOIST_CAP } from './materials.ts';
+import { FOOD_OF, M, MATERIALS, MOIST_CAP,CONDUCTIVITY } from './materials.ts';
 import type { OverlayKind } from '../protocol.ts';
 import { CARRY_KIND } from '../protocol.ts';
 import type { Sim } from './sim.ts';
@@ -15,6 +15,7 @@ export function cellByte1(sim: Sim, k: number): number {
   let q = 0;
   const cap = MOIST_CAP[m];
   if (m === M.WATER) q = Math.min(15, w.amt[k] >> 2);
+  else if(CONDUCTIVITY[m])q=Math.min(15,w.charge[k]>>4);
   else if (FOOD_OF[m]) q = Math.min(15, Math.round((w.amt[k] / Math.max(1, MATERIALS[m].foodUnits)) * 15));
   else if (m === M.PLANT) q = Math.min(15, w.amt[k]);
   else if (cap) q = Math.min(15, Math.round((w.moist[k] / cap) * 15));
@@ -109,6 +110,7 @@ export function rasterOverlay(sim: Sim, kind: OverlayKind, colonySlot: number, t
   const out = new Uint8Array(W * H);
   const cols = sim.colonies.filter((c) => c && c.alive && (colonySlot < 0 || c.slot === colonySlot));
   switch (kind) {
+    case 'charge':for(let k=0;k<w.N;k++)out[k]=w.charge[k];break;
     case 'moisture':
       for (let k = 0; k < w.N; k++) {
         const cap = MOIST_CAP[w.mat[k]];
