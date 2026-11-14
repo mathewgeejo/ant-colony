@@ -1,0 +1,16 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "All 32 screenshot liquids are selectable in the liquid palette",
+    "All 32 liquids paint through the canvas in Fantasy mode",
+    "Inspector reports mixture water separately from soil moisture",
+    "Color brush updates the actual rendered stain while paused",
+    "Cell editor and single step freeze a real milk mixture",
+    "Portable export/import preserves frozen contents and stains",
+    "Live lab forms cheese and shows its eight vessel labels",
+    "Fictional vaccine and antidote are gated in Naturalistic mode",
+    "Lab intervention buttons apply environmental edits",
+    "Phone layout has no horizontal overflow and the liquid catalog scrolls"
+  ],
+  "errors": []
+}

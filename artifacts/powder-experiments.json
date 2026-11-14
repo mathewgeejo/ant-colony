@@ -1,0 +1,110 @@
+{
+  "description": "Seeded live workshop conditions; the shield intervention edits terrain. No products or exposure outcomes are scheduled.",
+  "results": [
+    {
+      "seed": 1,
+      "ticks": 2720,
+      "wallMs": 2503.5007,
+      "products": {
+        "slime": 11,
+        "lye": 0,
+        "lye-solution": 9,
+        "lime": 9,
+        "molten-iron": 0,
+        "iron": 7,
+        "slag": 2,
+        "burning-thermite": 0,
+        "uranium": 9
+      },
+      "shieldedDose": 0,
+      "openedExposureSamples": 186,
+      "continuationMatched": true,
+      "resources": {
+        "inv": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164170
+        },
+        "exp": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164170
+        }
+      },
+      "heapMiB": 19.465530395507812,
+      "buffersMiB": 8.619826316833496
+    },
+    {
+      "seed": 19,
+      "ticks": 2720,
+      "wallMs": 1584.8165,
+      "products": {
+        "slime": 9,
+        "lye": 0,
+        "lye-solution": 9,
+        "lime": 9,
+        "molten-iron": 0,
+        "iron": 5,
+        "slag": 4,
+        "burning-thermite": 0,
+        "uranium": 9
+      },
+      "shieldedDose": 0,
+      "openedExposureSamples": 108,
+      "continuationMatched": true,
+      "resources": {
+        "inv": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164195
+        },
+        "exp": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164195
+        }
+      },
+      "heapMiB": 19.2891845703125,
+      "buffersMiB": 15.282607078552246
+    },
+    {
+      "seed": 42,
+      "ticks": 2720,
+      "wallMs": 1600.5515999999998,
+      "products": {
+        "slime": 8,
+        "lye": 0,
+        "lye-solution": 9,
+        "lime": 9,
+        "molten-iron": 0,
+        "iron": 7,
+        "slag": 2,
+        "burning-thermite": 0,
+        "uranium": 9
+      },
+      "shieldedDose": 0,
+      "openedExposureSamples": 290,
+      "continuationMatched": true,
+      "resources": {
+        "inv": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164104
+        },
+        "exp": {
+          "sugar": 0,
+          "protein": 0,
+          "seed": 0,
+          "water": 164104
+        }
+      },
+      "heapMiB": 12.073463439941406,
+      "buffersMiB": 6.819258689880371
+    }
+  ]
+}

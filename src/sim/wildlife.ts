@@ -7,7 +7,7 @@ import { wildlifeById,type WildlifeDef } from './wildlife-defs.ts';
 export interface WildlifeState{
  id:number;kind:number;x:number;y:number;px:number;py:number;hp:number;hunger:number;age:number;dir:number;kills:number;leaving:boolean;
  energy:number;stage:number;stageAge:number;sex:number;cooldown:number;parentId:number;mateId:number;generation:number;
- pollen:number;pollenX:number;infection:number;action:string;eaten:boolean;
+ pollen:number;pollenX:number;infection:number;immunity:number;action:string;eaten:boolean;
 }
 export function habitatAllows(sim:Sim,p:WildlifeDef,x:number,y:number,stage=2){
  const w=sim.w;if(!w.inb(x,y))return false;const m=w.get(x,y);
@@ -18,7 +18,17 @@ export function habitatAllows(sim:Sim,p:WildlifeDef,x:number,y:number,stage=2){
  return canStand(sim,x,y,false);
 }
 export function newWildlife(id:number,kind:number,x:number,y:number,sex:number):WildlifeState{
- return{id,kind,x,y,px:x,py:y,hp:1,hunger:0,age:0,dir:1,kills:0,leaving:false,energy:.8,stage:2,stageAge:0,sex,cooldown:0,parentId:0,mateId:0,generation:0,pollen:0,pollenX:-1,infection:0,action:'Exploring local habitat',eaten:false};
+ return{id,kind,x,y,px:x,py:y,hp:1,hunger:0,age:0,dir:1,kills:0,leaving:false,energy:.8,stage:2,stageAge:0,sex,cooldown:0,parentId:0,mateId:0,generation:0,pollen:0,pollenX:-1,infection:0,immunity:0,action:'Exploring local habitat',eaten:false};
+}
+export function medicineExposure(sim:Sim,c:WildlifeState){
+ c.immunity=Math.max(0,c.immunity-4);const w=sim.w;
+ if(!w.medicineCells&&!c.infection)return;
+ // Resolve the prophylactic dose before exposure, independent of neighbor ordering.
+ if(c.immunity<600)for(const [dx,dy] of [[0,0],[-1,0],[1,0],[0,-1],[0,1]]){const x=c.x+dx,y=c.y+dy;if(!w.inb(x,y))continue;const k=y*w.W+x;if(w.mat[k]===M.VACCINE&&w.amt[k]){c.immunity=1800;sim.phys.sandbox.reactions.consume(k,1,'fictional immunizer dose');break;}}
+ for(const [dx,dy] of [[0,0],[-1,0],[1,0],[0,-1],[0,1]]){const x=c.x+dx,y=c.y+dy;if(!w.inb(x,y))continue;const k=y*w.W+x,m=w.mat[k];
+  if(m===M.PLAGUE&&!c.immunity)c.infection=Math.max(c.infection,600);
+ }
+ if(c.infection){c.infection=Math.max(0,c.infection-4);c.hp-=.003;}
 }
 
 /** Bounded spatial buckets for local animal contact; no all-pairs interaction pass. */
@@ -98,20 +108,21 @@ export class WildlifeSystem{
    const p=wildlifeById(c.kind);if(!p||c.hp<=0)continue;c.age+=4;c.stageAge+=4;c.cooldown=Math.max(0,c.cooldown-4);
    const k=c.y*w.W+c.x,T=w.tempAt(c.x,c.y),wet=w.mat[k]===M.WATER||w.mat[k]===M.SALTWATER;
    if(T< -5||T>42)c.hp-=.02;if(w.toxin[k])c.hp-=w.toxin[k]/255*(p.key==='stinkbug'?.001:.015);if(w.charge[k]>60)c.hp-=.05;
+   if(w.dose[k])c.hp-=w.dose[k]/255*.025;
    if((p.habitat==='water'||(p.key==='frog'&&c.stage===1))&&!wet)c.hp-=.05;
    if(wet&&!['water','amphibious'].includes(p.habitat))c.hp-=.02;
    if(p.moisture&&w.humAt(c.x,c.y)<p.moisture&&w.moist[k]<15&&!wet)c.hp-=.003;
-   for(const [dx,dy] of [[0,0],[-1,0],[1,0],[0,-1],[0,1]]){
-    const m=w.get(c.x+dx,c.y+dy);if(m===M.PLAGUE)c.infection=Math.max(c.infection,600);if(m===M.CACTUS&&p.habitat!=='air')c.hp-=.002;
-   }
-   if(c.infection){c.infection=Math.max(0,c.infection-4);c.hp-=.003;this.near(sim,list,c.x,c.y,1,n=>{if(n!==c&&this.clear(sim,c.x,c.y,n.x,n.y))n.infection=Math.max(n.infection,120);});}
+   medicineExposure(sim,c);
+   for(const [dx,dy] of [[0,0],[-1,0],[1,0],[0,-1],[0,1]])if(w.get(c.x+dx,c.y+dy)===M.CACTUS&&p.habitat!=='air')c.hp-=.002;
+   if(c.infection)this.near(sim,list,c.x,c.y,1,n=>{if(n!==c&&!n.immunity&&this.clear(sim,c.x,c.y,n.x,n.y))n.infection=Math.max(n.infection,120);});
    if(c.stage===0){c.action='Developing egg / newborn';if(c.stageAge>=p.egg&&T>=8&&T<=35){c.stage=1;c.stageAge=0;}continue;}
    if(c.stage===3){c.action='Pupating';if(c.stageAge>=240){c.stage=2;c.stageAge=0;}continue;}
    if(c.stage===1&&c.stageAge>=p.juvenile&&c.energy>.35){c.stage=p.metamorphosis?3:2;c.stageAge=0;c.energy-=.1;if(c.stage===3)continue;}
    c.energy-=.0009*(p.speed+.4);c.hunger+=4;if(c.energy<=0)c.hp-=.005;
    if(c.hp<=0||c.age>p.life){this.die(sim,c,c.age>p.life?'Old age':'Environmental stress / starvation');continue;}
    if(IS_SOLID[w.mat[k]]){let escaped=false;for(const [dx,dy] of [[0,-1],[-1,0],[1,0],[0,1]])if(habitatAllows(sim,p,c.x+dx,c.y+dy,c.stage)&&!IS_SOLID[w.get(c.x+dx,c.y+dy)]){c.x+=dx;c.y+=dy;escaped=true;break;}if(!escaped){c.hp-=.03;c.action='Buried; cannot pass through the barrier';continue;}}
-   if(sim.rng.next()>p.speed)continue;c.action='Exploring local habitat';let target=this.food(sim,c,p);
+   const adhesion=w.localAdhesion(c.x,c.y);
+   if(sim.rng.next()>p.speed*(1-.8*adhesion))continue;c.action=adhesion?'Moving slowly near adhesive':'Exploring local habitat';let target=this.food(sim,c,p);
    if(p.key==='flea')this.near(sim,list,c.x,c.y,4,n=>{if([9,11].includes(n.kind)&&this.clear(sim,c.x,c.y,n.x,n.y)){target=n;if(Math.abs(n.x-c.x)+Math.abs(n.y-c.y)<=1){n.hp-=.02;c.energy=Math.min(1,c.energy+.08);c.action='Feeding on host';}}});
    const hunts=p.key==='firefly'?c.stage===1:p.prey.length>0;
    if(hunts)this.near(sim,list,c.x,c.y,5,n=>{const np=wildlifeById(n.kind);if(!np||n===c||!p.prey.includes(np.key)||!this.clear(sim,c.x,c.y,n.x,n.y))return;target=n;if(Math.abs(n.x-c.x)+Math.abs(n.y-c.y)<=1){n.hp-=.18*(1-np.shell);c.action='Attacking nearby prey';if(np.key==='stinkbug')for(const [dx,dy] of [[0,0],[-1,0],[1,0]])if(w.inb(n.x+dx,n.y+dy))w.toxin[(n.y+dy)*w.W+n.x+dx]=120;if(n.hp<=0){n.eaten=true;c.kills++;c.energy=Math.min(1,c.energy+.4);}}});

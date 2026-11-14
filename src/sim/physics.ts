@@ -128,7 +128,7 @@ export class Physics {
     if (y + 1 < H) {
       const b = i + W;
       const mb = mat[b];
-      if(IS_LIQUID[mb]&&DENSITY[mb]<DENSITY[M.WATER]){w.swap(i,b);moved[b]=st;return true;}
+      if((IS_LIQUID[mb]||IS_GRANULAR[mb])&&DENSITY[mb]<DENSITY[M.WATER]){if(IS_GRANULAR[mb]&&this.tryInfiltrate(i,b,mb,1,rng))return true;w.swap(i,b);moved[b]=st;return true;}
       if (waterOpen(mb)) {
         w.swap(i, b);
         moved[b] = st;
@@ -206,6 +206,9 @@ export class Physics {
     const cohesion = MATERIALS[m].cohesion + (m === M.SAND || m === M.LOOSE ? Math.min(0.75, wet * 2.5) : 0);
     const b = i + W;
     const mb = mat[b];
+    const rate=MATERIALS[m].fallRate??1;
+    if(rate<1&&IS_GAS[mb]&&rng.next()>rate+(1-rate)*w.moist[i]/Math.max(1,MOIST_CAP[m])){const dir=rng.chance(.5)?-1:1;if(x+dir>=0&&x+dir<W&&mat[i+dir]===M.AIR&&rng.chance(.25)){w.swap(i,i+dir);moved[i+dir]=st;}w.chunkActive[w.chunkOf(x,y)]=8;return false;}
+    if((MATERIALS[mb].adhesion??0)>.5&&rng.chance(MATERIALS[mb].adhesion!)){w.chunkActive[w.chunkOf(x,y)]=8;return false;}
     if (IS_GAS[mb] || (IS_LIQUID[mb]&&DENSITY[m]>DENSITY[mb])) {
       // unsupported: falls unless cohesive (damp) and keyed into a solid neighbour (arching)
       const held = cohesion > 0.6 && ((x > 0 && IS_SOLID[mat[i - 1]]) || (x < W - 1 && IS_SOLID[mat[i + 1]]));
@@ -407,7 +410,7 @@ export class Physics {
         heat[c] *= 0.9985;
         if (Math.abs(heat[c]) < 0.01) heat[c] = 0;
         th = 0;
-        next[c] = Math.max(-100, Math.min(2000, v));
+        next[c] = Math.max(-273, Math.min(2000, v));
         if(Math.abs(next[c]-T)>.1){const ch=w.chunkOf(Math.min(W-1,cx),Math.min(w.H-1,cy));if(w.chunkReactive[ch])w.chunkActive[ch]=8;}
       }
     }

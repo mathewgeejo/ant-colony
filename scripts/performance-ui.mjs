@@ -6,8 +6,8 @@ try{
  await page.goto(process.argv[3]??'http://127.0.0.1:5175/');await page.waitForFunction(()=>window.__antSandbox?.stats?.tick>10,{},{timeout:60000});
  const requestedSpeed=Number(process.argv[5]??10);
  await page.evaluate(speed=>{const e=document.querySelector('#speed');e.value=String(speed);e.dispatchEvent(new Event('change'));},requestedSpeed);
- if(process.argv[4]==='stress-test'){
-   await page.evaluate(()=>{document.querySelector('#new').click();document.querySelector('[data-scenario="stress-test"]').click();document.querySelector('#create-world').click();});await page.waitForFunction(()=>window.__antSandbox?.stats?.scenario?.id==='stress-test'&&window.__antSandbox.stats.tick>10,{},{timeout:60000});
+ if(process.argv[4]&&process.argv[4]!=='default'){
+   const scenario=process.argv[4];await page.evaluate(scenario=>{document.querySelector('#new').click();document.querySelector(`[data-scenario="${scenario}"]`).click();document.querySelector('#create-world').click();},scenario);await page.waitForFunction(scenario=>window.__antSandbox?.stats?.scenario?.id===scenario&&window.__antSandbox.stats.tick>10,scenario,{timeout:60000});
  }
  await page.evaluate(()=>{const r=window.__antSandbox.renderer,fn=r.accept.bind(r);window.__perf={accept:[],chunks:[],frames:0,paintAt:0,eventAt:0,latency:null,eventToTerrainMs:null};document.querySelector('#world').addEventListener('pointerdown',()=>{const p=window.__perf;if(p.paintAt&&!p.eventAt)p.eventAt=performance.now();},{capture:true});r.accept=f=>{const t=performance.now();fn(f);const p=window.__perf;p.accept.push(performance.now()-t);p.chunks.push(f.chunkCount);p.frames++;if(p.paintAt&&p.latency===null&&r.map[8*r.W+180]===4){p.latency=performance.now()-p.paintAt;p.eventToTerrainMs=p.eventAt?performance.now()-p.eventAt:null;}};document.querySelector('#play').click();});
  await page.waitForTimeout(500);await page.evaluate(()=>document.querySelector('[data-mat="4"]').click());

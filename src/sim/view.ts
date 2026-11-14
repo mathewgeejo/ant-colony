@@ -8,7 +8,7 @@ import { CARRY_KIND } from '../protocol.ts';
 import type { Sim } from './sim.ts';
 import { CS, FLAG_APHID, FLAG_PLUG, TS } from './world.ts';
 
-/** byte0 = material, byte1 = q(4 bits) | aphid<<4 | toxin<<5 | nest<<6 | plug<<7 */
+/** Packed detail byte: q(4 bits) | aphid<<4 | toxin<<5 | nest<<6 | plug<<7. */
 export function cellByte1(sim: Sim, k: number): number {
   const w = sim.w;
   const m = w.mat[k];
@@ -28,7 +28,7 @@ export function packChunks(sim: Sim, all: boolean, maxChunks = 4096): { buf: Arr
   const list: number[] = [];
   for (let c = 0; c < w.chunkDirty.length; c++) if (all || w.chunkDirty[c]) { list.push(c); if (list.length >= maxChunks) break; }
   if (!list.length) return { buf: null, count: 0 };
-  const per = 2 + CS * CS * 2;
+  const per = 2 + CS * CS * 3;
   const buf = new ArrayBuffer(list.length * per);
   const u8 = new Uint8Array(buf);
   let o = 0;
@@ -39,9 +39,9 @@ export function packChunks(sim: Sim, all: boolean, maxChunks = 4096): { buf: Arr
     for (let ly = 0; ly < CS; ly++)
       for (let lx = 0; lx < CS; lx++) {
         const x = cx + lx, y = cy + ly;
-        if (x >= w.W || y >= w.H) { u8[o++] = 0; u8[o++] = 0; continue; }
+        if (x >= w.W || y >= w.H) { u8[o++] = 0; u8[o++] = 0; u8[o++] = 0; continue; }
         const k = y * w.W + x;
-        u8[o++] = w.mat[k];
+        u8[o++] = w.mat[k]&255;u8[o++] = w.mat[k]>>>8;
         u8[o++] = cellByte1(sim, k);
       }
   }
@@ -77,6 +77,11 @@ export function packAnts(sim: Sim, out: Uint16Array | null): { buf: Uint16Array;
   return { buf, count: n };
 }
 
+export function packTints(sim:Sim,all:boolean):Uint32Array|null{
+ const w=sim.w,cells=all?w.tintedCells:w.tintDirty;if(!cells.size)return null;
+ const buf=new Uint32Array(cells.size*2);let at=0;for(const k of cells){buf[at++]=k;buf[at++]=w.tint[k];}w.tintDirty.clear();return buf;
+}
+
 export function packBrood(sim: Sim): { buf: Int16Array; count: number } {
   let n = 0;
   for (const c of sim.colonies) if (c && c.alive) n += c.brood.length;
@@ -110,6 +115,7 @@ export function rasterOverlay(sim: Sim, kind: OverlayKind, colonySlot: number, t
   const out = new Uint8Array(W * H);
   const cols = sim.colonies.filter((c) => c && c.alive && (colonySlot < 0 || c.slot === colonySlot));
   switch (kind) {
+    case 'dose':for(const k of w.doseCells)out[k]=w.dose[k];break;
     case 'charge':for(let k=0;k<w.N;k++)out[k]=w.charge[k];break;
     case 'moisture':
       for (let k = 0; k < w.N; k++) {

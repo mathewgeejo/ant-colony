@@ -3,10 +3,10 @@
 import { CASTE, TASK } from './ants.ts';
 import { canStand } from './behavior.ts';
 import { P, NP } from './genetics.ts';
-import { M } from './materials.ts';
+import { M,IS_LIQUID } from './materials.ts';
 import { DAY_TICKS, isDaytime } from './physics.ts';
 import type { Sim } from './sim.ts';
-import { habitatAllows,newWildlife,WildlifeSystem,type WildlifeState } from './wildlife.ts';
+import { habitatAllows,newWildlife,WildlifeSystem,medicineExposure,type WildlifeState } from './wildlife.ts';
 import { wildlifeById,wildlifeByKey } from './wildlife-defs.ts';
 
 export const CRITTER = { SPRINGTAIL: 0, SPIDER: 1 } as const;
@@ -42,6 +42,7 @@ export class Critters {
     for (let k = this.list.length - 1; k >= 0; k--) {
       const c = this.list[k];
       if(c.kind>=2)continue;
+      if(sim.tick%4===0){medicineExposure(sim,c);const cell=c.y*w.W+c.x,T=w.tempAt(c.x,c.y);if(T< -5||T>42)c.hp-=.02;if(IS_LIQUID[w.mat[cell]])c.hp-=.02;if(w.toxin[cell])c.hp-=w.toxin[cell]/255*.015;if(w.dose[cell])c.hp-=w.dose[cell]/255*.025;if(c.hp<=0){this.list.splice(k,1);if(w.mat[cell]===M.AIR)sim.setCell(cell,M.PROTEIN,c.kind===1?6:2,'wildlife remains');continue;}}
       c.px = c.x; c.py = c.y;
       c.age++;
       const speed = c.kind === CRITTER.SPIDER ? 0.5 : 0.3;

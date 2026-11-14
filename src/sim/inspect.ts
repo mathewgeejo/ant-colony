@@ -19,10 +19,15 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   const m = w.mat[k];
   const def = MATERIALS[m];
   const lines: string[] = [];
+  if(w.dose[k])lines.push(`Radiation exposure ${w.dose[k]}/255 game units. Decays locally; separate from chemical contamination. Not calibrated dosimetry and does not edit inherited traits.`);
+  if(w.carrier[k])lines.push(`Mixture carrier / bound water: ${w.carrier[k]} units, separate from soil moisture and food quantity.`);
+  if(m===M.FROZEN_MIXTURE)lines.push(`Frozen composition: ${MATERIALS[w.phase[k]&65535]?.name??'unknown'}. Stored nutrients remain in the resource inventory; thaw before foraging.`);
+  if(m===M.SODA)lines.push(`Carbonation reserve: ${Math.max(0,8-w.phase[k])} bubble releases remaining.`);
+  if(w.tint[k])lines.push(`Stain color #${(w.tint[k]&0xffffff).toString(16).padStart(6,'0')}. Color alone does not change material properties.`);
   for(const c of sim.critters.list)if(Math.abs(c.x-x)+Math.abs(c.y-y)<=1){
    const d=wildlifeById(c.kind),name=d?.name??(c.kind===1?'Spider':'Springtail');
    lines.push(`${name} #${c.id}: ${c.action}. Health ${pct(c.hp)}, energy ${pct(c.energy)}.`);
-   if(d){lines.push(d.description);lines.push(`Stage: ${['egg / newborn','juvenile','adult','pupa'][c.stage]}; age ${c.age} ticks. Generation ${c.generation}; parent ${c.parentId||'introduced'}, mate ${c.mateId||'none'}.`);if(c.infection)lines.push(`Fictional sandbox infection: ${c.infection} ticks remaining. Not a disease prediction.`);}
+   if(d){lines.push(d.description);lines.push(`Stage: ${['egg / newborn','juvenile','adult','pupa'][c.stage]}; age ${c.age} ticks. Generation ${c.generation}; parent ${c.parentId||'introduced'}, mate ${c.mateId||'none'}.`);if(c.infection)lines.push(`Fictional sandbox infection: ${c.infection} ticks remaining. Not a disease prediction.`);if(c.immunity)lines.push(`Fictional immunizer protection: ${c.immunity} ticks remaining; existing infections are not cured.`);}
   }
   const T = w.tempAt(x, y), H = w.humAt(x, y);
   if(w.charge[k])lines.push(`Electrical charge ${Math.round(w.charge[k]/255*100)}%. Charge propagates through touching conductive cells and attenuates.`);
@@ -78,6 +83,7 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
   const caste = a.caste[i];
   lines.push(`Age ${a.age[i].toFixed(1)} days. Health ${pct(a.health[i])}, energy ${pct(a.energy[i])}, hydration ${pct(a.hydration[i])}.`);
   const T = sim.w.tempAt(a.x[i], a.y[i]);
+  const dose=sim.w.dose[a.y[i]*sim.w.W+a.x[i]];if(dose)lines.push(`Radiation exposure ${dose}/255 game units can damage health. It does not edit this individual's inherited traits.`);
   if (T > sp.tolerances.heatMax - 2) lines.push(`Dangerously hot here (${T.toFixed(1)} C).`);
   if (sim.w.mat[a.y[i] * sim.w.W + a.x[i]] === M.WATER) lines.push(`Submerged for ${Math.round(a.submerged[i] / 30)} s of game time.`);
   if (a.carry[i]) lines.push(`Carrying ${MATERIALS[a.carry[i]].name.toLowerCase()}${FOOD_OF[a.carry[i]] ? ` (source quality it perceived: ${pct(a.carryQ[i])})` : ''}.`);

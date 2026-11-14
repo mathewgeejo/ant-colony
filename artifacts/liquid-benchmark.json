@@ -1,0 +1,353 @@
+{
+  "hardware": {
+    "cpu": "11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+    "cores": 4,
+    "ramGiB": 7.748809814453125,
+    "os": "Windows 10.0.26200",
+    "node": "v22.14.0"
+  },
+  "requestedSeconds": 30,
+  "ticks": 86871,
+  "meanMsPerTick": 0.3418081423166117,
+  "samples": [
+    {
+      "seconds": 2.0001938,
+      "ticks": 4808,
+      "heapMiB": 34.36895751953125,
+      "buffersMiB": 3.151822090148926,
+      "stainedCells": 109,
+      "pendingStains": 65,
+      "activeChunks": 33,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8509
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8509
+        }
+      }
+    },
+    {
+      "seconds": 4.0003288,
+      "ticks": 10788,
+      "heapMiB": 34.355384826660156,
+      "buffersMiB": 3.136061668395996,
+      "stainedCells": 109,
+      "pendingStains": 64,
+      "activeChunks": 33,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8371
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8371
+        }
+      }
+    },
+    {
+      "seconds": 6.000755099999999,
+      "ticks": 16749,
+      "heapMiB": 14.055862426757812,
+      "buffersMiB": 3.1542654037475586,
+      "stainedCells": 109,
+      "pendingStains": 65,
+      "activeChunks": 35,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8180
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 8180
+        }
+      }
+    },
+    {
+      "seconds": 8.0007809,
+      "ticks": 22883,
+      "heapMiB": 16.719581604003906,
+      "buffersMiB": 3.136061668395996,
+      "stainedCells": 109,
+      "pendingStains": 71,
+      "activeChunks": 33,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7998
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7998
+        }
+      }
+    },
+    {
+      "seconds": 10.0010137,
+      "ticks": 28792,
+      "heapMiB": 13.916679382324219,
+      "buffersMiB": 3.136061668395996,
+      "stainedCells": 109,
+      "pendingStains": 77,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7763
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7763
+        }
+      }
+    },
+    {
+      "seconds": 12.0013141,
+      "ticks": 34798,
+      "heapMiB": 22.626724243164062,
+      "buffersMiB": 3.1710290908813477,
+      "stainedCells": 109,
+      "pendingStains": 74,
+      "activeChunks": 33,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7594
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7594
+        }
+      }
+    },
+    {
+      "seconds": 14.002923800000001,
+      "ticks": 40737,
+      "heapMiB": 21.237098693847656,
+      "buffersMiB": 3.1700258255004883,
+      "stainedCells": 109,
+      "pendingStains": 69,
+      "activeChunks": 32,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7376
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7376
+        }
+      }
+    },
+    {
+      "seconds": 16.0031284,
+      "ticks": 46645,
+      "heapMiB": 25.62836456298828,
+      "buffersMiB": 3.153292655944824,
+      "stainedCells": 109,
+      "pendingStains": 77,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7146
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 7146
+        }
+      }
+    },
+    {
+      "seconds": 18.0033296,
+      "ticks": 52612,
+      "heapMiB": 19.154335021972656,
+      "buffersMiB": 3.1897077560424805,
+      "stainedCells": 109,
+      "pendingStains": 71,
+      "activeChunks": 35,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6939
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6939
+        }
+      }
+    },
+    {
+      "seconds": 20.003654299999997,
+      "ticks": 58369,
+      "heapMiB": 7.7073974609375,
+      "buffersMiB": 3.152266502380371,
+      "stainedCells": 109,
+      "pendingStains": 64,
+      "activeChunks": 33,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6746
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6746
+        }
+      }
+    },
+    {
+      "seconds": 22.0041467,
+      "ticks": 64273,
+      "heapMiB": 10.294548034667969,
+      "buffersMiB": 3.1881532669067383,
+      "stainedCells": 109,
+      "pendingStains": 64,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6540
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6540
+        }
+      }
+    },
+    {
+      "seconds": 24.0042231,
+      "ticks": 70221,
+      "heapMiB": 30.061058044433594,
+      "buffersMiB": 3.186774253845215,
+      "stainedCells": 109,
+      "pendingStains": 73,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6386
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6386
+        }
+      }
+    },
+    {
+      "seconds": 26.0042432,
+      "ticks": 76096,
+      "heapMiB": 23.53380584716797,
+      "buffersMiB": 3.153315544128418,
+      "stainedCells": 109,
+      "pendingStains": 69,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6293
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6293
+        }
+      }
+    },
+    {
+      "seconds": 28.004341099999998,
+      "ticks": 81930,
+      "heapMiB": 20.011756896972656,
+      "buffersMiB": 3.187808036804199,
+      "stainedCells": 109,
+      "pendingStains": 0,
+      "activeChunks": 34,
+      "resources": {
+        "inv": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6220
+        },
+        "exp": {
+          "sugar": 128,
+          "protein": 126,
+          "seed": 0,
+          "water": 6220
+        }
+      }
+    }
+  ],
+  "continuationTicks": 120,
+  "continuationMatched": true,
+  "audit": {
+    "inv": {
+      "sugar": 128,
+      "protein": 126,
+      "seed": 0,
+      "water": 6183
+    },
+    "exp": {
+      "sugar": 128,
+      "protein": 126,
+      "seed": 0,
+      "water": 6183
+    }
+  },
+  "limits": "Headless simulation and terrain packet packing; no browser rendering. Thirty seconds is a short stability sample, not proof of indefinite memory stability."
+}

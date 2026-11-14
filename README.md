@@ -1,6 +1,6 @@
 # Ant Colony Sandbox
 
-Screenshot content expansion: [all 312 named reference buttons](docs/SCREENSHOT-CHECKLIST.md), [implementation evidence and remaining scope](docs/SCREENSHOT-PROGRESS.md), and [Life content, mechanics and sources](docs/LIFE-CONTENT.md). Land and Life expansions bring the material registry to 91 paintable materials, plus 14 additional animal profiles. All 36 Life entries have representations; full reference organism/element/reaction parity is still in progress. Try **New world → Living garden**.
+Screenshot content expansion: [all 312 named reference buttons](docs/SCREENSHOT-CHECKLIST.md), [implementation evidence and remaining scope](docs/SCREENSHOT-PROGRESS.md), [Life content and sources](docs/LIFE-CONTENT.md), and [Liquid mechanics and limits](docs/LIQUID-CONTENT.md). The registry now has **134 paintable materials**, plus 14 additional animal profiles. All 18 Land, 36 Life and 32 Liquids entries have representations; full reference organism/element/reaction parity remains incomplete. Try **New world → Living garden** or **Liquid reaction lab**. The default still starts with one founding queen.
 
 A playable, editable pixel ecosystem with a simulation worker, autonomous ant agents, cellular terrain and water, brood development, local signals, competing colonies, and explicit inherited lineages. All art is original pixel grids and procedural code. No generated images or external art service.
 
@@ -39,7 +39,7 @@ npm run preview
 
 See [architecture](docs/ARCHITECTURE.md), [biology and sources](docs/BIOLOGY.md), [species/mutation schemas and scenarios](docs/CONTENT.md), and [verification and performance](docs/VERIFICATION.md).
 
-The [sandbox toolkit](docs/SANDBOX-FEATURES.md) adds complete-world Undo/Redo, Reset, geometry/fill tools, cell editing, capture, TPS controls, and 58 paintable materials with working powders, density, gas motion, fire, phase transitions, electricity, explosions, corrosion, cooking and cloning. This is a tested shared toolkit, not full compatibility with the entire Sandboxels catalog or its JavaScript mods.
+The [sandbox toolkit](docs/SANDBOX-FEATURES.md) adds complete-world Undo/Redo, Reset, geometry/fill tools, cell/color editing, Lookup, mobile Shift, capture and TPS controls. Working powders, density, gas motion, fire, phases, electricity, explosions, corrosion, cooking, finite-reagent liquid reactions and cloning share the ant world. This is a tested toolkit, not full compatibility with the entire Sandboxels catalog or its JavaScript mods.
 
 For material experiments, choose **New world → Particle physics lab** or **Empty particle sandbox**. Hold the brush to pour grains or liquids; Heat/Cool/Shock act while paused. The lab guide offers ordinary terrain interventions to release a reservoir, ignite wood, pour sand and sever a circuit.
 
@@ -52,6 +52,9 @@ npm run experiments
 npm run bench -- 120
 npm run screenshots
 npm run sandbox-check
+node scripts/liquid-preview.mjs
+node scripts/tools-preview.mjs
+node --experimental-strip-types --no-warnings scripts/liquid-bench.ts 30
 ```
 
 Experiments and benchmarks write JSON to `artifacts/`. The browser script expects the dev server at `http://127.0.0.1:5175/` and Edge at its standard Windows installation path. Set `GAME_URL` and `BROWSER_PATH` for another server or Chromium installation. It uses an isolated temporary browser profile. Windows PowerShell can start a server on that port with `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5175`.

@@ -1,0 +1,21 @@
+{
+  "acceptMeanMs": 0.6866197199888633,
+  "acceptMaxMs": 2.700000047683716,
+  "meanChunks": 44.147887323943664,
+  "packets": 142,
+  "paintLatencyMs": 19.300000071525574,
+  "fps": 59.99532704476501,
+  "renderMs": 0.4324006201872695,
+  "stepMs": 0.7999999523162842,
+  "fieldMs": 0.380881368549157,
+  "ants": 1,
+  "tick": 132,
+  "workerAchievedSpeed": 0.9976057461141868,
+  "running": true,
+  "frameId": 156,
+  "lastMessage": "",
+  "eventToTerrainMs": 10.100000023841858,
+  "requestedSpeed": 1,
+  "testSeconds": 3.9661856999999996,
+  "errors": []
+}

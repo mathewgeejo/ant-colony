@@ -1,0 +1,13 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "All 29 powder buttons can be scrolled to, selected and painted through the canvas",
+    "Color sand uses the picker and retains its pigment when heated into molten glass",
+    "Radiation has a real decaying field, overlay and plain-language inspector",
+    "Schema-4 portable export/import retains current phases, pigment and radiation exposure",
+    "Workshop forms actual slime and displays six experiment stations",
+    "Workshop shield button edits a real barrier",
+    "Phone catalog scrolls without page overflow and touch paints a glass bead"
+  ],
+  "errors": []
+}

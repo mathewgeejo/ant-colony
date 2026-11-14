@@ -1,9 +1,9 @@
 /* Pixel controls and boxes; the living world's meadow colours are preserved. */
 .wildlife-icon{width:19px;height:18px;image-rendering:pixelated;flex-shrink:0}#palette{overflow-y:auto}
-body.life-palette #app{grid-template-rows:54px minmax(0,1fr) 220px 30px}body.life-palette .workbench{height:220px}body.life-palette #palette{height:140px}
-body.life-palette .species-picker{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;height:28px}body.life-palette .species-picker label{display:none}body.life-palette .species-picker input{width:90px!important;min-height:27px}body.life-palette .species-picker select{width:160px;min-height:27px}
-@media(max-width:600px){body.life-palette #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body.life-palette .workbench{height:218px}body.life-palette #palette{height:115px}body.life-palette .species-picker select{width:150px}}
-body.life-palette.gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}
+body:is(.life-palette,.liquid-palette,.powder-palette) #app{grid-template-rows:54px minmax(0,1fr) 220px 30px}body:is(.life-palette,.liquid-palette,.powder-palette) .workbench{height:220px}body:is(.life-palette,.liquid-palette,.powder-palette) #palette{height:140px}
+body:is(.life-palette,.liquid-palette) .species-picker{display:flex;flex-direction:row;align-items:center;gap:5px;min-width:0;height:28px}body:is(.life-palette,.liquid-palette) .species-picker label{display:none}body:is(.life-palette,.liquid-palette) .species-picker input{width:90px!important;min-height:27px}body:is(.life-palette,.liquid-palette) .species-picker select{width:160px;min-height:27px}
+@media(max-width:600px){body:is(.life-palette,.liquid-palette,.powder-palette) #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body:is(.life-palette,.liquid-palette,.powder-palette) .workbench{height:218px}body:is(.life-palette,.liquid-palette,.powder-palette) #palette{height:115px}body:is(.life-palette,.liquid-palette) .species-picker select{width:150px}}
+body:is(.life-palette,.liquid-palette,.powder-palette).gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}
 #app{grid-template-columns:minmax(0,1fr);min-width:0}.workbench,.bench-top,.sandbox-controls{min-width:0;max-width:100%}.workbench{overflow:hidden}.bench-top{overflow:hidden}
 button,select,input,dialog,.quick-tools,.world-heading,.overlay-legend,.brood-stages,.reason,.stage{border-radius:0!important}
 button{box-shadow:inset 1px 1px #ffffff24,inset -1px -1px #0008,2px 2px #101713;transition:none}
@@ -38,3 +38,6 @@ body.gui-hidden #app{grid-template-rows:0 minmax(0,1fr) 0 0}
 @media(max-width:1100px){.palette-tabs{max-width:40%}.palette-tabs button{font-size:9px;padding:4px 5px}.element-search{width:112px}.brush-controls input[type=range]{width:50px}}
 @media(max-width:850px){body #app{grid-template-rows:50px minmax(0,1fr) 176px 30px}body .workbench{height:176px}.palette-tabs{max-width:37%}.element-search{width:92px}#palette{height:95px}.topbar nav .text-btn span{display:none}}
 @media(max-width:600px){body #app{grid-template-rows:49px minmax(0,1fr) 218px 28px}body .workbench{height:218px}.bench-top{height:66px;align-content:center;gap:4px 7px}.palette-tabs{order:1;max-width:100%;width:100%;height:27px;gap:4px}.palette-tabs button{height:25px;min-height:25px;font-size:9px;padding:3px 6px}.element-search{order:2;flex:0 1 90px;width:90px}.brush-controls{order:3;flex:1;gap:4px}.brush-controls input[type=range]{width:48px}.brush-controls>label[for=brush]{font-size:9px}.overlay-control{order:4}.overlay-control select{width:128px}#palette{height:115px;padding:7px 10px;gap:5px}#palette>button{font-size:9px;padding:4px 6px;gap:4px;min-height:28px;height:28px}.modal-head h2{font-size:13px}.sandbox-controls{height:36px}.sandbox-controls button{font-size:9px;min-height:26px}.panel-head>span{font-size:9px}}
+
+.paint-color input{width:28px;height:23px;min-height:23px;padding:1px;border:1px solid #89957d;background:#2a342b}
+.swatch-bead,.swatch-confetti,.swatch-color-sand{background:linear-gradient(135deg,#dc8397 0 33%,#d4bc69 33% 66%,#70b9d1 66%);background-size:100% 100%}

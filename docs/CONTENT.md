@@ -23,6 +23,8 @@ All use the same engine; no success event, birth, mutation, trail, fight or mort
 | Scenario | Conditions / intervention | What to inspect |
 | --- | --- | --- |
 | Empty particle sandbox | No terrain, organisms, rain or predator arrivals | Drawing, continuous pouring, material reactions and player-created ecosystems |
+| Living garden | Provisioned beds/pond/flowers, paired generic wildlife and a founding queen | Habitat, local feeding, animal stages and actual contact reproduction. Non-ant genes are not modeled. |
+| Liquid reaction lab | Eight labeled vessels, finite reagents and one continuous heater | Curdling, cement, emulsions, fermentation, cryogens, stains and mercury. Actions add matter or change temperature; products are not scripted. |
 | Particle physics lab | Density tank, elevated gated reservoir, wood fuel and a battery/wire/lamp circuit | Actual gravity, liquid separation, gate connectivity, ignition and connected conduction. Buttons edit conditions; they do not script motion. |
 | First colony | One claustral queen; mild meadow, nearby protein, no predators | Founding chamber, eggs→larvae→pupae→workers, reserve depletion, reopened entrance |
 | Moved food | Established colony and sugar patch; button removes old patch and paints another | Actual return deposits, trail decay, private-memory failures, rediscovery. Some seeds take much longer or lose workers. |

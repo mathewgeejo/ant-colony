@@ -12,7 +12,7 @@ export interface NewWorldOptions {
   climate?: Partial<Climate>;
 }
 
-export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge';
+export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge' | 'dose';
 
 export type ToWorker =
   | { type: 'new'; opts: NewWorldOptions }
@@ -24,7 +24,7 @@ export type ToWorker =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'clearWorld' }
-  | { type: 'run'; running: boolean }
+  | { type: 'run'; running: boolean; revision:number }
   | { type: 'speed'; speed: number }
   | { type: 'step'; ticks: number }
   | { type: 'inspectCell'; x: number; y: number }
@@ -50,8 +50,9 @@ export interface FrameMsg {
   tick: number;
   W: number;
   H: number;
-  /** dirty chunks: [chunkIndex(u16), 512 bytes of cell data]... packed */
+  /** dirty chunks: [chunkIndex(u16), 256 * (material u16 little-endian, detail u8)]... */
   chunks: ArrayBuffer | null;
+  tints:Uint32Array|null; // sparse [cell index, 0xffRRGGBB] pairs, including zero for removed stains
   chunkCount: number;
   surface: Int16Array | null;
   ants: Int16Array; // 7 shorts per ant

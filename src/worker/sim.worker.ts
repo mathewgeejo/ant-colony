@@ -5,7 +5,7 @@ import type { FrameMsg, OverlayKind, ToWorker } from '../protocol.ts';
 import { createSim, SCENARIOS } from '../sim/scenarios.ts';
 import { Sim } from '../sim/sim.ts';
 import { DAY_TICKS } from '../sim/physics.ts';
-import { packAnts, packBrood, packChunks, packCritters, rasterOverlay } from '../sim/view.ts';
+import { packAnts, packBrood, packChunks, packCritters, packTints, rasterOverlay } from '../sim/view.ts';
 import { antRoute, colonySummaries, evolutionDetail, inspectAnt, inspectCell } from '../sim/inspect.ts';
 import { decodeJSON, encodeJSON, restore, snapshot } from '../sim/persist.ts';
 import { verifyDeterminism } from '../sim/replay.ts';
@@ -21,6 +21,7 @@ const MAX_SPEED = 1000;
 
 let sim: Sim | null = null;
 let running = false;
+let runRevision=0;
 let speed = 1;
 let acc = 0;
 let last = performance.now();
@@ -67,7 +68,7 @@ function newWorld(opts: any) {
     fullTerrain = true;
     selectedId = -1; selectedCell = null;
     acc = 0; droppedTicks = 0;
-    post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab'].includes(sim.cfg.scenario) });
+    post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab','liquid-lab','powder-lab'].includes(sim.cfg.scenario) });
     sendFrame(true);
     sendStats();
   } catch (e) {
@@ -84,6 +85,7 @@ function sendFrame(full = false) {
   if(frameInFlight && !full && !fullTerrain)return;
   const s = sim;
   const { buf, count } = packChunks(s, full || fullTerrain);
+  const tints=packTints(s,full||fullTerrain);
   fullTerrain = false;
   const ants = packAnts(s, null);
   const brood = packBrood(s);
@@ -100,12 +102,13 @@ function sendFrame(full = false) {
   if (now - lastTempSent > 1000) { temp = s.w.temp.slice(); lastTempSent = now; }
   const surface = count ? s.w.surface.slice() : null;
   const msg: FrameMsg = {
-    type: 'frame', id: ++frameSerial, tick: s.tick, W: s.w.W, H: s.w.H, chunks: buf, chunkCount: count, surface,
+    type: 'frame', id: ++frameSerial, tick: s.tick, W: s.w.W, H: s.w.H, chunks: buf, chunkCount: count, surface,tints,
     ants: ants.buf as unknown as Int16Array, antCount: ants.count, brood: brood.buf, broodCount: brood.count, critters: crit.buf, critterCount: crit.count,
     selected, temp, overlay: ov, overlayKind: overlay.kind, dayPhase: (s.tick % DAY_TICKS) / DAY_TICKS, raining: s.phys.raining > 0,
   };
   const tr: Transferable[] = [ants.buf.buffer, brood.buf.buffer, crit.buf.buffer];
   if (buf) tr.push(buf);
+  if(tints)tr.push(tints.buffer);
   if (ov) tr.push(ov.buffer);
   if (temp) tr.push(temp.buffer);
   if (surface) tr.push(surface.buffer);
@@ -132,7 +135,7 @@ function sendStats() {
   post({
     type: 'stats',
     tick: s.tick, day: t.day, clock: t.clock, season: t.season, airT: s.airT, daytime: s.daytime, raining: s.phys.raining > 0,
-    running, speed, achievedSpeed: achievedTps / BASE_TPS, behind: running && speed < MAX_SPEED && achievedTps < BASE_TPS * speed * 0.9 && ticksThisSecond >= 0,
+    running,runRevision, speed, achievedSpeed: achievedTps / BASE_TPS, behind: running && speed < MAX_SPEED && achievedTps < BASE_TPS * speed * 0.9 && ticksThisSecond >= 0,
     droppedTicks,
     colonies: colonySummaries(s),
     ants: s.a.count, critters: s.critters.list.length,
@@ -157,7 +160,7 @@ function sendStats() {
 }
 
 function estimateMB(s: Sim) {
-  const world = s.w.N * 7 + s.w.TW * s.w.TH * 4 * 4 + s.w.N * 2 * 2; // cell layers + coarse fields + nestDist/moved
+  const world = s.w.N * 19 + s.w.TW * s.w.TH * 4 * 4 + s.w.N * 2 * 2; // cell layers (including mixture fields) + coarse fields + navigation/movement
   let sig = 0;
   for (const c of s.colonies) if (c) sig += (c.trail.live.length + c.alarm.live.length + c.nestOdor.live.length + c.digCue.live.length) * CS * CS * 4;
   const ants = s.a.cap * (100 + 32 * 8 + 21 * 8 + 29 * 4);
@@ -219,7 +222,7 @@ function loadedWorld() {
   if (!sim) return;
   fullTerrain = true;
   selectedId = -1; selectedCell = null;
-  post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab'].includes(sim.cfg.scenario) });
+  post({ type: 'world', W: sim.w.W, H: sim.w.H, scenario: sim.scenarioInfo, mode: sim.mode, seed: sim.cfg.seed, species: sim.species.map(speciesBrief), journalDefs: JOURNAL_DEFS,cutaway:!['empty','physics-lab','liquid-lab','powder-lab'].includes(sim.cfg.scenario) });
   sendFrame(true);
   sendStats();
 }
@@ -246,7 +249,7 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
         if (!sim) break;
         if (running) sim.queue(m.cmd); else sim.applyNow(m.cmd);
         break;
-      case 'run': running = m.running; if(!running&&sim)sim.flushCommands(); acc = 0; last = performance.now(); break;
+      case 'run': running = m.running;runRevision=m.revision; if(!running&&sim)sim.flushCommands(); acc = 0; last = performance.now();sendStats(); break;
       case 'speed': speed = m.speed; acc = 0; break;
       case 'step':
         if (!sim) break;

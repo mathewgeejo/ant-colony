@@ -276,6 +276,7 @@ export function updateAnt(sim: Sim, i: number) {
     if (T < sp.tolerances.coldMin + 2) perf *= 0.1; // chill coma approach
   }
   let speed = a.pheno[i * 29 + P.SPEED] * (0.25 + 0.75 * Math.min(1, perf)) * (a.energy[i] < 0.1 ? 0.4 : 1);
+  if(sim.w.adhesiveCells)speed*=1-.8*sim.w.localAdhesion(a.x[i],a.y[i]);
   if (a.caste[i] === CASTE.QUEEN) speed *= 0.6;
   if (IS_LIQUID[sim.w.mat[a.y[i] * sim.w.W + a.x[i]]]) speed *= 0.35;
   if (a.carry[i]) speed *= 0.85;
@@ -1149,6 +1150,7 @@ export function physiology(sim: Sim, i: number) {
   if (T > heatMax) { dmg += 0.01 * (T - heatMax); cause = 'heat'; }
   if (T < sp.tolerances.coldMin - 4) { dmg += 0.004 * (sp.tolerances.coldMin - 4 - T); cause = 'cold'; }
   if (w.toxin[k] > 0) { dmg += w.toxin[k] / 255 * 0.08; cause = 'toxin'; }
+  if(w.dose[k]){dmg+=w.dose[k]/255*.06;cause='radiation exposure (game units)';}
   if(w.charge[k]>80){dmg+=w.charge[k]/255*.08;cause='electrical shock';}
   if (IS_LIQUID[w.mat[k]]) {
     a.submerged[i] = Math.min(65535, a.submerged[i] + PHYS_EVERY);

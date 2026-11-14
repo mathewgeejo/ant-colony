@@ -82,7 +82,7 @@ export class AntStore {
   age!: Float32Array; // days
   health!: Float32Array; energy!: Float32Array; hydration!: Float32Array;
   task!: Uint8Array; why!: Uint8Array; timer!: Uint16Array; stuck!: Uint8Array; fails!: Uint8Array;
-  carry!: Uint8Array; // material id carried (food or spoil), 0 none
+  carry!: Uint16Array; // material id carried (food or spoil), 0 none
   carryQ!: Float32Array; // perceived source quality when food was picked up
   carryBrood!: Int32Array; // brood id carried, -1 none
   moveAcc!: Float32Array;
@@ -127,7 +127,7 @@ export class AntStore {
     this.health = re(this.health, Float32Array); this.energy = re(this.energy, Float32Array); this.hydration = re(this.hydration, Float32Array);
     this.task = re(this.task, Uint8Array); this.why = re(this.why, Uint8Array); this.timer = re(this.timer, Uint16Array);
     this.stuck = re(this.stuck, Uint8Array); this.fails = re(this.fails, Uint8Array);
-    this.carry = re(this.carry, Uint8Array); this.carryQ = re(this.carryQ, Float32Array);
+    this.carry = re(this.carry, Uint16Array); this.carryQ = re(this.carryQ, Float32Array);
     this.carryBrood = re(this.carryBrood, Int32Array);
     this.moveAcc = re(this.moveAcc, Float32Array);
     this.tx = re(this.tx, Int16Array); this.ty = re(this.ty, Int16Array);

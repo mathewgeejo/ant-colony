@@ -1,6 +1,6 @@
 # Sandbox toolkit: implemented behavior and remaining scope
 
-The reference is the [official Sandboxels controls and feature overview](https://github.com/R74nCom/sandboxels#controls). This game uses its own TypeScript simulation. It currently has **58 paintable materials plus air**; it does not implement the entire 500-plus-element Sandboxels catalog.
+The reference is the [official Sandboxels controls and feature overview](https://github.com/R74nCom/sandboxels#controls). This game uses its own TypeScript simulation. It currently has **134 paintable materials plus air**; it does not implement the entire Sandboxels catalog. The 312 screenshot buttons remain tracked individually with partial/pending status.
 
 ## Working controls
 
@@ -13,6 +13,9 @@ The reference is the [official Sandboxels controls and feature overview](https:/
 | Replace | Selects whether painting replaces occupied cells or only paints air. |
 | Edit | Changes selected cell material, quantity, local temperature, electrical charge and contamination. Source/sink accounting remains active. |
 | Info | Shows actual material state, density, conductivity and other physical properties. |
+| Lookup | Clicks a world cell to open information for its actual material. |
+| ↑ Shift | Latches intensified tools and connected-line drawing, including on touch screens. |
+| Paint color | Applies selected cosmetic pigment without changing material identity, simulation time, RNG or physics activity. Dye uses the same picker. |
 | Search / E | Searches all registered materials, including materials outside the current category. Enter selects the first result. |
 | Saves | IndexedDB local saves, portable compressed export and import. |
 | Mods | Imports validated declarative species packs. **Sandboxels JavaScript mods and material packs are not compatible.** |
@@ -26,7 +29,7 @@ The reference is the [official Sandboxels controls and feature overview](https:/
 
 Default rate is 30 TPS (1×) so falling materials remain legible. Higher rates accelerate the whole model, including colony development. Temperature is a coarse 4×4-cell field; the cell editor says so. Electrical charge is a cell field. Density values are dimensionless gameplay coefficients.
 
-Hold the mouse or touch brush to pour material continuously at up to 30 brush samples per second. Heat/Cool change temperature immediately while paused; Shift strengthens Heat/Cool/Shock. New world offers an Empty particle sandbox and a Particle physics lab with live density tanks, a reservoir gate, fuel and a conductor circuit. Scenario interventions are undoable; none scripts a desired simulation outcome.
+Hold the mouse or touch brush to pour material continuously at up to 30 brush samples per second. Heat/Cool change temperature immediately while paused; Shift strengthens Heat/Cool/Shock. Shift also includes flame/smoke/spark in Mix and grinds stone/gravel/rock further with Smash. New world offers an Empty particle sandbox, Particle physics lab and Liquid reaction lab. Scenario interventions are undoable; none scripts a desired simulation outcome.
 
 ## Working physics
 
@@ -40,6 +43,7 @@ Hold the mouse or touch brush to pour material continuously at up to 30 brush sa
 - Acid consumes reagent while corroding ordinary solids; glass and barriers resist it. Flour and water form dough; baking produces bread and records evaporated water.
 - Cloners learn an adjacent material and emit copies into empty neighbours. Every new food/water quantity is a named source. They are sandbox devices, not biological adaptations.
 - Mixing and dragging transfer existing movable matter. Crushing converts selected brittle materials to powders without inventing conserved food or water.
+- Water-bearing food/chemical mixtures keep solvent separately from food and soil moisture. Finite dyes, cleaners, acids, foam, adhesives, fermentation, milk curdling, hydration, freezing and cryogen/metal phases are detailed in [LIQUID-CONTENT.md](LIQUID-CONTENT.md). Those are working authored rules, not full reference parity.
 
 These are local game rules with explicit limits. They do not model total biomass, chemical mass, electric energy, ideal gas volume, or rigid-body mechanics. The conserved quantities are declared food units and water-equivalent units, with recorded sources and sinks.
 
@@ -49,7 +53,7 @@ The researched ant profiles, founding, brood development, autonomous workers, si
 
 ## Still incomplete
 
-The complete Sandboxels element/reaction library; arbitrary executable mods; custom material/reaction imports; per-pixel colour editing; chemical stoichiometry; oxygen/ventilation budgets; pressure-correct fluids; rigid-body solids; and a community/cloud save browser. No inactive button is presented as implementing these systems.
+The complete Sandboxels element/reaction library; arbitrary executable mods; custom material/reaction imports; chemical stoichiometry; oxygen/ventilation budgets; pressure-correct fluids; rigid-body solids; and a community/cloud save browser. No inactive button is presented as implementing these systems.
 
 ## Reproduce proof
 

@@ -7,7 +7,7 @@
     "Line drawing",
     "A drawn circuit powers a lamp",
     "Editable cell properties",
-    "Global material search",
+    "Global material search prioritizes a matching name over description mentions",
     "Right-click erase",
     "Hide and restore controls",
     "Portable export and import",

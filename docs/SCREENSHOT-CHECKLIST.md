@@ -1,5 +1,9 @@
 # Screenshot content checklist
 
+**Verified representations: 96 / 312. Full reference parity is still uncertified.**
+
+Checkboxes track full parity; availability is reported separately. Pending entries include existing basics that still need an audit, as well as missing content.
+
 All eleven supplied screenshots were visually inspected. Each row names one visible button.
 Status is intentionally conservative: present material families do not establish reference reaction parity.
 `pending` means missing or not yet behavior-verified. Do not mark complete based on a matching label.
@@ -42,38 +46,38 @@ Status is intentionally conservative: present material families do not establish
 
 ## Liquids
 
-- [ ] Water
-- [ ] SaltWater
-- [ ] Magma
-- [ ] Slime
-- [ ] Cement
-- [ ] Oil
-- [ ] LampOil
-- [ ] Foam
-- [ ] Acid
-- [ ] Glue
-- [ ] Soda
-- [ ] Juice
-- [ ] Milk
-- [ ] Vinegar
-- [ ] Alcohol
-- [ ] Soap
-- [ ] Bleach
-- [ ] Dye
-- [ ] Ink
-- [ ] Mercury
-- [ ] Blood
-- [ ] Vaccine
-- [ ] Poison
-- [ ] Antidote
-- [ ] Honey
-- [ ] Sap
-- [ ] Caramel
-- [ ] Molasses
-- [ ] Ketchup
-- [ ] Mayo
-- [ ] LiquidHydrogen
-- [ ] LiquidNitrogen
+- [ ] Water — available; reference parity still partial
+- [ ] SaltWater — available; reference parity still partial
+- [ ] Magma — available; reference parity still partial
+- [ ] Slime — available; reference parity still partial
+- [ ] Cement — available; reference parity still partial
+- [ ] Oil — available; reference parity still partial
+- [ ] LampOil — available; reference parity still partial
+- [ ] Foam — available; reference parity still partial
+- [ ] Acid — available; reference parity still partial
+- [ ] Glue — available; reference parity still partial
+- [ ] Soda — available; reference parity still partial
+- [ ] Juice — available; reference parity still partial
+- [ ] Milk — available; reference parity still partial
+- [ ] Vinegar — available; reference parity still partial
+- [ ] Alcohol — available; reference parity still partial
+- [ ] Soap — available; reference parity still partial
+- [ ] Bleach — available; reference parity still partial
+- [ ] Dye — available; reference parity still partial
+- [ ] Ink — available; reference parity still partial
+- [ ] Mercury — available; reference parity still partial
+- [ ] Blood — available; reference parity still partial
+- [ ] Vaccine — available; reference parity still partial
+- [ ] Poison — available; reference parity still partial
+- [ ] Antidote — available; reference parity still partial
+- [ ] Honey — available; reference parity still partial
+- [ ] Sap — available; reference parity still partial
+- [ ] Caramel — available; reference parity still partial
+- [ ] Molasses — available; reference parity still partial
+- [ ] Ketchup — available; reference parity still partial
+- [ ] Mayo — available; reference parity still partial
+- [ ] LiquidHydrogen — available; reference parity still partial
+- [ ] LiquidNitrogen — available; reference parity still partial
 
 ## Life
 
@@ -356,16 +360,16 @@ Status is intentionally conservative: present material families do not establish
 
 ## Tools
 
-- [ ] Erase
-- [ ] Drag
-- [ ] Pick
-- [ ] Mix
-- [ ] Heat
-- [ ] Cool
-- [ ] Lookup
-- [ ] Shock
-- [ ] Paint
-- [ ] Smash
+- [ ] Erase — available; reference parity still partial
+- [ ] Drag — available; reference parity still partial
+- [ ] Pick — available; reference parity still partial
+- [ ] Mix — available; reference parity still partial
+- [ ] Heat — available; reference parity still partial
+- [ ] Cool — available; reference parity still partial
+- [ ] Lookup — available; reference parity still partial
+- [ ] Shock — available; reference parity still partial
+- [ ] Paint — available; reference parity still partial
+- [ ] Smash — available; reference parity still partial
 
 The screenshot header reports Sandboxels v1.15. Earlier v1.13.2 source references are not a proof of parity with these images.
 This inventory transcribes labels only; it does not copy artwork or implementation.

@@ -30,29 +30,51 @@ for(const def of MATERIALS)for(let variant=0;variant<32;variant++){
   if(def.id===M.MUSHROOM){tiles[o]=tiles[o+1]=tiles[o+2]=rgba(177,105,92);tiles[o+4]=tiles[o+7]=rgba(218,203,168);}
   if(def.id===M.STONE||def.id===M.CLAY)tiles[o+pos+1]=tiles[o+pos];
   if(def.id===M.WATER&&h>.6){tiles[o]=tiles[o+1]=rgba(131,185,200);}
+  if(def.id===M.FOAM||def.id===M.BUBBLE){tiles[o+4]=rgba(149,180,180);for(const i of [1,3,5,7])tiles[o+i]=rgba(226,238,224);}
+  if(def.id===M.MERCURY||def.id===M.FROZEN_MERCURY){tiles[o]=tiles[o+1]=rgba(224,236,236);tiles[o+7]=rgba(104,124,135);}
+  if(def.id===M.GLUE||def.id===M.DRY_GLUE){tiles[o+1]=tiles[o+4]=rgba(231,218,160);tiles[o+8]=rgba(147,127,82);}
+  if(def.id===M.SLIME){tiles[o+1]=tiles[o+3]=rgba(172,218,128);tiles[o+8]=rgba(105,149,71);}
+  if(def.id===M.FROZEN_MIXTURE){tiles[o+1]=tiles[o+4]=tiles[o+7]=rgba(206,233,231);tiles[o+3]=tiles[o+5]=rgba(175,216,226);}
+  if(def.id===M.CEMENT||def.id===M.CURED_CONCRETE){tiles[o+2]=rgba(178,182,172);tiles[o+6]=rgba(103,114,113);}
+  if(def.id===M.LIQUID_HYDROGEN||def.id===M.LIQUID_NITROGEN){tiles[o+1]=tiles[o+2]=rgba(215,236,239);tiles[o+6]=rgba(126,170,200);}
+  if(def.id===M.FEATHER){tiles.fill(0,o,o+9);for(const i of [1,3,4,5,7])tiles[o+i]=rgba(225,216,191);tiles[o+4]=rgba(153,144,126);}
+  if(def.id===M.CONFETTI){tiles.fill(0,o,o+9);for(const i of h>.5?[1,4,5]:[3,4,7])tiles[o+i]=rgba(...color as [number,number,number]);}
+  if(def.id===M.GLITTER){tiles[o+1]=tiles[o+5]=rgba(241,239,194);tiles[o+6]=rgba(113,129,126);}
+  if(def.id===M.GOLD_COIN||def.id===M.BEAD||def.id===M.DIAMOND){for(const i of [0,2,6,8])tiles[o+i]=0;tiles[o+4]=def.id===M.GOLD_COIN?rgba(160,113,35):rgba(227,241,228);tiles[o+1]=rgba(240,226,164);}
+  if(def.id===M.CHARCOAL||def.id===M.SPENT_CHARCOAL){tiles[o+1]=rgba(88,86,70);tiles[o+5]=rgba(24,28,24);}
+  if(def.id===M.TINDER){tiles[o]=tiles[o+4]=tiles[o+8]=rgba(221,183,110);tiles[o+2]=tiles[o+6]=0;}
+  if(def.id===M.INCENSE||def.id===M.BURNING_INCENSE){tiles[o+1]=tiles[o+4]=tiles[o+7]=def.id===M.INCENSE?rgba(108,77,62):rgba(230,148,79);}
+  if(def.id===M.URANIUM||def.id===M.MOLTEN_URANIUM){tiles[o+1]=rgba(179,195,139);tiles[o+5]=rgba(74,93,65);}
+  if(def.id===M.RADIATION){tiles.fill(0,o,o+9);tiles[o+4]=rgba(233,255,155);tiles[o+1]=tiles[o+7]=rgba(168,218,84);}
+  if([M.SODIUM,M.POTASSIUM,M.CALCIUM,M.MAGNESIUM,M.METAL_SCRAP].includes(def.id as any)){tiles[o+1]=rgba(233,235,213);tiles[o+7]=rgba(105,122,120);}
+  if(def.id===M.RUST){tiles[o+1]=rgba(194,122,62);tiles[o+8]=rgba(102,56,40);}
+  if(def.id===M.THERMITE){tiles[o+1]=rgba(191,142,88);tiles[o+7]=rgba(89,87,82);}
 }
 
 export class TerrainRaster {
   readonly data: Uint8ClampedArray<ArrayBuffer>;
   readonly pixels: Uint32Array<ArrayBuffer>;
-  readonly states: Uint16Array;
+  readonly states: Uint32Array;
   readonly variants: Uint8Array;
+  readonly tintStates:Uint32Array;
   readonly stride: number;
   constructor(readonly W:number,readonly H:number){
     this.stride=W*TILE;
     this.data=new Uint8ClampedArray(W*H*TILE*TILE*4);
     this.pixels=new Uint32Array(this.data.buffer);
-    this.states=new Uint16Array(W*H).fill(65535);
+    this.states=new Uint32Array(W*H).fill(0xffffffff);
     this.variants=new Uint8Array(W*H);
+    this.tintStates=new Uint32Array(W*H);
     for(let y=0;y<H;y++)for(let x=0;x<W;x++)this.variants[y*W+x]=Math.floor(terrainHash(x,y)*16);
   }
   /** Returns false when the visible state is unchanged, even if fields changed in the worker. */
-  cell(x:number,y:number,m:number,q:number,surface:number):boolean{
+  cell(x:number,y:number,m:number,q:number,surface:number,tint=0):boolean{
     const k=y*this.W+x,wet=(m===M.SOIL||m===M.TOPSOIL)&&(q&15)>10,underground=m===M.AIR&&y>=surface;
     const charged=!!MATERIALS[m].conductivity&&(q&15)>0;
-    const state=m|((q&112)<<8)|(wet?256:0)|(charged?512:0)|(underground?32768:0);
-    if(this.states[k]===state)return false;
+    const state=m|((q&112)<<16)|(wet?1<<24:0)|(charged?1<<25:0)|(underground?1<<26:0);
+    if(this.states[k]===state&&this.tintStates[k]===tint)return false;
     this.states[k]=state;
+    this.tintStates[k]=tint;
     const base=y*TILE*this.stride+x*TILE,p=this.pixels;
     if(m===M.AIR||m===M.PLANT){
       const color=m===M.AIR&&underground?rgba(48,41,31):0;
@@ -64,6 +86,7 @@ export class TerrainRaster {
     }
     if(q&32)p[base]=rgba(193,207,90);
     if(charged){p[base+this.stride+1]=rgba(255,237,121);if(m===M.LAMP)for(let dy=0;dy<3;dy++){const at=base+dy*this.stride;p[at]=p[at+1]=p[at+2]=rgba(255,235,153);}}
+    if(tint){const r=tint>>>16&255,g=tint>>>8&255,b=tint&255;for(let dy=0;dy<3;dy++)for(let dx=0;dx<3;dx++){const at=base+dy*this.stride+dx,c=p[at];if(c)p[at]=rgba(Math.round((c&255)*.25+r*.75),Math.round((c>>>8&255)*.25+g*.75),Math.round((c>>>16&255)*.25+b*.75));}}
     return true;
   }
 }

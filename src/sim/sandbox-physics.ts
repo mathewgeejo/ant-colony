@@ -1,6 +1,8 @@
-import { CONDUCTIVITY,DENSITY,FOOD_OF,IS_GAS,IS_LIQUID,IS_SOLID,IS_WATER,M,MATERIALS } from './materials.ts';
+import { CONDUCTIVITY,DENSITY,FOOD_OF,IS_GAS,IS_LIQUID,IS_SOLID,IS_WATER,M,MATERIALS,phaseOrigin,FANTASY_MATERIALS } from './materials.ts';
 import type { World } from './world.ts';
 import type { Rng } from './rng.ts';
+import { LiquidReactions } from './liquid-reactions.ts';
+import { PowderReactions } from './powder-reactions.ts';
 const foodKey=(f:number)=>f===1?'sugar':f===2?'protein':'seed';
 
 /** Local game rules, not a chemistry or energy-conserving scientific solver. */
@@ -9,18 +11,24 @@ export class SandboxPhysics {
  topologyChanged=false;
  private w:World;
  private rng:Rng;
- constructor(w:World,rng:Rng){this.w=w;this.rng=rng;this.chargeBefore=new Uint8Array(w.N);}
- transform(k:number,m:number,amount:number,cause:string){
-  const w=this.w,old=w.mat[k],n=w.amt[k],of=FOOD_OF[old],nf=FOOD_OF[m];
+ readonly reactions:LiquidReactions;
+ readonly powders:PowderReactions;
+ canClone=(m:number)=>!FANTASY_MATERIALS.includes(m);
+ constructor(w:World,rng:Rng){this.w=w;this.rng=rng;this.chargeBefore=new Uint8Array(w.N);this.reactions=new LiquidReactions(w,rng,(k,m,n,cause,account)=>this.transform(k,m,n,cause,account));this.powders=new PowderReactions(w,rng,this.reactions,(k,m,n,cause)=>this.transform(k,m,n,cause));}
+ transform(k:number,m:number,amount:number,cause:string,account=true){
+  const w=this.w,old=w.mat[k],n=w.amt[k],of=w.foodType(k),nf=FOOD_OF[m];
+  const before=(IS_WATER[old]?n:0)+w.carrier[k]+w.moist[k];
+  w.setRaw(k,m,amount);
+  if(account){
   if(of!==nf){if(of&&n)w.ledger.sink(foodKey(of),cause,n);if(nf&&amount)w.ledger.source(foodKey(nf),cause,amount);}
   else if(of&&amount!==n){if(amount>n)w.ledger.source(foodKey(of),cause,amount-n);else w.ledger.sink(foodKey(of),cause,n-amount);}
-  const before=IS_WATER[old]?n:0,after=IS_WATER[m]?amount:0;
+  const after=(IS_WATER[m]?amount:0)+w.carrier[k]+w.moist[k];
   if(after>before)w.ledger.source('water',cause,after-before);else if(before>after)w.ledger.sink('water',cause,before-after);
-  const lost=w.setRaw(k,m,amount);if(lost)w.ledger.sink('water',cause,lost);
+  }
   if(IS_SOLID[old]!==IS_SOLID[m])this.topologyChanged=true;
  }
  begin(tick:number,active:Uint8Array){
-  if(tick%4)return;const w=this.w,b=this.chargeBefore;b.set(w.charge);
+  if(tick%4)return;this.powders.decayExposure();const w=this.w,b=this.chargeBefore;b.set(w.charge);
   for(let cy=0;cy<w.CH;cy++)for(let cx=0;cx<w.CW;cx++){
    if(!active[cy*w.CW+cx])continue;
    for(let y=cy*16;y<Math.min(w.H,cy*16+16);y++)for(let x=cx*16;x<Math.min(w.W,cx*16+16);x++){
@@ -46,13 +54,18 @@ export class SandboxPhysics {
  }
  step(x:number,y:number,k:number,stamp:number,tick:number):boolean{
   const w=this.w,m=w.mat[k],tc=w.tIdx(x,y),T=w.temp[tc];
+  const def=MATERIALS[m];
+  if(def.meltAt!==undefined&&T>=def.meltAt){this.transform(k,def.meltInto!,w.amt[k],'material melting');return true;}
+  if(def.coolAt!==undefined&&T<=def.coolAt){this.transform(k,def.coolInto!,w.amt[k],'material solidification');return true;}
+  if(m>=M.CHARCOAL&&this.powders.step(x,y,k,stamp,tick))return true;
+  if(((m>=M.SLIME&&m<=M.CLOT)||m===M.ALCOHOL||m===M.HYDROGEN)&&this.reactions.step(x,y,k,tick))return true;
   if((m===M.CLAY_POWDER||m===M.CLAY||m===M.CLAY_SOIL)&&T>400){this.transform(k,M.BAKED_CLAY,0,'clay firing');return true;}
-  if(m>=M.DIRT){
+  if(m>=M.DIRT&&m<=M.BAKED_CLAY){
    if(m===M.PERMAFROST){if(T>0){this.transform(k,M.MUD,w.amt[k],'soil thawing');return true;}return false;}
    if(m===M.MUD){if(T<0){this.transform(k,M.PERMAFROST,w.amt[k],'soil freezing');return true;}if(T>110){this.transform(k,M.MUDSTONE,w.amt[k],'mud baking');return true;}if(w.moist[k]<15){this.transform(k,M.DIRT,w.amt[k],'mud drying');return true;}}
    if((m===M.SANDSTONE||m===M.BAKED_CLAY)&&T>1100){this.transform(k,M.MOLTEN_GLASS,1,'mineral melting');return true;}
    if(m===M.BASALT&&T>1200){this.transform(k,M.LAVA,1,'basalt melting');return true;}
-   if(m===M.CINNABAR){w.toxin[k]=Math.max(w.toxin[k],160);if(T>350){this.transform(k,M.METAL,1,'mineral roasting');for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.AIR){this.transform(j,M.SMOKE,180,'mineral fumes');w.toxin[j]=255;break;}}return true;}}
+   if(m===M.CINNABAR){w.toxin[k]=Math.max(w.toxin[k],160);if(T>350){this.transform(k,M.MERCURY,0,'mineral roasting');for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.AIR){this.transform(j,M.SULFUR_DIOXIDE,180,'mineral fumes');w.toxin[j]=255;break;}}return true;}}
    if(m===M.LIMESTONE)for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.ACID){this.transform(k,M.CO2,255,'carbonate acid reaction');if(w.amt[j]>1)w.amt[j]--;else this.transform(j,M.AIR,0,'acid exhausted');return true;}}
    if(m===M.DIRT){if(w.moist[k]>=60){this.transform(k,M.MUD,w.amt[k],'soil wetting');return true;}for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.WATER){const n=Math.min(w.amt[j],120-w.moist[k]);if(n<=0)continue;w.amt[j]-=n;w.moist[k]+=n;if(!w.amt[j])w.setRaw(j,M.AIR,0);else w.touch(j%w.W,(j/w.W)|0);this.transform(k,M.MUD,w.amt[k],'soil wetting');return true;}}}
    if(m===M.MULCH&&w.moist[k]>30&&tick%300===0){this.transform(k,M.DIRT,w.amt[k],'mulch decomposition');return true;}
@@ -66,8 +79,8 @@ export class SandboxPhysics {
   if(m===M.BATTERY||m===M.WIRE||m===M.LAMP){if(m===M.BATTERY)w.chunkActive[w.chunkOf(x,y)]=8;return true;}
   if(m===M.CLONER){
    w.chunkActive[w.chunkOf(x,y)]=8;if(tick%8)return true;
-   if(!w.amt[k])for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]!==M.AIR&&w.mat[j]!==M.CLONER&&w.mat[j]!==M.BARRIER){w.amt[k]=w.mat[j];break;}}
-   const copy=w.amt[k];if(copy&&MATERIALS[copy])for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.AIR){const def=MATERIALS[copy];this.transform(j,copy,def.food?def.foodUnits:IS_WATER[copy]?64:def.nutrient,'cloner source');w.moved[j]=stamp;break;}}return true;
+   if(!w.amt[k])for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]!==M.AIR&&w.mat[j]!==M.CLONER&&w.mat[j]!==M.BARRIER){w.amt[k]=w.mat[j];w.phase[k]=w.mat[j]===M.FROZEN_MIXTURE?w.phase[j]:0;break;}}
+   const copy=w.amt[k];if(copy&&MATERIALS[copy]&&this.canClone(copy))for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&w.mat[j]===M.AIR){const def=MATERIALS[copy===M.FROZEN_MIXTURE?phaseOrigin(w.phase[k]):copy];this.reactions.transaction([{k:j,m:copy,amount:def.food?def.foodUnits:IS_WATER[copy]?64:def.nutrient,carrier:def.initialCarrier??0,phase:copy===M.FROZEN_MIXTURE?w.phase[k]:def.phaseMax?this.rng.int(def.phaseMax+1):0,tint:def.randomTints?def.randomTints[this.rng.int(def.randomTints.length)]:def.defaultTint??0}],'cloner source');if(def.initialTemperature!==undefined)w.temp[w.tIdx(j%w.W,(j/w.W)|0)]=def.initialTemperature;w.moved[j]=stamp;break;}}return true;
   }
   if(IS_WATER[m]&&!IS_GAS[m]){
    if((m===M.ICE||m===M.SNOW)&&T>0){this.transform(k,M.WATER,w.amt[k],'melting');return true;}
@@ -92,14 +105,14 @@ export class SandboxPhysics {
   if(m===M.DOUGH&&T>110){this.transform(k,M.BREAD,w.amt[k],'baking');return true;}
   if((m===M.GUNPOWDER||m===M.EXPLOSIVE||m===M.HYDROGEN)&&ignition){w.moved[k]=stamp;this.explosion(k,x,y,m===M.EXPLOSIVE?9:4);return true;}
   if(m===M.FUSE&&ignition){this.transform(k,M.FIRE,120,'fuse ignition');return true;}
-  if(MATERIALS[m].flammability&&m!==M.HYDROGEN&&ignition&&this.rng.chance(MATERIALS[m].flammability!*.04)){this.transform(k,M.FIRE,180,'combustion');return true;}
+  if(def.flammability&&m!==M.HYDROGEN&&ignition&&this.rng.chance(def.flammability*.04*(1-w.moist[k]/Math.max(1,def.moistureCap)))){this.transform(k,M.FIRE,180,'combustion');return true;}
   if(m===M.FIRE||m===M.SPARK){
    w.temp[tc]=Math.min(2000,w.temp[tc]+(m===M.FIRE?4:1));
    for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&IS_WATER[w.mat[j]]&&!IS_GAS[w.mat[j]]){this.transform(k,M.SMOKE,50,'extinguishing');w.temp[tc]-=10;return true;}}
    if(w.amt[k]<=1){this.transform(k,m===M.SPARK?M.AIR:M.ASH,0,'burnout');return true;}w.amt[k]--;w.touch(x,y);
   }
   if(m===M.SMOKE){if(tick%4===0){if(w.amt[k]<=1){this.transform(k,M.AIR,0,'gas dispersion');return true;}w.amt[k]--;}w.toxin[k]=Math.max(w.toxin[k],25);}
-  if(m===M.ACID){w.toxin[k]=Math.max(w.toxin[k],150);if(tick%8===0)for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&IS_SOLID[w.mat[j]]&&![M.BARRIER,M.GLASS,M.BATTERY,M.CLONER].includes(w.mat[j] as any)){this.transform(j,M.SMOKE,60,'acid corrosion');if(w.amt[k]>1)w.amt[k]--;else this.transform(k,M.AIR,0,'acid exhausted');break;}}}
+  if(m===M.ACID){w.toxin[k]=Math.max(w.toxin[k],150);if(tick%8===0)for(let d=0;d<4;d++){const j=this.neighbour(k,x,d);if(j>=0&&IS_SOLID[w.mat[j]]&&!(MATERIALS[w.mat[j]].acidResistance)&&![M.BARRIER,M.GLASS,M.BATTERY,M.CLONER].includes(w.mat[j] as any)){this.transform(j,M.SMOKE,60,'acid corrosion');if(w.amt[k]>1)w.amt[k]--;else this.transform(k,M.AIR,0,'acid exhausted');break;}}}
   if(IS_GAS[m]&&m!==M.AIR){
    const dir=y>0&&IS_LIQUID[w.mat[k-w.W]]?-1:m===M.CO2?1:-1,dy=y+dir;
    if(dy<0||dy>=w.H){this.transform(k,M.AIR,0,'gas escaped at boundary');return true;}
@@ -109,8 +122,9 @@ export class SandboxPhysics {
    return true;
   }
   if(IS_LIQUID[m]&&m!==M.WATER){
-   if((MATERIALS[m].viscosity??0)>0&&this.rng.chance(MATERIALS[m].viscosity!)){w.chunkActive[w.chunkOf(x,y)]=8;return true;}
-   if(y+1<w.H){const b=k+w.W,n=w.mat[b];if(n===M.AIR||IS_GAS[n]||(IS_LIQUID[n]&&DENSITY[m]>DENSITY[n])){w.swap(k,b);w.moved[b]=stamp;return true;}}
+   const viscosity=Math.max(0,(MATERIALS[m].viscosity??0)-Math.max(0,T-20)*.003);
+   if(viscosity>0&&this.rng.chance(viscosity)){w.chunkActive[w.chunkOf(x,y)]=8;return true;}
+   if(y+1<w.H){const b=k+w.W,n=w.mat[b];if(n===M.AIR||IS_GAS[n]||((IS_LIQUID[n]||MATERIALS[n].granular)&&DENSITY[m]>DENSITY[n])){w.swap(k,b);w.moved[b]=stamp;return true;}}
    const dx=this.rng.chance(.5)?-1:1;
    for(let t=0;t<2;t++){const d=t?-dx:dx,nx=x+d;if(nx<0||nx>=w.W)continue;const j=k+d;if(w.mat[j]===M.AIR||IS_GAS[w.mat[j]]){w.swap(k,j);w.moved[j]=stamp;return true;}}
    w.chunkActive[w.chunkOf(x,y)]=8;return true;

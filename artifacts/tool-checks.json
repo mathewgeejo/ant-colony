@@ -1,0 +1,12 @@
+{
+  "browser": "157.0.4341.46",
+  "checks": [
+    "Rapid Play/Pause ignores injected stale worker status and acknowledges the latest request",
+    "Lookup opens information for the clicked material",
+    "Latched Shift intensifies Heat without a keyboard",
+    "Latched Shift intensifies Smash into sand",
+    "Latched Shift joins brush anchors with a connected line",
+    "Shift toggle is reachable in the phone toolbar"
+  ],
+  "errors": []
+}

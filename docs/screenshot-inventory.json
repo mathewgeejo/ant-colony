@@ -203,193 +203,353 @@
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Water",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "SaltWater",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Magma",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Slime",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Cement",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Oil",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "LampOil",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Foam",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Acid",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Glue",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Soda",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Juice",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Milk",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Vinegar",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Alcohol",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Soap",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Bleach",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Dye",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Ink",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Mercury",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Blood",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Vaccine",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Poison",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Antidote",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Honey",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Sap",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Caramel",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Molasses",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Ketchup",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "Mayo",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "LiquidHydrogen",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Liquids",
       "screenshot": "Screenshot 2026-11-14 170604.png",
       "name": "LiquidNitrogen",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/LIQUID-CONTENT.md",
+        "tests/liquids.test.ts",
+        "artifacts/liquid-checks.json"
+      ]
     },
     {
       "category": "Life",
@@ -2087,61 +2247,121 @@
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Erase",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Drag",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Pick",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Mix",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Heat",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Cool",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Lookup",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Shock",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Paint",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     },
     {
       "category": "Tools",
       "screenshot": "Screenshot 2026-11-14 170555.png",
       "name": "Smash",
-      "status": "pending"
+      "status": "partial",
+      "evidence": [
+        "docs/SANDBOX-FEATURES.md",
+        "tests/sandbox-physics.test.ts",
+        "artifacts/sandbox-controls.json",
+        "artifacts/tool-checks.json"
+      ]
     }
   ]
 }

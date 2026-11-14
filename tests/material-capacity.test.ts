@@ -1,0 +1,12 @@
+import {it,expect} from 'vitest';
+import {createSim} from '../src/sim/scenarios.ts';
+import {AntStore} from '../src/sim/ants.ts';
+import {M,MATERIALS} from '../src/sim/materials.ts';
+import {packChunks} from '../src/sim/view.ts';
+import {snapshot,restore} from '../src/sim/persist.ts';
+const empty=()=>createSim({scenario:'empty',seed:42,size:[32,32]});
+it('transports material IDs above 255 and quantities/templates without byte truncation',()=>{const s=empty();s.w.mat[0]=511;s.w.amt[0]=511;const p=packChunks(s,true),b=new Uint8Array(p.buf!);expect(b.length).toBe(4*(2+256*3));expect(b[2]|b[3]<<8).toBe(511);expect(s.w.amt[0]).toBe(511);expect(b[4]).toBe(0);});
+it('retains wide carried identities through pooled growth and serialization',()=>{const a=new AntStore(16),first=a.spawn();a.carry[first]=511;for(let n=0;n<20;n++)a.spawn();expect(a.cap).toBeGreaterThan(16);const r=AntStore.restore(a.serialize());expect(r.carry[first]).toBe(511);});
+it('migrates schema-3 byte worlds into wide arrays without changing continuation',()=>{const s=empty();s.applyNow({t:'paint',mat:M.SAND,x:10,y:5,r:2});const f=snapshot(s);f.version=3;f.state.world.mat=Uint8Array.from(f.state.world.mat);f.state.world.amt=Uint8Array.from(f.state.world.amt);const r=restore(f);expect(r.w.mat).toBeInstanceOf(Uint16Array);expect(r.w.amt).toBeInstanceOf(Uint16Array);for(let n=0;n<50;n++){s.step();r.step();}expect(r.hash()).toBe(s.hash());});
+it('rejects out-of-range legacy values before typed-array conversion can wrap them',()=>{const f=snapshot(empty());f.version=3;f.state.world.mat=Array(32*32).fill(0);f.state.world.mat[0]=65536;expect(()=>restore(f)).toThrow('legacy save');});
+it('keeps the static registry contiguous and prevents out-of-range identities in saves',()=>{expect(MATERIALS.every((m,i)=>m.id===i)).toBe(true);expect(MATERIALS.length).toBeLessThanOrEqual(65536);const f=snapshot(empty());f.state.world.mat[0]=511;expect(()=>restore(f)).toThrow('unknown material');});

@@ -20,6 +20,8 @@ export interface ScenarioDef {
 }
 
 export const SCENARIOS: ScenarioDef[] = [
+  {id:'powder-lab',title:'Powder workshop',mode:'naturalistic',defaultSize:[384,192],blurb:'Six stations for fluttering grains, floating flakes, borax/glue, metal/water, hot phases and shielded exposure. All reactions use the live rules.',goal:'Pour powder, change heat, inspect products and try the exposure overlay. Open the shield window and compare the field on either side. Chemistry, radiation and time are game abstractions.'},
+  {id:'liquid-lab',title:'Liquid reaction lab',mode:'naturalistic',defaultSize:[384,192],blurb:'Eight labeled vessels for curdling, cement, emulsions, fermentation, cryogens, stains, mercury and heated sugar. Reactions run locally.',goal:'Inspect the vessels, change heat or add a reagent. Carrier water, food units, finite doses and reaction progress are saved. These are authored sandbox rules, not a chemistry prediction.'},
   {id:'life-garden',title:'Living garden',mode:'naturalistic',defaultSize:[384,192],blurb:'A provisioned experimental garden with a pond, flowers, decomposers, grazers and predators. Wildlife uses simplified sandbox profiles.',goal:'Inspect animals to see their tasks and stages. Move food, cut a plant, drain the pond or add a wall. Watch locally available resources affect survival and reproduction.'},
   { id:'empty',title:'Empty particle sandbox',mode:'naturalistic',defaultSize:[384,192],blurb:'An empty canvas for falling sand, fluids, heat and circuits. Paint terrain before introducing a queen.',goal:'Choose powders, liquids, gases or energy devices. Draw containers, mix materials and inspect the results.' },
   { id:'physics-lab',title:'Particle physics lab',mode:'naturalistic',defaultSize:[384,192],blurb:'Prepared density tanks, a gated reservoir, combustible wood and a battery circuit. All motion and reactions use the live simulation.',goal:'Open the guide to pour grains, release the reservoir, ignite fuel or break the circuit. Inspect materials and use heat/cool/shock to experiment.' },
@@ -213,13 +215,13 @@ export function createSim(opt: CreateOptions): Sim {
   if (def.id === 'fantasy-divergence') { climate.rainChancePerDay = 0.6; climate.rainIntensity = 3; gen = { ...gen, ponds: 2 }; }
   if (def.id === 'stress-test') { settings.naturalPredators = false; settings.maxColonies = 30; gen = { ...gen, plants: 0.9 }; }
   if (def.id === 'inheritance-garden') { Object.assign(climate,{meanTemp:27,deepTemp:25,dayAmp:2,seasonAmp:2,rainChancePerDay:0}); settings.weather=false;settings.naturalPredators=false; }
-  if(def.id==='empty'||def.id==='physics-lab'){settings.weather=false;settings.naturalPredators=false;}
+  if(['empty','physics-lab','liquid-lab','powder-lab'].includes(def.id)){settings.weather=false;settings.naturalPredators=false;}
   if(def.id==='life-garden'){Object.assign(climate,{meanTemp:24,deepTemp:22,baseHumidity:.8,dayAmp:2,seasonAmp:1});settings.weather=false;settings.naturalPredators=false;gen={...gen,plants:0,logs:0};}
   if (opt.climate) Object.assign(climate, opt.climate);
   if (opt.settings) Object.assign(settings, opt.settings);
   const sim = new Sim({ W, H, seed, mode, scenario: def.id, climate, settings, customSpecies: opt.customSpecies });
   sim.createOpts = structuredClone(opt);
-  if(def.id!=='empty'&&def.id!=='physics-lab')generateTerrain(sim, seed, gen);
+  if(!['empty','physics-lab','liquid-lab','powder-lab'].includes(def.id))generateTerrain(sim, seed, gen);
   else sim.w.recomputeAllSurface();
   sim.scenarioInfo = { id: def.id, title: def.title, goal: def.goal, actions: [] };
   const lasius = sim.speciesById('lasius-niger');
@@ -231,6 +233,50 @@ export function createSim(opt: CreateOptions): Sim {
     sim.foundColony(sp, x, surfaceY(sim, x) - 1, ga, gb, sim.sampleMates(sp, [], 0), 0, 0, null);
   };
   switch (def.id) {
+    case 'powder-lab':{
+      const w=sim.w,X=(n:number)=>Math.round(n*W/384),Y=(n:number)=>Math.round(n*H/192);
+      const put=(x:number,y:number,m:number)=>{if(!w.inb(x,y))return;const d=MATERIALS[m];sim.setCell(y*W+x,m,d.food?d.foodUnits:m===M.WATER?64:d.nutrient,'player workshop setup');};
+      const patch=(x:number,y:number,m:number,r=2)=>{for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)if(dx*dx+dy*dy<=r*r+r)put(x+dx,y+dy,m);};
+      const names=['FLUTTER & GRAVITY','FLOATING FLAKES','BORAX + GLUE','METAL + WATER','THERMAL REACTIONS','EXPOSURE & SHIELD'];sim.scenarioInfo.notes=[];
+      for(let n=0;n<6;n++){const x=X(12+n%3*126),top=Y(n<3?32:116),bottom=Y(n<3?90:176);for(let y=top;y<=bottom;y++){put(x,y,M.BARRIER);put(x+X(108),y,M.BARRIER);}for(let xx=x;xx<=x+X(108);xx++)put(xx,bottom,M.BARRIER);sim.scenarioInfo.notes.push({x:x+X(54),y:top-4,text:names[n]});}
+      patch(X(43),Y(44),M.FEATHER);patch(X(65),Y(44),M.CONFETTI);patch(X(93),Y(44),M.SAND);
+      for(let y=Y(77);y<Y(90);y++)for(let x=X(139);x<X(246);x++)put(x,y,M.WATER);patch(X(160),Y(65),M.GLITTER);patch(X(189),Y(65),M.SAWDUST);patch(X(219),Y(65),M.GOLD_COIN);
+      for(let y=Y(85);y<Y(90);y++)for(let x=X(285);x<=X(293);x++)put(x,y,x<=X(288)?M.BORAX:M.GLUE);
+      for(let y=Y(165);y<Y(176);y++)for(let x=X(13);x<X(120);x++)put(x,y,M.WATER);patch(X(39),Y(164),M.SODIUM,1);patch(X(85),Y(164),M.CALCIUM,1);
+      patch(X(165),Y(174),M.WAX,1);patch(X(195),Y(173),M.THERMITE,1);put(X(195),Y(175),M.HEATER);patch(X(222),Y(174),M.GOLD_COIN,1);
+      for(let y=Y(116);y<Y(176);y++)put(X(320),y,M.BARRIER);for(let x=X(314);x<X(320);x++)put(x,Y(171),M.BARRIER);patch(X(317),Y(169),M.URANIUM,1);
+      sim.scenarioInfo.actions=[
+        {label:'Pour another feather / sand pair',cmds:[{t:'paint',mat:M.FEATHER,x:X(43),y:Y(44),r:3,replace:false},{t:'paint',mat:M.SAND,x:X(93),y:Y(44),r:3,replace:false}]},
+        {label:'Open the shield window',cmds:Array.from({length:Math.max(1,Y(172)-Y(167))},(_,n)=>({t:'erase' as const,x:X(320),y:Y(167)+n,r:0}))},
+        {label:'Heat the wax',cmds:[{t:'heat',x:X(165),y:Y(173),r:7,amount:90}]},
+        {label:'Add a sodium grain to water',cmds:[{t:'paint',mat:M.SODIUM,x:X(55),y:Y(166),r:0,replace:true}]},
+      ];
+      sim.event('experiment','Workshop containers, reagents and heater are introduced conditions. Products, exposure and grain motion are computed, not scripted.');break;
+    }
+    case 'liquid-lab':{
+      const w=sim.w,X=(n:number)=>Math.round(n*W/384),Y=(n:number)=>Math.round(n*H/192);
+      const put=(x:number,y:number,m:number)=>{if(!w.inb(x,y))return;const d=MATERIALS[m];sim.setCell(y*W+x,m,d.food?d.foodUnits:m===M.WATER?64:d.nutrient,'player lab setup');};
+      const patch=(cx:number,cy:number,m:number)=>{for(let y=cy-2;y<=cy;y++)for(let x=cx-3;x<=cx+3;x++)put(x,y,m);};
+      const names=['MILK + ACID','CEMENT + WATER','SOAP + OIL','JUICE + YEAST','CRYOGENS','DYE + WOOD','MERCURY','HEATED SYRUP'];
+      sim.scenarioInfo.notes=[];
+      for(let n=0;n<8;n++){const x=X(12+n%4*94),top=Y(n<4?36:112),bottom=Y(n<4?92:168);for(let y=top;y<=bottom;y++){put(x,y,M.GLASS);put(x+X(78),y,M.GLASS);}for(let xx=x;xx<=x+X(78);xx++)put(xx,bottom,M.GLASS);sim.scenarioInfo.notes.push({x:x+X(39),y:top-4,text:names[n]});}
+      patch(X(42),Y(90),M.MILK);patch(X(49),Y(90),M.VINEGAR);
+      patch(X(139),Y(90),M.CONCRETE);patch(X(146),Y(90),M.WATER);
+      patch(X(233),Y(90),M.SOAP);patch(X(240),Y(90),M.OIL);patch(X(247),Y(90),M.WATER);
+      patch(X(327),Y(90),M.JUICE);for(let x=X(324);x<=X(330);x++)put(x,Y(87),M.YEAST);
+      patch(X(40),Y(166),M.LIQUID_NITROGEN);patch(X(62),Y(166),M.LIQUID_HYDROGEN);
+      for(let x=X(139);x<X(148);x++)put(x,Y(166),M.WOOD);patch(X(139),Y(165),M.DYE);
+      patch(X(235),Y(166),M.MERCURY);
+      patch(X(329),Y(166),M.SAP);put(X(329),Y(167),M.HEATER);
+      sim.scenarioInfo.actions=[
+        {label:'Add vinegar to the milk vessel',cmds:[{t:'paint',mat:M.VINEGAR,x:X(42),y:Y(70),r:2,replace:false}]},
+        {label:'Heat milk vessel',cmds:[{t:'heat',x:X(46),y:Y(86),r:10,amount:120}]},
+        {label:'Cool mercury below freezing',cmds:[{t:'heat',x:X(235),y:Y(163),r:8,amount:-90}]},
+        {label:'Add bleach to the stained wood',cmds:[{t:'paint',mat:M.BLEACH,x:X(142),y:Y(150),r:2,replace:false}]},
+      ];
+      sim.event('experiment','Liquid lab: vessels, reagents and one continuous heater are experimental sources. No reaction products or outcomes are scripted.');
+      break;
+    }
     case 'life-garden': {
       const w=sim.w,Y=Math.round(H*.38),X=(n:number)=>Math.round(n*W/384);
       const put=(x:number,y:number,m:number,n?:number)=>{if(!w.inb(x,y))return;const d=MATERIALS[m];w.setRaw(y*W+x,m,n??(m===M.WATER?64:d.food?d.foodUnits:d.nutrient));if(MOIST_CAP[m])w.moist[y*W+x]=Math.min(MOIST_CAP[m],d.initialMoisture??100);};

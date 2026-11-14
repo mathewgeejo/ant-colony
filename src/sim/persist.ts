@@ -6,7 +6,7 @@ import { makeColonyFields } from './colony.ts';
 import { SAVE_VERSION, Sim } from './sim.ts';
 import type { SimConfig } from './sim.ts';
 import { validateSpecies } from './species.ts';
-import { MATERIALS,M } from './materials.ts';
+import { MATERIALS,M,FANTASY_MATERIALS } from './materials.ts';
 import { wildlifeById } from './wildlife-defs.ts';
 
 export interface SaveFile {
@@ -35,6 +35,8 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
     world: {
       mat: w.mat.slice(), amt: w.amt.slice(), moist: w.moist.slice(), flags: w.flags.slice(), owner: w.owner.slice(), toxin: w.toxin.slice(),
       charge:w.charge.slice(),
+      dose:w.dose.slice(),
+      carrier:w.carrier.slice(),phase:w.phase.slice(),tint:w.tint.slice(),
       temp: w.temp.slice(), heat: w.heat.slice(), hum: w.hum.slice(), humBias: w.humBias.slice(), surface: w.surface.slice(),
       chunkActive: w.chunkActive.slice(), chunkVer: w.chunkVer.slice(), moved: w.moved.slice(),
       chunkReactive:w.chunkReactive.slice(),
@@ -68,12 +70,14 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
   };
 }
 
-/** Schema 1 predates the electrical field. Unknown versions never enter the simulator. */
+/** Schema 1 predates electricity; schema 2 predates mixture carriers and stains. */
 export function migrate(file: SaveFile): SaveFile {
   if(!file||typeof file!=='object')throw new Error('Not a save file.');
   if(!Number.isInteger(file.version)||file.version<1)throw new Error('Missing or unsupported save schema version.');
   if (file.version > SAVE_VERSION) throw new Error(`This save was made by a newer version (schema ${file.version}); this build reads up to ${SAVE_VERSION}.`);
   if(file.version===1){const W=file.state?.cfg?.W,H=file.state?.cfg?.H;if(file.state?.world&&!file.state.world.charge&&Number.isInteger(W)&&W>=32&&W<=2048&&Number.isInteger(H)&&H>=32&&H<=1024)file.state.world.charge=new Uint8Array(W*H);file.version=2;}
+  if(file.version===2){const W=file.state?.cfg?.W,H=file.state?.cfg?.H;if(file.state?.world&&Number.isInteger(W)&&W>=32&&W<=2048&&Number.isInteger(H)&&H>=32&&H<=1024){file.state.world.carrier??=new Uint8Array(W*H);file.state.world.phase??=new Uint32Array(W*H);file.state.world.tint??=new Uint32Array(W*H);}file.version=3;}
+  if(file.version===3){const w=file.state?.world;for(const key of ['mat','amt'])if(w?.[key]){if(w[key].some((n:number)=>!Number.isInteger(n)||n<0||n>65535))throw new Error('Invalid material or quantity in legacy save.');w[key]=Uint16Array.from(w[key]);}const W=file.state?.cfg?.W,H=file.state?.cfg?.H;if(w&&Number.isInteger(W)&&W>=32&&W<=2048&&Number.isInteger(H)&&H>=32&&H<=1024)w.dose??=new Uint8Array(W*H);file.version=4;}
   return file;
 }
 
@@ -90,8 +94,20 @@ export function validateSave(file: any): string[] {
   if (!Number.isSafeInteger(s.tick) || s.tick < 0) errs.push('Invalid simulation tick.');
   for (const k of ['mat', 'amt', 'moist', 'flags', 'owner', 'toxin']) if (!s.world?.[k] || s.world[k].length !== W * H) errs.push(`Terrain layer "${k}" is missing or has the wrong size.`);
   if(s.world?.mat?.some((m:number)=>!Number.isInteger(m)||!MATERIALS[m]))errs.push('Terrain contains an unknown material id.');
-  if(s.cfg?.mode!=='fantasy'&&s.world?.mat?.some((m:number)=>m===M.PLAGUE||m===M.PRIMORDIAL_SOUP))errs.push('Plague and Primordial soup require Fantasy mode.');
+  if(s.world?.amt?.some((n:number,k:number)=>!Number.isInteger(n)||n<0||n>(s.world.mat?.[k]===M.CLONER?MATERIALS.length-1:255)))errs.push('Terrain contains an invalid quantity or cloner template.');
+  if(s.cfg?.mode!=='fantasy'&&s.world?.mat?.some((m:number,k:number)=>FANTASY_MATERIALS.includes(m)||(m===M.CLONER&&FANTASY_MATERIALS.includes(s.world?.amt?.[k]))))errs.push('Fictional biological materials and cloner templates require Fantasy mode.');
+  for(const key of ['carrier','phase','tint'])if(!s.world?.[key]||s.world[key].length!==W*H)errs.push(`Mixture layer ${key} has the wrong size.`);
+  if(s.world?.mat?.length===W*H&&['carrier','phase','tint'].every(key=>s.world[key]?.length===W*H)){
+    for(let k=0;k<W*H;k++){
+      const m=s.world.mat[k],d=MATERIALS[m],n=s.world.carrier[k],phase=s.world.phase[k],origin=phase&65535;
+      if(!d||!Number.isInteger(n)||n<0||n>(d.carrierCapacity??0)){errs.push('Mixture carrier exceeds its material capacity.');break;}
+      const frozen=m===M.FROZEN_MIXTURE||(m===M.CLONER&&s.world.amt[k]===M.FROZEN_MIXTURE);
+      if(!Number.isInteger(phase)||phase<0||phase>0xffffffff||(frozen?(!MATERIALS[origin]||(origin!==M.WATER&&MATERIALS[origin].freezeAt===undefined)||(phase>>>16)>(origin===M.SODA?8:0)):phase>(m===M.SODA?8:d.phaseMax??0))){errs.push('Mixture contains an invalid origin or reaction progress.');break;}
+      const tint=s.world.tint[k];if(!Number.isInteger(tint)||tint<0||tint>0xffffffff){errs.push('Mixture stain color is invalid.');break;}
+    }
+  }
   if(s.world?.charge&&s.world.charge.length!==W*H)errs.push('Electrical field has the wrong size.');
+  if(!s.world?.dose||s.world.dose.length!==W*H||s.world.dose.some((n:number)=>!Number.isInteger(n)||n<0||n>255))errs.push('Radiation exposure layer is invalid.');
   if(s.world?.lifeCells&&(!Array.isArray(s.world.lifeCells)||s.world.lifeCells.some((k:number)=>!Number.isInteger(k)||k<0||k>=W*H||s.world.mat[k]<M.GRASS||s.world.mat[k]>M.MUSHROOM)))errs.push('Living-cell scheduler contains invalid positions.');
   const animals=s.critters?.list;
   if(!Array.isArray(animals)||animals.length>384)errs.push('Wildlife records are invalid (maximum 384).');
@@ -121,6 +137,8 @@ export function restore(file: SaveFile): Sim {
   w.ledger.initial = { ...s.world.ledger.initial };
   w.chunkDirty.fill(1);
   if(s.world.charge)w.charge.set(s.world.charge);
+  w.dose.set(s.world.dose);
+  w.carrier.set(s.world.carrier);w.phase.set(s.world.phase);w.tint.set(s.world.tint);
   w.rebuildReactive(); // Derived counts also include materials added since older saves.
   if(s.world.lifeCells)w.lifeCells=new Set(s.world.lifeCells);
   w.dirtyColumns=new Set(s.world.dirtyColumns??[]);

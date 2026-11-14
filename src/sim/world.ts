@@ -1,4 +1,4 @@
-import { IS_SOLID, IS_GAS, IS_WATER, FOOD_OF, M, MOIST_CAP, WATER_UNITS, MATERIALS } from './materials.ts';
+import { IS_SOLID, IS_GAS, IS_WATER, FOOD_OF, M, MOIST_CAP, WATER_UNITS, MATERIALS,phaseOrigin } from './materials.ts';
 
 export const CS = 16; // chunk size (cells)
 export const CSHIFT = 4;
@@ -38,14 +38,21 @@ export class World {
   CH: number;
   TW: number;
   TH: number;
-  mat: Uint8Array;
+  mat: Uint16Array;
   /** food units for food cells; water units for water cells; fertility for soils; growth for plants; decay timer for corpses */
-  amt: Uint8Array;
+  amt: Uint16Array;
   moist: Uint8Array;
   flags: Uint8Array;
   owner: Uint8Array;
   toxin: Uint8Array;
   charge:Uint8Array;
+  dose:Uint8Array; // transient game exposure, separate from chemical contamination
+  doseCells=new Set<number>();
+  carrier:Uint8Array; // water bound in mixtures; separate from soil moisture and pure-water amount
+  phase:Uint32Array; // low 16 bits: frozen origin; high 16: saved reaction progress
+  tint:Uint32Array; // 0 = no stain; otherwise 0xffRRGGBB
+  tintDirty=new Set<number>();
+  tintedCells=new Set<number>();
   temp: Float32Array; // coarse, degC
   heat: Float32Array; // coarse, player-applied heat source offset (degC), decays
   hum: Float32Array; // coarse, relative air humidity 0..1
@@ -59,6 +66,8 @@ export class World {
   ledger = new Ledger();
   dirtyColumns = new Set<number>();
   lifeCells = new Set<number>();
+  adhesiveCells=0;
+  medicineCells=0;
 
   constructor(W: number, H: number) {
     this.W = W;
@@ -68,13 +77,15 @@ export class World {
     this.CH = Math.ceil(H / CS);
     this.TW = Math.ceil(W / TS);
     this.TH = Math.ceil(H / TS);
-    this.mat = new Uint8Array(this.N);
-    this.amt = new Uint8Array(this.N);
+    this.mat = new Uint16Array(this.N);
+    this.amt = new Uint16Array(this.N);
     this.moist = new Uint8Array(this.N);
     this.flags = new Uint8Array(this.N);
     this.owner = new Uint8Array(this.N);
     this.toxin = new Uint8Array(this.N);
     this.charge=new Uint8Array(this.N);
+    this.dose=new Uint8Array(this.N);
+    this.carrier=new Uint8Array(this.N);this.phase=new Uint32Array(this.N);this.tint=new Uint32Array(this.N);
     const tn = this.TW * this.TH;
     this.temp = new Float32Array(tn).fill(20);
     this.heat = new Float32Array(tn);
@@ -138,6 +149,10 @@ export class World {
    */
   setRaw(i: number, m: number, a = 0): number {
     const c=this.chunkOf(i%this.W,(i/this.W)|0),old=this.mat[i];
+    this.adhesiveCells+=Number(!!MATERIALS[m].adhesion)-Number(!!MATERIALS[old].adhesion);
+    this.medicineCells+=Number(m===M.PLAGUE||m===M.VACCINE)-Number(old===M.PLAGUE||old===M.VACCINE);
+    if(old!==m)this.phase[i]=0;
+    if(m===M.AIR)this.setTint(i,0);
     const delta=(m>=19||m===M.SAND||m===M.CLAY?1:0)-(old>=19||old===M.SAND||old===M.CLAY?1:0);
     if(delta)this.chunkReactive[c]=Math.max(0,this.chunkReactive[c]+delta);
     this.mat[i] = m;
@@ -149,6 +164,8 @@ export class World {
       lost = this.moist[i] - cap;
       this.moist[i] = cap;
     }
+    const carrierCap=MATERIALS[m].carrierCapacity??0;
+    if(this.carrier[i]>carrierCap){lost+=this.carrier[i]-carrierCap;this.carrier[i]=carrierCap;}
     this.touch(i % this.W, (i / this.W) | 0);
     return lost;
   }
@@ -160,6 +177,7 @@ export class World {
     if(ci!==cj){const d=(this.mat[j]>=19||this.mat[j]===M.SAND||this.mat[j]===M.CLAY?1:0)-(m>=19||m===M.SAND||m===M.CLAY?1:0);this.chunkReactive[ci]=Math.max(0,this.chunkReactive[ci]+d);this.chunkReactive[cj]=Math.max(0,this.chunkReactive[cj]-d);}
     this.mat[i] = this.mat[j]; this.amt[i] = this.amt[j]; this.moist[i] = this.moist[j];
     this.mat[j] = m; this.amt[j] = a; this.moist[j] = w;
+    const c=this.carrier[i],ph=this.phase[i],t=this.tint[i];this.carrier[i]=this.carrier[j];this.carrier[j]=c;this.phase[i]=this.phase[j];this.phase[j]=ph;this.setTint(i,this.tint[j]);this.setTint(j,t);
     this.lifeCells.delete(i);this.lifeCells.delete(j);if(this.mat[i]>=M.GRASS&&this.mat[i]<=M.MUSHROOM)this.lifeCells.add(i);if(this.mat[j]>=M.GRASS&&this.mat[j]<=M.MUSHROOM)this.lifeCells.add(j);
     // nest ownership stays with the location; plug/aphid flags travel with the material
     const MOV = FLAG_PLUG | FLAG_APHID;
@@ -183,7 +201,11 @@ export class World {
     for (let x = 0; x < this.W; x++) this.recomputeSurface(x);
     this.dirtyColumns.clear();
   }
-  rebuildReactive(){this.chunkReactive.fill(0);this.lifeCells.clear();for(let k=0;k<this.N;k++){if(this.mat[k]>=19||this.mat[k]===M.SAND||this.mat[k]===M.CLAY)this.chunkReactive[this.chunkOf(k%this.W,(k/this.W)|0)]++;if(this.mat[k]>=M.GRASS&&this.mat[k]<=M.MUSHROOM)this.lifeCells.add(k);}}
+  rebuildReactive(){this.chunkReactive.fill(0);this.lifeCells.clear();this.tintedCells.clear();this.doseCells.clear();this.adhesiveCells=0;this.medicineCells=0;for(let k=0;k<this.N;k++){const m=this.mat[k],c=this.chunkOf(k%this.W,(k/this.W)|0);if(m>=19||m===M.SAND||m===M.CLAY)this.chunkReactive[c]++;if(m>=M.GRASS&&m<=M.MUSHROOM)this.lifeCells.add(k);if(this.tint[k])this.tintedCells.add(k);if(this.dose[k])this.doseCells.add(k);if(MATERIALS[m].adhesion)this.adhesiveCells++;if(m===M.PLAGUE||m===M.VACCINE)this.medicineCells++;}}
+  expose(k:number,n:number){this.dose[k]=Math.min(255,this.dose[k]+n);if(this.dose[k])this.doseCells.add(k);}
+  localAdhesion(x:number,y:number){if(!this.adhesiveCells)return 0;let a=0;for(let d=0;d<5;d++){const xx=x+(d===1?-1:d===2?1:0),yy=y+(d===3?-1:d===4?1:0);if(this.inb(xx,yy))a=Math.max(a,MATERIALS[this.mat[yy*this.W+xx]].adhesion??0);}return a;}
+  setTint(k:number,color:number){color>>>=0;if(this.tint[k]===color)return;this.tint[k]=color;this.tintDirty.add(k);if(color)this.tintedCells.add(k);else this.tintedCells.delete(k);}
+  foodType(k:number){return FOOD_OF[this.mat[k]===M.FROZEN_MIXTURE?phaseOrigin(this.phase[k]):this.mat[k]];}
   flushSurface() {
     for (const x of this.dirtyColumns) this.recomputeSurface(x);
     this.dirtyColumns.clear();
@@ -198,7 +220,7 @@ export class World {
     let t = 0;
     const { mat, amt, moist, N } = this;
     for (let i = 0; i < N; i++) {
-      t += moist[i];
+      t += moist[i]+this.carrier[i];
       if (IS_WATER[mat[i]]) t += amt[i];
     }
     return t;
@@ -208,7 +230,7 @@ export class World {
     let s = 0, p = 0, d = 0;
     const { mat, amt, N } = this;
     for (let i = 0; i < N; i++) {
-      const f=FOOD_OF[mat[i]];
+      const f=mat[i]===M.FROZEN_MIXTURE?FOOD_OF[phaseOrigin(this.phase[i])]:FOOD_OF[mat[i]];
       if (f===1) s += amt[i];
       else if (f===2) p += amt[i];
       else if (f===3) d += amt[i];

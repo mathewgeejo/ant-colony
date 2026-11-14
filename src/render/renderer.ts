@@ -11,12 +11,14 @@ export class Renderer {
   terrainCtx = this.terrain.getContext('2d')!;
   field = document.createElement('canvas');
   fieldCtx = this.field.getContext('2d')!;
-  map = new Uint8Array(0);
+  map = new Uint16Array(0);
+  tint=new Uint32Array(0);private cellDetails=new Uint8Array(0);
   W = 512; H = 256;
   surface: Int16Array = new Int16Array(0);
   frame: FrameMsg | null = null;
   colonies: any[] = [];
   species: any[] = [];
+  notes:{x:number;y:number;text:string}[]=[];
   route: number[] = [];
   zoom = 3; ox = 0; oy = 0;
   width = 0; height = 0;
@@ -54,7 +56,8 @@ export class Renderer {
     this.canvas.width = Math.round(r.width * d); this.canvas.height = Math.round(r.height * d);
   }
   reset(W: number, H: number) {
-    this.W = W; this.H = H; this.map = new Uint8Array(W * H);
+    this.W = W; this.H = H; this.map = new Uint16Array(W * H);
+    this.tint=new Uint32Array(W*H);this.cellDetails=new Uint8Array(W*H);
     this.terrain.width = W * TILE; this.terrain.height = H * TILE;
     this.raster = new TerrainRaster(W,H);
     this.terrainImage = new ImageData(this.raster.data,W*TILE,H*TILE);
@@ -92,22 +95,25 @@ export class Renderer {
     const start=performance.now();
     this.frame = f;
     if (f.surface) this.surface = f.surface;
+    if(f.tints)for(let o=0;o<f.tints.length;o+=2)this.tint[f.tints[o]]=f.tints[o+1];
+    let minX=this.W,minY=this.H,maxX=-1,maxY=-1;
     if (f.chunks) {
       const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16);
       let o = 0;
-      let minX=this.W,minY=this.H,maxX=-1,maxY=-1;
       for (let c = 0; c < f.chunkCount; c++) {
         const ci = bytes[o] | bytes[o + 1] << 8; o += 2;
         const cx = ci % cw * 16, cy = Math.floor(ci / cw) * 16;
         for (let dy = 0; dy < 16; dy++) for (let dx = 0; dx < 16; dx++) {
-          const m = bytes[o++], q = bytes[o++], x = cx + dx, y = cy + dy;
+          const m = bytes[o++] | bytes[o++] << 8, q = bytes[o++], x = cx + dx, y = cy + dy;
           if (x >= this.W || y >= this.H) continue;
           this.map[y * this.W + x] = m;
-          if(this.raster!.cell(x,y,m,q,this.cutaway?this.surface[x]:this.H)){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+          this.cellDetails[y*this.W+x]=q;
+          if(this.raster!.cell(x,y,m,q,this.cutaway?this.surface[x]:this.H,this.tint[y*this.W+x])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
         }
       }
-      if(maxX>=0)this.terrainCtx.putImageData(this.terrainImage!,0,0,minX*TILE,minY*TILE,(maxX-minX+1)*TILE,(maxY-minY+1)*TILE);
     }
+    if(f.tints)for(let o=0;o<f.tints.length;o+=2){const k=f.tints[o],x=k%this.W,y=(k/this.W)|0;if(this.raster!.cell(x,y,this.map[k],this.cellDetails[k],this.cutaway?this.surface[x]:this.H,this.tint[k])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}}
+    if(maxX>=0)this.terrainCtx.putImageData(this.terrainImage!,0,0,minX*TILE,minY*TILE,(maxX-minX+1)*TILE,(maxY-minY+1)*TILE);
     if (f.overlayKind !== this.overlay) { this.overlay = f.overlayKind; this.fieldCtx.clearRect(0, 0, this.W, this.H); }
     if (f.overlay) {
       this.overlayData = f.overlay;
@@ -118,6 +124,7 @@ export class Renderer {
         if (this.overlay === 'temperature') rgb = [Math.min(255, v * 2), 160 - v / 3, Math.max(35, 255 - v)];
         else if (this.overlay === 'trail') rgb = [213, 186, 255];
         else if(this.overlay==='charge')rgb=[255,223,98];
+        else if(this.overlay==='dose')rgb=[194,230,103];
         else if (this.overlay === 'alarm' || this.overlay === 'mortality' || this.overlay === 'toxin') rgb = [255, 110, 114];
         else if (this.overlay === 'food') rgb = v < 120 ? [255, 209, 94] : v < 180 ? [245, 137, 114] : [191, 214, 121];
         else if (this.overlay === 'territory') rgb = marks[(v - 1) % marks.length];
@@ -176,6 +183,7 @@ export class Renderer {
     if (this.hover && this.editing) { c.strokeStyle = '#fff4d7'; c.lineWidth = 1 / this.zoom; c.strokeRect(this.hover.x - this.brush, this.hover.y - this.brush, this.brush * 2 + 1, this.brush * 2 + 1); }
     if(this.preview){const p=this.preview;c.strokeStyle='#f9e6aa';c.lineWidth=1/this.zoom;c.setLineDash([2,2]);if(p.kind==='line'){c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x2,p.y2);c.stroke();}else c.strokeRect(Math.min(p.x,p.x2),Math.min(p.y,p.y2),Math.abs(p.x2-p.x),Math.abs(p.y2-p.y));c.setLineDash([]);}
     c.restore();
+    if(this.labels)for(const note of this.notes){const x=Math.round(this.ox+note.x*this.zoom),y=Math.round(this.oy+note.y*this.zoom);c.font=`${this.width<600?8:10}px Silkscreen, monospace`;const width=c.measureText(note.text).width;c.fillStyle='#2e3034ed';c.fillRect(x-width/2-4,y-11,width+8,16);c.fillStyle='#f1e5bb';c.fillText(note.text,x-width/2,y);}
     if (this.labels) for (const col of this.colonies) {
       if (!col.alive) continue;
       const x = Math.round(this.ox + col.entrance.x * this.zoom), y = Math.round(this.oy + col.entrance.y * this.zoom);
