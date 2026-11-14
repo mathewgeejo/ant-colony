@@ -2,8 +2,6 @@ import '@fontsource/atkinson-hyperlegible/400.css';
 import '@fontsource/atkinson-hyperlegible/700.css';
 import '@fontsource/silkscreen/400.css';
 import './style.css';
-import './sandbox.css';
-import './arcade.css';
 import { Renderer } from './render/renderer.ts';
 import { MATERIALS, M,FANTASY_MATERIALS } from './sim/materials.ts';
 import { WILDLIFE,wildlifeByKey,type WildlifeDef } from './sim/wildlife-defs.ts';
@@ -28,30 +26,75 @@ const icon = (name: string) => {
     save: '<path d="M4 3h14l3 3v15H3V3h1Zm3 0v7h10V3M7 21v-7h10v7"/>', settings: '<path d="M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-7 0v6"/>',
     plus: '<path d="M12 4v16M4 12h16"/>', minus: '<path d="M4 12h16"/>', fit: '<path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6"/>',
     layers: '<path d="m12 3 10 6-10 6L2 9Zm-9 11 9 5 9-5M3 19l9 4 9-4"/>', close: '<path d="m5 5 14 14M5 19 19 5"/>', tree: '<path d="M12 3v7M5 20v-6h14v6M12 10v4"/><circle cx="12" cy="3" r="2"/><circle cx="5" cy="21" r="2"/><circle cx="19" cy="21" r="2"/>',
+    pan: '<path d="M12 2v20M2 12h20M12 2 9 5m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m17-3-3-3m3 3-3 3"/>',
+    undo: '<path d="M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12h-3"/>', redo: '<path d="m15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12h3"/>',
+    map: '<path d="M3 5v15l6-3 6 3 6-3V2l-6 3-6-3-6 3Zm6-3v15m6-12v15"/>', camera: '<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/>',
+    eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>', info: '<circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-10v1"/>',
+    reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/>', edit: '<path d="m4 20 4-1 11-11-3-3L5 16zM14 7l3 3"/>',
   };
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.settings}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${paths[name] ?? paths.settings}</svg>`;
 };
+const OVERLAYS: [string, string][] = [['none','No overlay'],['trail','Foraging trails'],['alarm','Alarm signals'],['nest','Nest odour'],['moisture','Soil moisture'],['humidity','Air humidity'],['temperature','Temperature'],['food','Food resources'],['territory','Colony activity'],['mortality','Recent mortality'],['toxin','Contamination'],['trait','Water-balance trait'],['charge','Electrical charge'],['dose','Radiation exposure · game units']];
+const CATS: [string, string][] = [['tools','Tools'],['terrain','Land'],['food','Food'],['life','Life'],['climate','Environment'],['powders','Powders'],['liquids','Liquids'],['gases','Gases'],['solids','Solids'],['energy','Energy']];
 
 $('#app').innerHTML = `
 <header class="topbar">
-  <a class="brand" href="#" aria-label="Ant Colony Sandbox home">${icon('ant')}<div><h1>Ant colony <span>Sandbox</span></h1><small>A small world. A life of its own.</small></div></a>
-  <div class="time-controls"><button id="play" class="icon-btn active" title="Pause (Space)" aria-label="Pause simulation">${icon('pause')}</button><button id="step" class="icon-btn" title="Single step (.)" aria-label="Single step">${icon('step')}</button><span class="divider"></span><label class="sr-only" for="speed">Simulation speed</label><select id="speed"><option value="1">1×</option><option value="5">5×</option><option value="10" selected>10×</option><option value="25">25×</option><option value="100">100×</option><option value="1000">Warp</option></select><div class="clock"><strong id="day">Day 1</strong><span id="season">Spring · accelerated time</span></div></div>
-  <nav><button id="new" class="text-btn">${icon('plus')}<span>New world</span></button><button id="journal" class="text-btn">${icon('book')}<span>Field journal</span><i id="journal-count">0</i></button><button id="save-menu" class="icon-btn" title="Save and load" aria-label="Save and load">${icon('save')}</button><button id="settings" class="icon-btn" title="Settings and help" aria-label="Settings and help">${icon('settings')}</button></nav>
+  <a class="brand" href="#" title="Fit world" aria-label="Ant Colony Sandbox: fit world">${icon('ant')}<h1>Ant colony<span>Sandbox</span></h1></a>
+  <div class="time-controls">
+    <button id="play" class="icon-btn btn-play active" title="Pause (Space)" aria-label="Pause simulation">${icon('pause')}</button>
+    <button id="step" class="icon-btn" title="Single step (.)" aria-label="Single step">${icon('step')}</button>
+    <label class="sr-only" for="speed">Simulation speed</label><select id="speed"><option value="1" selected>1×</option><option value="5">5×</option><option value="10">10×</option><option value="25">25×</option><option value="100">100×</option><option value="1000">Warp</option></select>
+    <div class="clock"><strong id="day">Day 1</strong><span id="season">Spring · accelerated time</span></div>
+  </div>
+  <nav>
+    <button id="new" class="text-btn">${icon('plus')}<span>New world</span></button>
+    <button id="journal" class="text-btn">${icon('book')}<span>Field journal</span><i id="journal-count">0</i></button>
+    <button id="save-menu" class="icon-btn" title="Save and load" aria-label="Save and load">${icon('save')}</button>
+    <button id="settings" class="icon-btn" title="Settings and help (\\)" aria-label="Settings and help">${icon('settings')}</button>
+    <button id="fullscreen" class="icon-btn" title="Fullscreen" aria-label="Toggle fullscreen">${icon('fit')}</button>
+  </nav>
 </header>
 <main class="play-space">
   <div class="world-wrap">
-    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag to erase; Alt-drag or use the hand tool to pan. Scroll to zoom. Use arrow keys to pan, plus and minus to zoom."></canvas>
+    <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag to erase; middle-drag, Alt-drag or the hand tool pans. Scroll or pinch to zoom. Arrow keys pan, plus and minus zoom."></canvas>
     <div class="world-heading"><span class="live-dot"></span><strong id="world-title">First colony</strong><span id="mode-badge">Naturalistic</span></div>
-    <div class="world-weather">${icon('sun')}<span id="weather">21°C · mild</span></div>
-    <div class="quick-tools"><button class="icon-btn active" data-tool="inspect" title="Inspect (I)" aria-label="Inspect">${icon('cursor')}</button><button class="icon-btn" data-tool="dig" title="Dig (D)" aria-label="Dig">${icon('shovel')}</button><button class="icon-btn" data-tool="pan" title="Pan (H)" aria-label="Pan">✥</button><span></span><button class="icon-btn" id="zoom-in" aria-label="Zoom in">${icon('plus')}</button><button class="icon-btn" id="zoom-out" aria-label="Zoom out">${icon('minus')}</button><button class="icon-btn" id="fit" title="Fit world (F)" aria-label="Fit world">${icon('fit')}</button></div>
+    <div class="hud-right">
+      <button id="sidebar-toggle" title="Open colony observatory" aria-label="Toggle colony panel">${icon('ant')}<span id="colony-peek">Colony</span></button>
+      <div class="world-weather">${icon('sun')}<span id="weather">21°C · mild</span></div>
+    </div>
+    <div class="quick-tools" role="toolbar" aria-label="World tools">
+      <button class="icon-btn" data-tool="inspect" title="Inspect (I)" aria-label="Inspect">${icon('cursor')}</button>
+      <button class="icon-btn" data-tool="pan" title="Pan (H) · or middle-drag" aria-label="Pan">${icon('pan')}</button>
+      <button class="icon-btn" data-tool="dig" title="Dig (D)" aria-label="Dig">${icon('shovel')}</button>
+      <button class="icon-btn" data-tool="erase" title="Erase (X) · or right-drag" aria-label="Erase">${icon('close')}</button>
+      <span class="sep"></span>
+      <button class="icon-btn" data-tool="heat" title="Heat" aria-label="Heat">${icon('sun')}</button>
+      <button class="icon-btn" data-tool="cool" title="Cool" aria-label="Cool">${icon('drop')}</button>
+    </div>
+    <div class="view-tools" role="toolbar" aria-label="Camera">
+      <button class="icon-btn" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">${icon('minus')}</button>
+      <output id="zoom-level" aria-live="off">100%</output>
+      <button class="icon-btn" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">${icon('plus')}</button>
+      <button class="icon-btn" id="fit" title="Fit world (F)" aria-label="Fit world">${icon('fit')}</button>
+      <button class="icon-btn active" id="minimap-toggle" title="Minimap (M)" aria-label="Toggle minimap" aria-pressed="true">${icon('map')}</button>
+    </div>
     <div id="overlay-legend" class="overlay-legend" hidden></div>
     <div class="world-bottom"><div id="hint">Click an ant to follow its story. Scroll to look closer.</div><div id="position">512 × 256 cells</div></div>
-    <button id="sidebar-toggle" class="icon-btn" aria-label="Toggle colony panel">${icon('ant')}</button>
+    <div class="paused-tag" aria-hidden="true">Paused</div>
+    <button id="restore-ui">Show controls</button>
   </div>
-  <aside id="sidebar"><div class="panel-head"><span>${icon('ant')} Colony observatory</span><button id="collapse" class="plain" aria-label="Hide colony panel">›</button></div><label class="sr-only" for="colony-select">Selected colony</label><select id="colony-select"><option>Founding queen</option></select><div id="colony-detail" class="panel-content"><p>Waiting for the world…</p></div><details id="inspector" open><summary>Inspector <span>click the world</span></summary><div id="inspect-detail" class="panel-content"><p class="muted">Every ant has a reason.<br>Click one to see its task, needs, and inherited traits.</p></div></details><details><summary>Recent events <span id="event-count">0</span></summary><div id="events" class="event-list"></div></details><details id="metrics"><summary>Developer metrics</summary><div id="metrics-detail" class="panel-content"></div></details></aside>
+  <aside id="sidebar"><div class="panel-head"><span>${icon('ant')} Colony observatory</span><button id="collapse" class="icon-btn" aria-label="Hide colony panel">${icon('close')}</button></div><label class="sr-only" for="colony-select">Selected colony</label><select id="colony-select"><option>Founding queen</option></select><div id="colony-detail" class="panel-content"><p>Waiting for the world…</p></div><details id="inspector" open><summary>Inspector <span>click the world</span></summary><div id="inspect-detail" class="panel-content"><p class="muted">Every ant has a reason.<br>Click one to see its task, needs, and inherited traits.</p></div></details><details><summary>Recent events <span id="event-count">0</span></summary><div id="events" class="event-list"></div></details><details id="metrics"><summary>Developer metrics</summary><div id="metrics-detail" class="panel-content"></div></details></aside>
 </main>
 <section class="workbench" aria-label="Sandbox tools">
-  <div class="bench-top"><div class="palette-tabs" role="group" aria-label="Tool category"><button data-cat="terrain" class="selected">Terrain</button><button data-cat="food">Food & water</button><button data-cat="life">Organisms</button><button data-cat="climate">Environment</button></div><div class="brush-controls"><span id="tool-name">Inspector</span><label for="brush">Brush</label><input id="brush" type="range" min="0" max="15" value="3"><output id="brush-value">7</output><label class="replace"><input id="replace" type="checkbox" checked> Replace</label></div><div class="overlay-control">${icon('layers')}<label class="sr-only" for="overlay">World overlay</label><select id="overlay"><option value="none">No overlay</option><option value="trail">Foraging trails</option><option value="alarm">Alarm signals</option><option value="nest">Nest odour</option><option value="moisture">Soil moisture</option><option value="humidity">Air humidity</option><option value="temperature">Temperature</option><option value="food">Food resources</option><option value="territory">Colony activity</option><option value="mortality">Recent mortality</option><option value="toxin">Contamination</option><option value="trait">Water-balance trait</option></select></div></div>
+  <div class="sandbox-controls" role="toolbar" aria-label="Sandbox controls">
+    <div class="current-tool" title="Selected tool"><span id="tool-chip" class="tool-chip"></span><span id="tool-name">Inspector</span></div>
+    <div class="group brush-group"><button id="brush-minus" class="sq" title="Smaller brush ([)" aria-label="Smaller brush">−</button><label class="sr-only" for="brush">Brush size</label><input id="brush" type="range" min="0" max="15" value="3"><output id="brush-value" title="Brush width in cells">7</output><button id="brush-plus" class="sq" title="Larger brush (])" aria-label="Larger brush">+</button></div>
+    <div class="group seg" role="group" aria-label="Draw shape"><label class="sr-only" for="draw-shape">Draw shape</label><select id="draw-shape" class="sr-only"><option value="brush">Brush</option><option value="line">Line</option><option value="box">Rectangle</option><option value="fill">Fill</option></select><button data-shape="brush" class="selected">Brush</button><button data-shape="line">Line</button><button data-shape="box">Box</button><button data-shape="fill">Fill</button></div>
+    <div class="group"><input id="replace" type="checkbox" checked hidden><button id="replace-toggle" class="selected" title="Overwrite occupied cells">Replace</button><button id="shift-toggle" aria-pressed="false" title="Latch Shift: stronger tools and connected lines">Shift</button><label class="paint-color" title="Paint and dye color"><span class="sr-only">Paint color</span><input id="paint-color" type="color" value="#c953a6" aria-label="Paint and dye color"></label></div>
+    <div class="group"><button id="undo" class="sq" disabled title="Undo (Ctrl+Z)" aria-label="Undo">${icon('undo')}</button><button id="redo" class="sq" disabled title="Redo (Ctrl+Y)" aria-label="Redo">${icon('redo')}</button><button id="clear-world" class="danger" title="Clear the world (undoable)">Reset</button></div>
+    <div class="group end"><button id="edit-cell" title="Edit the inspected cell">Edit</button><button id="element-info" title="About the selected material">Info</button><button id="set-tps" title="Target ticks per second">TPS</button><button id="content-packs">Mods</button><button id="capture-world" class="sq" title="Save a screenshot (C)" aria-label="Capture screenshot">${icon('camera')}</button><button id="toggle-gui" class="sq" title="Hide interface (F1)" aria-label="Hide interface">${icon('eye')}</button></div>
+  </div>
+  <div class="bench-top"><div class="palette-tabs" role="group" aria-label="Tool category">${CATS.map(([k,t])=>`<button data-cat="${k}"${k==='terrain'?' class="selected"':''}>${t}</button>`).join('')}</div><label class="element-search"><span class="sr-only">Find a material or tool</span><input id="palette-search" type="search" placeholder="Find material…" autocomplete="off"><kbd>E</kbd></label><div class="overlay-control" title="World overlay (1–4)">${icon('layers')}<label class="sr-only" for="overlay">World overlay</label><select id="overlay">${OVERLAYS.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></div></div>
   <div id="palette" class="palette"></div>
 </section>
 <footer><div><span class="seed-label">Seed <b id="seed-label">42</b></span><span id="status">Connecting to the ecosystem…</span></div><button id="scenario-help">${icon('book')}<span>Experiment guide</span></button><span id="fps">— fps</span></footer>
@@ -59,24 +102,9 @@ $('#app').innerHTML = `
 
 // The world stays full-width; the observatory opens over it when needed.
 document.body.classList.add('panel-hidden');
-$('#sidebar-toggle').innerHTML = `${icon('ant')}<span id="colony-peek">Colony</span>`;
-$('#sidebar-toggle').title = 'Open colony observatory';
-$('.brand small').textContent = 'A living pixel experiment';
-$('.palette-tabs').insertAdjacentHTML('afterend','<label class="element-search"><span class="sr-only">Find a material or tool</span><input id="palette-search" type="search" placeholder="Find material…" autocomplete="off"><kbd>E</kbd></label>');
-$('.quick-tools').insertAdjacentHTML('afterbegin',`<button class="icon-btn" data-tool="erase" title="Erase material (X)" aria-label="Erase">${icon('close')}</button>`);
-$('.quick-tools').insertAdjacentHTML('beforeend',`<span></span><button class="icon-btn" data-tool="heat" title="Heat" aria-label="Heat">${icon('sun')}</button><button class="icon-btn" data-tool="cool" title="Cool" aria-label="Cool">${icon('drop')}</button>`);
-$('.topbar nav').insertAdjacentHTML('beforeend',`<button id="fullscreen" class="icon-btn" title="Fullscreen" aria-label="Toggle fullscreen">${icon('fit')}</button>`);
-$('.workbench').insertAdjacentHTML('afterbegin',`<div class="sandbox-controls" aria-label="Sandbox controls"><button data-click="play" id="quick-play">Pause</button><button data-click="step" title="Single step">&gt;</button><button id="brush-minus" title="Smaller brush">−</button><button id="brush-plus" title="Larger brush">+</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button><button id="clear-world">Reset</button><button id="replace-toggle" class="selected">Replace</button><button id="edit-cell">Edit</button><button id="element-info">Info</button><button id="search-elements">Search</button><button data-click="save-menu">Saves</button><button id="content-packs">Mods</button><button data-click="settings">Settings</button><button id="capture-world">Capture</button><button id="toggle-gui">Hide UI</button><label>Draw <select id="draw-shape"><option value="brush">Brush</option><option value="line">Line</option><option value="box">Rectangle</option><option value="fill">Fill</option></select></label></div>`);
-$('.palette-tabs').insertAdjacentHTML('beforeend','<button data-cat="powders">Powders</button><button data-cat="liquids">Liquids</button><button data-cat="gases">Gases</button><button data-cat="solids">Solids</button><button data-cat="energy">Energy</button>');
-$('.palette-tabs').insertAdjacentHTML('afterbegin','<button data-cat="tools">Tools</button>');
-$('.sandbox-controls').insertAdjacentHTML('beforeend','<button id="set-tps">TPS</button>');
-$('#overlay').insertAdjacentHTML('beforeend','<option value="charge">Electrical charge</option>');
-$('#overlay').insertAdjacentHTML('beforeend','<option value="dose">Radiation exposure · game units</option>');
-$('.sandbox-controls').insertAdjacentHTML('afterbegin','<button id="shift-toggle" aria-pressed="false" title="Latch Shift: stronger tools and connected lines">↑ Shift</button>');
-$('.sandbox-controls').insertAdjacentHTML('beforeend','<label class="paint-color">Color <input id="paint-color" type="color" value="#c953a6" aria-label="Paint and dye color"></label>');
-$('[data-cat="terrain"]').textContent='Land';$('[data-cat="life"]').textContent='Life';$('[data-cat="food"]').textContent='Food';$('#search-elements').textContent='Elem';
-$<HTMLSelectElement>('#speed').value='1';
-$('.world-wrap').insertAdjacentHTML('beforeend','<button id="restore-ui">Show controls</button>');
+const syncShape=()=>{const v=$<HTMLSelectElement>('#draw-shape').value;document.querySelectorAll<HTMLElement>('[data-shape]').forEach(b=>b.classList.toggle('selected',b.dataset.shape===v));};
+document.querySelectorAll<HTMLElement>('[data-shape]').forEach(b=>b.onclick=()=>{$<HTMLSelectElement>('#draw-shape').value=b.dataset.shape!;syncShape();});
+$('#draw-shape').addEventListener('input',syncShape);$('#draw-shape').addEventListener('change',syncShape);
 const renderer = new Renderer($('#world'));
 const worker = new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' });
 const send = (m: ToWorker) => worker.postMessage(m);
@@ -109,7 +137,8 @@ function beep() { if (!sound) return; audio ??= new AudioContext(); void audio.r
 function setTool(t: string, m?: number) {
   tool = t; if (m !== undefined) material = m;
   renderer.editing = !['inspect','pan'].includes(t);
-  $('#world').style.cursor = t === 'pan' ? 'grab' : t === 'inspect' ? 'crosshair' : 'none';
+  $('#world').style.cursor = toolCursor();
+  const chip = $('#tool-chip'); chip.style.background = t === 'paint' ? `rgb(${MATERIALS[material].color})` : ''; chip.classList.toggle('is-tool', t !== 'paint');
   $('#tool-name').textContent = t === 'paint' ? MATERIALS[material].name : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.name:({humid:'Moisten',cool:'Cool',dry:'Dry',colony:'Established colony',color:'Paint color'}[t] ?? t[0].toUpperCase() + t.slice(1));
   $('#hint').textContent = t === 'paint' ? `${MATERIALS[material].description} Drag to paint.` : t.startsWith('animal:')?wildlifeByKey(t.slice(7))!.description:t==='color'?'Paint the selected color onto matter. This changes appearance, not its material or inherited traits.':toolHints[t] ?? '';
   document.querySelectorAll<HTMLElement>('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t && (t !== 'paint' || Number(b.dataset.mat) === material)));
@@ -145,7 +174,7 @@ function palette() {
 function filterPalette(){const q=$<HTMLInputElement>('#palette-search').value.toLowerCase().trim();document.querySelectorAll<HTMLElement>('#palette > button').forEach(b=>{b.hidden=!!q&&!((b.textContent??'')+' '+b.title).toLowerCase().includes(q);});}
 $('#palette-search').addEventListener('input',palette);
 $('#palette-search').addEventListener('keydown',e=>{if(e.key==='Enter'){const b=document.querySelector<HTMLButtonElement>('#palette>button:not([hidden]):not(:disabled)');if(b){b.click();$<HTMLInputElement>('#palette-search').blur();$('#world').focus();}}});
-function setRunning(r: boolean) { running = r; send({type:'run',running:r,revision:++runRevision}); $('#play').innerHTML = icon(r ? 'pause' : 'play'); $('#play').setAttribute('aria-label', r ? 'Pause simulation' : 'Play simulation'); $('#play').title = `${r ? 'Pause' : 'Play'} (Space)`; $('#play').classList.toggle('active', r);$('#quick-play').textContent=r?'Pause':'Play'; }
+function setRunning(r: boolean) { running = r; send({type:'run',running:r,revision:++runRevision}); $('#play').innerHTML = icon(r ? 'pause' : 'play'); $('#play').setAttribute('aria-label', r ? 'Pause simulation' : 'Play simulation'); $('#play').title = `${r ? 'Pause' : 'Play'} (Space)`; $('#play').classList.toggle('active', r); document.body.classList.toggle('paused', !r); }
 function openModal(title: string, body: string, kind = '') { modalKind = kind; $('#modal-title').textContent = title; $('#modal-body').innerHTML = body; if (!($('#modal') as HTMLDialogElement).open) ($('#modal') as HTMLDialogElement).showModal(); }
 function closeModal() { ($('#modal') as HTMLDialogElement).close(); modalKind = ''; }
 $('#modal-close').onclick = closeModal;
@@ -169,7 +198,7 @@ function guide() {
     openModal(s.title,`<p class="lead">Draw matter. Change conditions. Watch the result.</p><p>${esc(s.goal)}</p><ol class="guide"><li><strong>Choose a material.</strong> Powders fall, liquids spread and gases rise or settle. Fixed solids form walls.</li><li><strong>Draw a container.</strong> Use barriers or glass. Replace overwrites occupied cells; turn it off to add only into empty space.</li><li><strong>Change temperature or charge.</strong> Heat, Cool and Shock act immediately, even while paused. Shift intensifies. Resume to see melting, burning, flowing and conduction.</li><li><strong>Inspect and compare.</strong> Click cells with Inspect, then Edit to change their properties. Use temperature and charge overlays. Undo restores the previous world.</li></ol><div class="scenario-actions">${(s.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><div class="notice">Batteries, heaters, coolers and cloners are continuous sandbox sources. Material temperatures and reactions are simplified game rules. The full Sandboxels element library and JavaScript mods are not included.</div><p>Right-drag erases. Middle-click picks. Alt-drag pans; scroll zooms. Use Pause and Step to examine individual updates. To start an ant colony, first paint a suitable soil layer, then introduce a queen from Organisms.</p><button id="guide-close">Start experimenting</button>`,'guide');
     document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});closeModal();});$('#guide-close').onclick=closeModal;return;
   }
-  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · Alt-drag or H to pan · wheel to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
+  openModal(s?.title ?? 'Experiment guide', `<p class="lead">Create conditions. Introduce a queen. See what follows.</p><p>${esc(s?.goal)}</p><div class="notice">${mode==='fantasy'?'Fantasy: fictional adaptations are enabled.':mode==='speculative'?'Speculative: widened trait variation is an extrapolation.':'Naturalistic: researched species profiles with compressed time and colony size.'}<br>One model day = 3,600 ticks. At 1× this takes two minutes. Brood stages and lifespans are also compressed; this is a game, not a predictive model.</div><ol class="guide"><li><strong>Watch the founding queen.</strong> She chooses a site and digs. A garden ant queen seals herself in and rears first workers from reserves.</li><li><strong>Make a small intervention.</strong> Place sugar and protein on the surface. Use the trail overlay to watch successful return trips reinforce a route.</li><li><strong>Change the conditions.</strong> Move food, block a passage, or add water. The ants must find their way again.</li><li><strong>Follow later generations.</strong> Mature colonies rear winged reproductives. Flights and mating can produce daughter colonies, whose genotypes come from parents.</li></ol><div class="scenario-actions">${(s?.actions??[]).map((a:any,i:number)=>`<button class="primary" data-action="${i}">${esc(a.label)}</button>`).join('')}</div><p class="muted">Controls: drag to paint · middle-drag, Space-drag or H to pan · click the minimap to jump · wheel or pinch to zoom · Space to pause · . to step · I inspect · D dig · F fit · [ ] brush size. On touch screens, choose the pan tool to drag the camera.</p><button id="guide-close">Explore the sandbox</button>`,'guide');
   document.querySelectorAll<HTMLElement>('[data-action]').forEach(b=>b.onclick=()=>{send({type:'scenarioAction',index:Number(b.dataset.action)});toast('Experiment intervention applied');closeModal();});
   $('#guide-close').onclick=closeModal;
 }
@@ -214,9 +243,8 @@ function journal() {
 function updateStats(s: any) {
   // A sampled status sent before the latest toggle must not reverse the next click.
   if(s.runRevision<runRevision)return;
-  stats=s; running=s.running;
+  stats=s; running=s.running; document.body.classList.toggle('paused',!s.running);
   $<HTMLButtonElement>('#undo').disabled=!s.history?.undo;$<HTMLButtonElement>('#redo').disabled=!s.history?.redo;
-  $('#quick-play').textContent=s.running?'Pause':'Play';
   $('#day').textContent=`Day ${s.day}`; $('#season').textContent=`${s.season} · ${s.clock}`;
   $('#weather').textContent=`${s.airT.toFixed(0)}°C · ${s.raining?'raining':s.daytime?'daylight':'night'}`;
   $('#status').textContent=`${s.ants.toLocaleString()} ants · ${s.colonies.filter((c:any)=>c.alive).length} colonies · ${s.running?(s.achievedSpeed.toFixed(1)+'× achieved'):'paused'}`;
@@ -267,7 +295,6 @@ $('#speed').onchange=()=>send({type:'speed',speed:Number($<HTMLSelectElement>('#
 $('#new').onclick=newWorldDialog;$('.brand').onclick=e=>{e.preventDefault();renderer.fit();};$('#journal').onclick=()=>{evolution=null;journal();};$('#settings').onclick=settings;$('#save-menu').onclick=()=>send({type:'listSaves'});$('#scenario-help').onclick=guide;
 $('#zoom-in').onclick=()=>renderer.zoomAt(1.3);$('#zoom-out').onclick=()=>renderer.zoomAt(1/1.3);$('#fit').onclick=()=>renderer.fit();
 $('#fullscreen').onclick=()=>{const action=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();void action.catch(()=>toast('Fullscreen is unavailable in this browser window.',true));};
-document.querySelectorAll<HTMLElement>('[data-click]').forEach(b=>b.onclick=()=>$('#'+b.dataset.click).click());
 $('#undo').onclick=()=>{flushBrush();send({type:'undo'});setRunning(false);};$('#redo').onclick=()=>{flushBrush();send({type:'redo'});setRunning(false);};
 $('#clear-world').onclick=()=>{flushBrush();send({type:'clearWorld'});setRunning(false);toast('World cleared. Undo restores the previous ecosystem.');};
 $('#brush-minus').onclick=()=>changeBrush(-1);$('#brush-plus').onclick=()=>changeBrush(1);
@@ -275,7 +302,6 @@ $('#shift-toggle').onclick=()=>{shiftLatched=!shiftLatched;intensify=shiftLatche
 function changeBrush(d:number){$<HTMLInputElement>('#brush').value=String(Math.max(0,Math.min(15,renderer.brush+d)));$('#brush').dispatchEvent(new Event('input'));}
 $('#replace-toggle').onclick=()=>{const c=$<HTMLInputElement>('#replace');c.checked=!c.checked;$('#replace-toggle').classList.toggle('selected',c.checked);};
 $('#replace').onchange=()=>$('#replace-toggle').classList.toggle('selected',$<HTMLInputElement>('#replace').checked);
-$('#search-elements').onclick=()=>$('#palette-search').focus();
 $('#set-tps').onclick=()=>{openModal('Target simulation rate',`<p>TPS is fixed simulation ticks per second. Rendering remains independent; work stays within its compute budget. Actual throughput can be lower.</p><label>Target TPS<input id="tps-value" type="number" min="1" max="9000" value="${Math.min(9000,Math.round((stats?.speed??10)*30))}"></label><button id="tps-apply" class="primary">Set tick rate</button>`);$('#tps-apply').onclick=()=>{const tps=Number($<HTMLInputElement>('#tps-value').value);if(!Number.isFinite(tps)||tps<1||tps>9000)return toast('Enter a rate from 1 to 9000 TPS.',true);send({type:'speed',speed:tps/30});const sel=$<HTMLSelectElement>('#speed'),o=document.createElement('option');o.value=String(tps/30);o.textContent=`${tps} TPS`;sel.append(o);sel.value=o.value;closeModal();};};
 $('#edit-cell').onclick=()=>{
  const c=stats?.selectedCell;if(!c){setTool('inspect');document.body.classList.remove('panel-hidden');toast('Select a cell in the world, then press Edit.');return;}
@@ -321,11 +347,21 @@ function paintShape(a:{x:number;y:number},b:{x:number;y:number},shape:string){
 const local=(e:PointerEvent|WheelEvent)=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
 canvas.oncontextmenu=e=>e.preventDefault();
 function pickAt(w:{x:number;y:number}){if(w.x<0||w.y<0||w.x>=renderer.W||w.y>=renderer.H)return;const m=renderer.map[w.y*renderer.W+w.x];if(m===M.AIR){setTool('erase');return;}const d=MATERIALS[m];cat=d.category==='food'?'food':d.state==='powder'?'powders':d.state==='liquid'?'liquids':d.state==='gas'?'gases':'solids';palette();setTool('paint',m);}
+function toolCursor(){return tool==='pan'?'grab':['inspect','pick','lookup'].includes(tool)?'crosshair':'none';}
+const touches=new Map<number,{x:number;y:number}>();
+let pinch:{d:number;x:number;y:number}|null=null,miniDrag=false,panPick:{x:number;y:number}|null=null,panMoved=0,lastClient={x:0,y:0},spacePanned=false;
+const pinchState=()=>{const [a,b]=[...touches.values()];return{d:Math.hypot(a.x-b.x,a.y-b.y)||1,x:(a.x+b.x)/2,y:(a.y+b.y)/2};};
+// A second finger turns a touch stroke into a pinch; whatever the first finger began is closed as one edit.
+function abortStroke(){if(heldBrushFrame)cancelAnimationFrame(heldBrushFrame);heldBrushFrame=0;const wasEdit=stroke;shapeStart=null;renderer.preview=null;stroke=false;dragging=false;lastPoint=null;eraseStroke=false;flushBrush();if(wasEdit)send({type:'endEdit'});}
 canvas.onpointerdown=e=>{
  e.preventDefault();canvas.focus();const p=local(e),w=renderer.world(p.x,p.y);renderer.hover=w;
- if(e.button===1&&!e.altKey){pickAt(w);return;}canvas.setPointerCapture(e.pointerId);
+ if(e.pointerType==='touch'){touches.set(e.pointerId,p);if(touches.size>=2){abortStroke();pinch=pinchState();return;}}
+ canvas.setPointerCapture(e.pointerId);lastClient={x:e.clientX,y:e.clientY};
+ if(e.button===0&&renderer.minimapAt(p.x,p.y)){miniDrag=true;renderer.centerFromMinimap(p.x,p.y);return;}
+ // Middle button: drag to pan, click without moving to pick the material.
+ if(e.button===1){dragging=true;panMoved=0;panPick=e.altKey?null:w;canvas.style.cursor='grabbing';return;}
  eraseStroke=e.button===2;dragging=!eraseStroke&&(tool==='pan'||e.altKey||space);stroke=!dragging;lastPoint=w;intensify=e.shiftKey||shiftLatched;
- if(dragging)return;
+ if(dragging){if(space)spacePanned=true;canvas.style.cursor='grabbing';return;}
  if(tool==='pick'&&!eraseStroke){pickAt(w);stroke=false;return;}
  if(tool==='lookup'&&!eraseStroke){if(w.x>=0&&w.y>=0&&w.x<renderer.W&&w.y<renderer.H)elementInfo(renderer.map[w.y*renderer.W+w.x]);stroke=false;return;}
  if(tool==='inspect'&&!eraseStroke){send({type:'selectAnt',...w,radius:Math.max(1,5/renderer.zoom)});$('#inspector').setAttribute('open','');document.body.classList.remove('panel-hidden');stroke=false;return;}
@@ -339,9 +375,14 @@ canvas.onpointerdown=e=>{
  lineAnchor=w;beep();
 };
 canvas.onpointermove=e=>{
- const p=local(e),w=renderer.world(p.x,p.y);renderer.hover=w;intensify=e.shiftKey||shiftLatched;
- $('#position').textContent=`${w.x}, ${w.y} · ${renderer.zoom.toFixed(1)}× zoom`;
- if(dragging){renderer.ox+=e.movementX;renderer.oy+=e.movementY;return;}
+ const p=local(e);
+ if(touches.has(e.pointerId)){touches.set(e.pointerId,p);if(pinch&&touches.size>=2){const n=pinchState();renderer.zoomAt(n.d/pinch.d,n.x,n.y);renderer.ox+=n.x-pinch.x;renderer.oy+=n.y-pinch.y;pinch=n;return;}}
+ if(miniDrag){renderer.centerFromMinimap(p.x,p.y);return;}
+ if(dragging){const dx=e.clientX-lastClient.x,dy=e.clientY-lastClient.y;lastClient={x:e.clientX,y:e.clientY};renderer.ox+=dx;renderer.oy+=dy;panMoved+=Math.abs(dx)+Math.abs(dy);return;}
+ if(!stroke&&!shapeStart&&renderer.minimapAt(p.x,p.y)){renderer.hover=null;canvas.style.cursor='pointer';return;}
+ canvas.style.cursor=toolCursor();
+ const w=renderer.world(p.x,p.y);renderer.hover=w;intensify=e.shiftKey||shiftLatched;
+ $('#position').textContent=w.x>=0&&w.y>=0&&w.x<renderer.W&&w.y<renderer.H?`${w.x}, ${w.y}`:`${renderer.W} × ${renderer.H} cells`;
  if(shapeStart){renderer.preview={...shapeStart,x2:w.x,y2:w.y,kind:$<HTMLSelectElement>('#draw-shape').value};return;}
  if(!stroke||!lastPoint||(w.x===lastPoint.x&&w.y===lastPoint.y))return;
  if(tool==='drag'&&!eraseStroke){queueBrush({t:'move',x:lastPoint.x,y:lastPoint.y,toX:w.x,toY:w.y,r:renderer.brush});lastPoint=w;return;}
@@ -349,7 +390,11 @@ canvas.onpointermove=e=>{
  const dx=w.x-lastPoint.x,dy=w.y-lastPoint.y,d=Math.max(Math.abs(dx),Math.abs(dy)),spacing=eraseStroke||['paint','dig','erase'].includes(tool)?Math.max(1,Math.floor(renderer.brush/2)):1;
  if(d<spacing)return;const n=Math.min(100,Math.ceil(d/spacing));for(let k=1;k<=n;k++)paint(Math.round(lastPoint.x+dx*k/n),Math.round(lastPoint.y+dy*k/n));lastPoint=w;
 };
-const pointerEnd=()=>{
+const pointerEnd=(e:PointerEvent)=>{
+ if(touches.delete(e.pointerId)&&pinch){if(touches.size<2)pinch=null;return;}
+ miniDrag=false;
+ if(panPick&&panMoved<4)pickAt(panPick);panPick=null;
+ if(dragging)canvas.style.cursor=toolCursor();
  if(heldBrushFrame)cancelAnimationFrame(heldBrushFrame);heldBrushFrame=0;
  const wasEdit=stroke;
  if(shapeStart&&renderer.hover)paintShape(shapeStart,renderer.hover,$<HTMLSelectElement>('#draw-shape').value);
@@ -357,10 +402,18 @@ const pointerEnd=()=>{
  shapeStart=null;renderer.preview=null;stroke=false;dragging=false;lastPoint=null;eraseStroke=false;flushBrush();if(wasEdit)send({type:'endEdit'});
 };
 canvas.onpointerup=pointerEnd;canvas.onpointercancel=pointerEnd;canvas.onlostpointercapture=pointerEnd;canvas.onpointerleave=()=>{renderer.hover=null;};
-canvas.addEventListener('wheel',e=>{e.preventDefault();const p=local(e);renderer.zoomAt(e.deltaY<0?1.12:1/1.12,p.x,p.y);},{passive:false});
-document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();if(key===' '&&!e.repeat){space=true;setRunning(!running);}if(key==='.'){$('#step').click();}if(key==='i')setTool('inspect');if(key==='d')setTool('dig');if(key==='h')setTool('pan');if(key==='f')renderer.fit();if(key==='+'||key==='=')renderer.zoomAt(1.2);if(key==='-')renderer.zoomAt(1/1.2);if(key==='arrowleft')renderer.ox+=40;if(key==='arrowright')renderer.ox-=40;if(key==='arrowup')renderer.oy+=40;if(key==='arrowdown')renderer.oy-=40;if(key==='['||key===']'){$<HTMLInputElement>('#brush').value=String(Math.max(0,Math.min(15,renderer.brush+(key==='['?-1:1))));$('#brush').dispatchEvent(new Event('input'));}});
+// Wheel zooms around the pointer; trackpad pinches arrive as ctrl+wheel and horizontal swipes pan.
+canvas.addEventListener('wheel',e=>{e.preventDefault();const p=local(e);
+ if(!e.ctrlKey&&e.deltaMode===0&&Math.abs(e.deltaX)>Math.abs(e.deltaY)){renderer.ox-=e.deltaX;return;}
+ const dy=e.deltaMode===1?e.deltaY*16:e.deltaMode===2?e.deltaY*400:e.deltaY;
+ renderer.zoomAt(Math.exp(-Math.max(-120,Math.min(120,dy))*(e.ctrlKey?.01:.0018)),p.x,p.y);},{passive:false});
+function toggleMinimap(){renderer.showMinimap=!renderer.showMinimap;$('#minimap-toggle').classList.toggle('active',renderer.showMinimap);$('#minimap-toggle').setAttribute('aria-pressed',String(renderer.showMinimap));}
+$('#minimap-toggle').onclick=toggleMinimap;
+let shownZoom=0;(function hud(){if(renderer.zoom!==shownZoom){shownZoom=renderer.zoom;$('#zoom-level').textContent=`${renderer.zoom<10?renderer.zoom.toFixed(1):Math.round(renderer.zoom)}×`;}requestAnimationFrame(hud);})();
+document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;const key=e.key.toLowerCase();if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();if(key===' '&&!e.repeat){space=true;spacePanned=false;}if(key==='m')toggleMinimap();if(key==='.'){$('#step').click();}if(key==='i')setTool('inspect');if(key==='d')setTool('dig');if(key==='h')setTool('pan');if(key==='f')renderer.fit();if(key==='+'||key==='=')renderer.zoomAt(1.2);if(key==='-')renderer.zoomAt(1/1.2);const step=e.shiftKey?160:56;if(key==='arrowleft')renderer.ox+=step;if(key==='arrowright')renderer.ox-=step;if(key==='arrowup')renderer.oy+=step;if(key==='arrowdown')renderer.oy-=step;if(key==='['||key===']'){$<HTMLInputElement>('#brush').value=String(Math.max(0,Math.min(15,renderer.brush+(key==='['?-1:1))));$('#brush').dispatchEvent(new Event('input'));}});
 document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;if(e.key.toLowerCase()==='e'){e.preventDefault();$('#palette-search').focus();}if(e.key.toLowerCase()==='x')setTool('erase');});
-document.addEventListener('keyup',e=>{if(e.key===' ')space=false;});
+// Space alone toggles pause on release; Space held while dragging pans instead.
+document.addEventListener('keyup',e=>{if(e.key===' '&&space){space=false;if(!spacePanned)setRunning(!running);}});
 document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea')||$<HTMLDialogElement>('#modal').open)return;const k=e.key.toLowerCase();if(k==='p')setRunning(!running);if(k==='>')$('#step').click();if(k==='c')$('#capture-world').click();if(k==='\\')settings();if(['1','2','3','4'].includes(k)){$<HTMLSelectElement>('#overlay').value=['none','temperature','trail','charge'][Number(k)-1];updateOverlay();}});
 document.addEventListener('keydown',e=>{if((e.target as HTMLElement).matches('input,select,textarea'))return;if(e.key==='F1'){e.preventDefault();toggleGUI();}if(e.key==='F2'){e.preventDefault();$('#capture-world').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'#redo':'#undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('#redo').click();}});
 let hiddenRunning=false;document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenRunning=running;if(running)setRunning(false);}else if(hiddenRunning){setRunning(true);hiddenRunning=false;}});

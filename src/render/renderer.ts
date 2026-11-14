@@ -1,9 +1,10 @@
 import type { FrameMsg, OverlayKind } from '../protocol.ts';
-import { M } from '../sim/materials.ts';
+import { M, MATERIALS } from '../sim/materials.ts';
 import { TerrainRaster, TILE, terrainHash as hash } from './terrain.ts';
 import { AgentRaster } from './agents.ts';
 import type { RGB } from './sprites.ts';
 
+const GROUND = Uint8Array.from(MATERIALS, m => m.state === 'solid' && m.category === 'terrain' ? 1 : 0);
 const marks: RGB[] = [[239, 181, 86], [116, 190, 211], [215, 128, 152], [165, 192, 109], [190, 160, 219]];
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -15,6 +16,7 @@ export class Renderer {
   tint=new Uint32Array(0);private cellDetails=new Uint8Array(0);
   W = 512; H = 256;
   surface: Int16Array = new Int16Array(0);
+  private ground: Int16Array = new Int16Array(0);
   frame: FrameMsg | null = null;
   colonies: any[] = [];
   species: any[] = [];
@@ -65,7 +67,7 @@ export class Renderer {
     this.field.width = W; this.field.height = H;
     this.agents=new AgentRaster(W,H);this.agentImage=new ImageData(this.agents.data,W*3,H*3);
     this.agentCanvas.width=W*3;this.agentCanvas.height=H*3;this.lastAgentFrame=-1;
-    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.fit();
+    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.ground = new Int16Array(W).fill(H); this.fit();
   }
   fit() {
     if(!this.cutaway){
@@ -86,10 +88,28 @@ export class Renderer {
   }
   focus(x: number, y: number) { this.zoom = Math.max(5, this.zoom); this.ox = this.width / 2 - x * this.zoom; this.oy = this.height / 2 - y * this.zoom; }
   world(x: number, y: number) { return { x: Math.floor((x - this.ox) / this.zoom), y: Math.floor((y - this.oy) / this.zoom) }; }
+  get minZoom() { return Math.max(.5, Math.min(this.width / this.W, this.height / this.H) * .9); }
   zoomAt(f: number, x = this.width / 2, y = this.height / 2) {
     const wx = (x - this.ox) / this.zoom, wy = (y - this.oy) / this.zoom;
-    this.zoom = Math.max(.7, Math.min(18, this.zoom * f));
+    this.zoom = Math.max(this.minZoom, Math.min(24, this.zoom * f));
     this.ox = x - wx * this.zoom; this.oy = y - wy * this.zoom;
+  }
+  /** Keeps the world on screen: centred when smaller than the view, otherwise edges stop a short margin inside. */
+  clamp() {
+    const pad = Math.min(96, this.width * .15), padY = Math.min(96, this.height * .15);
+    const ww = this.W * this.zoom, wh = this.H * this.zoom;
+    this.ox = ww + pad * 2 <= this.width ? (this.width - ww) / 2 : Math.min(pad, Math.max(this.width - ww - pad, this.ox));
+    this.oy = wh + padY * 2 <= this.height ? (this.height - wh) / 2 : Math.min(padY, Math.max(this.height - wh - padY, this.oy));
+  }
+  showMinimap = true;
+  get minimapRect() {
+    const w = this.width < 600 ? 112 : 176, h = Math.max(24, Math.round(w * this.H / this.W));
+    return { x: this.width - w - 12, y: this.height - h - (this.width < 600 ? 92 : 98), w, h };
+  }
+  minimapAt(x: number, y: number) { if (!this.showMinimap) return false; const m = this.minimapRect; return x >= m.x - 3 && x <= m.x + m.w + 3 && y >= m.y - 3 && y <= m.y + m.h + 3; }
+  centerFromMinimap(x: number, y: number) {
+    const m = this.minimapRect, wx = (x - m.x) / m.w * this.W, wy = (y - m.y) / m.h * this.H;
+    this.ox = this.width / 2 - wx * this.zoom; this.oy = this.height / 2 - wy * this.zoom;
   }
   accept(f: FrameMsg) {
     const start=performance.now();
@@ -97,22 +117,31 @@ export class Renderer {
     if (f.surface) this.surface = f.surface;
     if(f.tints)for(let o=0;o<f.tints.length;o+=2)this.tint[f.tints[o]]=f.tints[o+1];
     let minX=this.W,minY=this.H,maxX=-1,maxY=-1;
+    const draw=(x:number,y:number)=>{const k=y*this.W+x;if(this.raster!.cell(x,y,this.map[k],this.cellDetails[k],this.cutaway?this.ground[x]:this.H,this.tint[k])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}};
     if (f.chunks) {
-      const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16);
+      const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16), cells:number[] = [], cols = new Set<number>();
       let o = 0;
       for (let c = 0; c < f.chunkCount; c++) {
         const ci = bytes[o] | bytes[o + 1] << 8; o += 2;
         const cx = ci % cw * 16, cy = Math.floor(ci / cw) * 16;
+        for (let dx = 0; dx < 16 && cx + dx < this.W; dx++) cols.add(cx + dx);
         for (let dy = 0; dy < 16; dy++) for (let dx = 0; dx < 16; dx++) {
           const m = bytes[o++] | bytes[o++] << 8, q = bytes[o++], x = cx + dx, y = cy + dy;
           if (x >= this.W || y >= this.H) continue;
           this.map[y * this.W + x] = m;
           this.cellDetails[y*this.W+x]=q;
-          if(this.raster!.cell(x,y,m,q,this.cutaway?this.surface[x]:this.H,this.tint[y*this.W+x])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+          cells.push(x, y);
         }
       }
+      // Tunnel backdrop only exists beneath real ground, so grains and drops falling through the sky never darken the air below them.
+      for (const x of cols) {
+        let y = 0; while (y < this.H && !GROUND[this.map[y * this.W + x]]) y++;
+        const old = this.ground[x]; if (old === y) continue;
+        this.ground[x] = y; for (let yy = Math.min(old, y); yy < Math.max(old, y) && yy < this.H; yy++) draw(x, yy);
+      }
+      for (let k = 0; k < cells.length; k += 2) draw(cells[k], cells[k + 1]);
     }
-    if(f.tints)for(let o=0;o<f.tints.length;o+=2){const k=f.tints[o],x=k%this.W,y=(k/this.W)|0;if(this.raster!.cell(x,y,this.map[k],this.cellDetails[k],this.cutaway?this.surface[x]:this.H,this.tint[k])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}}
+    if(f.tints)for(let o=0;o<f.tints.length;o+=2){const k=f.tints[o];draw(k%this.W,(k/this.W)|0);}
     if(maxX>=0)this.terrainCtx.putImageData(this.terrainImage!,0,0,minX*TILE,minY*TILE,(maxX-minX+1)*TILE,(maxY-minY+1)*TILE);
     if (f.overlayKind !== this.overlay) { this.overlay = f.overlayKind; this.fieldCtx.clearRect(0, 0, this.W, this.H); }
     if (f.overlay) {
@@ -141,8 +170,15 @@ export class Renderer {
     this.fps += .04 * (1000 / Math.max(1, dt) - this.fps);
     const c = this.ctx, dpr = this.canvas.width / Math.max(1, this.width);
     c.setTransform(dpr, 0, 0, dpr, 0, 0); c.imageSmoothingEnabled = false;
-    c.fillStyle = '#b8c9be'; c.fillRect(0, 0, this.width, this.height);
-    c.save(); c.translate(Math.round(this.ox), Math.round(this.oy)); c.scale(this.zoom, this.zoom);
+    this.clamp();
+    c.fillStyle = '#17120d'; c.fillRect(0, 0, this.width, this.height);
+    c.fillStyle = '#241c14'; for (let y = 0; y < this.height; y += 8) for (let x = (y / 8 & 1) * 8; x < this.width; x += 16) c.fillRect(x, y, 2, 2);
+    const sx = Math.round(this.ox), sy = Math.round(this.oy), sw = Math.round(this.W * this.zoom), sh = Math.round(this.H * this.zoom);
+    c.fillStyle = '#0b0806'; c.fillRect(sx - 4, sy - 4, sw + 8, sh + 8);
+    c.fillStyle = '#5a4630'; c.fillRect(sx - 2, sy - 2, sw + 4, sh + 4);
+    c.fillStyle = '#b8c9be'; c.fillRect(sx, sy, sw, sh);
+    c.save(); c.beginPath(); c.rect(sx, sy, sw, sh); c.clip();
+    c.translate(sx, sy); c.scale(this.zoom, this.zoom);
     // Pixel clouds are scenery. All plants, water, ants and underground material come from the simulation.
     c.fillStyle = '#d4ded0';
     for (let k = 0; k < 8; k++) { const x = k * 73 + 9, y = 8 + hash(k, 1) * 20; c.fillRect(x, y, 20, 3); c.fillRect(x + 4, y - 3, 12, 3); }
@@ -180,16 +216,40 @@ export class Renderer {
       if (f.raining) { c.fillStyle = '#e2edf199'; for (let k = 0; k < 60; k++) { const x = hash(k, 12) * this.W, y = (hash(k, 15) * 50 + time / 60) % 60; c.fillRect(x, y, .4, 2); } }
     }
     if (this.route.length) { c.strokeStyle = '#f5d28188'; c.lineWidth = .5; c.setLineDash([1, 1]); c.beginPath(); for (let k = 0; k < this.route.length; k += 2) k ? c.lineTo(this.route[k], this.route[k + 1]) : c.moveTo(this.route[k], this.route[k + 1]); c.stroke(); c.setLineDash([]); }
-    if (this.hover && this.editing) { c.strokeStyle = '#fff4d7'; c.lineWidth = 1 / this.zoom; c.strokeRect(this.hover.x - this.brush, this.hover.y - this.brush, this.brush * 2 + 1, this.brush * 2 + 1); }
-    if(this.preview){const p=this.preview;c.strokeStyle='#f9e6aa';c.lineWidth=1/this.zoom;c.setLineDash([2,2]);if(p.kind==='line'){c.beginPath();c.moveTo(p.x,p.y);c.lineTo(p.x2,p.y2);c.stroke();}else c.strokeRect(Math.min(p.x,p.x2),Math.min(p.y,p.y2),Math.abs(p.x2-p.x),Math.abs(p.y2-p.y));c.setLineDash([]);}
+    if(this.preview){const p=this.preview;c.strokeStyle='#ffd34d';c.lineWidth=2/this.zoom;c.setLineDash([3/this.zoom*2,3/this.zoom*2]);if(p.kind==='line'){c.beginPath();c.moveTo(p.x+.5,p.y+.5);c.lineTo(p.x2+.5,p.y2+.5);c.stroke();}else c.strokeRect(Math.min(p.x,p.x2),Math.min(p.y,p.y2),Math.abs(p.x2-p.x)+1,Math.abs(p.y2-p.y)+1);c.setLineDash([]);}
     c.restore();
-    if(this.labels)for(const note of this.notes){const x=Math.round(this.ox+note.x*this.zoom),y=Math.round(this.oy+note.y*this.zoom);c.font=`${this.width<600?8:10}px Silkscreen, monospace`;const width=c.measureText(note.text).width;c.fillStyle='#2e3034ed';c.fillRect(x-width/2-4,y-11,width+8,16);c.fillStyle='#f1e5bb';c.fillText(note.text,x-width/2,y);}
+    const tag = (text: string, x: number, y: number, ink = '#f7ecd2') => {
+      c.font = `700 ${this.width < 600 ? 11 : 12}px "Atkinson Hyperlegible", sans-serif`; const w = Math.round(c.measureText(text).width), l = Math.round(x - w / 2 - 6);
+      c.fillStyle = '#0b0806'; c.fillRect(l - 2, y - 15, w + 16, 22); c.fillStyle = '#2a2119'; c.fillRect(l, y - 13, w + 12, 18);
+      c.fillStyle = '#4a3a29'; c.fillRect(l, y - 13, w + 12, 2); c.fillStyle = ink; c.fillText(text, l + 6, y);
+    };
+    if(this.labels)for(const note of this.notes)tag(note.text,Math.round(this.ox+note.x*this.zoom),Math.round(this.oy+note.y*this.zoom),'#ffd34d');
     if (this.labels) for (const col of this.colonies) {
       if (!col.alive) continue;
       const x = Math.round(this.ox + col.entrance.x * this.zoom), y = Math.round(this.oy + col.entrance.y * this.zoom);
+      c.fillStyle = '#0b0806'; c.fillRect(x - 1, y - 24, 4, 20); c.fillRect(x + 1, y - 24, 10, 8);
       c.fillStyle = `rgb(${col.marking})`; c.fillRect(x, y - 23, 2, 18); c.fillRect(x + 2, y - 23, 8, 6);
-      c.font = '11px "Atkinson Hyperlegible", sans-serif'; const text = `${col.name} · ${col.workers}`;
-      const w = c.measureText(text).width; c.fillStyle = '#27382eea'; c.fillRect(x - w / 2 - 7, y - 43, w + 14, 17); c.fillStyle = '#eee9d7'; c.fillText(text, x - w / 2, y - 31);
+      tag(`${col.name} · ${col.workers}`, x, y - 32);
+    }
+    // Brush cursor in screen space: a dark and a light ring stay visible on sky, soil and water alike.
+    if (this.hover && this.editing) {
+      const x = Math.round(this.ox + (this.hover.x - this.brush) * this.zoom), y = Math.round(this.oy + (this.hover.y - this.brush) * this.zoom), s = Math.max(3, Math.round((this.brush * 2 + 1) * this.zoom));
+      c.lineWidth = 3; c.strokeStyle = '#0b0806'; c.strokeRect(x - .5, y - .5, s + 1, s + 1);
+      c.lineWidth = 1; c.strokeStyle = '#ffe9a8'; c.strokeRect(x - .5, y - .5, s + 1, s + 1);
+      const cx = Math.round(this.ox + (this.hover.x + .5) * this.zoom), cy = Math.round(this.oy + (this.hover.y + .5) * this.zoom);
+      c.fillStyle = '#0b0806'; c.fillRect(cx - 4, cy - 1, 8, 3); c.fillRect(cx - 1, cy - 4, 3, 8);
+      c.fillStyle = '#ffe9a8'; c.fillRect(cx - 3, cy, 6, 1); c.fillRect(cx, cy - 3, 1, 6);
+    }
+    if (this.showMinimap) {
+      const m = this.minimapRect;
+      c.fillStyle = '#0b0806'; c.fillRect(m.x - 4, m.y - 4, m.w + 8, m.h + 8);
+      c.fillStyle = '#5a4630'; c.fillRect(m.x - 2, m.y - 2, m.w + 4, m.h + 4);
+      c.fillStyle = '#b8c9be'; c.fillRect(m.x, m.y, m.w, m.h);
+      c.drawImage(this.terrain, m.x, m.y, m.w, m.h);
+      const vx = m.x + (-this.ox / this.zoom) / this.W * m.w, vy = m.y + (-this.oy / this.zoom) / this.H * m.h;
+      const vw = this.width / this.zoom / this.W * m.w, vh = this.height / this.zoom / this.H * m.h;
+      const x0 = Math.max(m.x, vx), y0 = Math.max(m.y, vy), x1 = Math.min(m.x + m.w, vx + vw), y1 = Math.min(m.y + m.h, vy + vh);
+      if (x1 > x0 && y1 > y0 && (x1 - x0 < m.w - 1 || y1 - y0 < m.h - 1)) { c.lineWidth = 2; c.strokeStyle = '#0b0806'; c.strokeRect(x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2); c.lineWidth = 1; c.strokeStyle = '#ffd34d'; c.strokeRect(Math.round(x0) + .5, Math.round(y0) + .5, Math.round(x1 - x0) - 1, Math.round(y1 - y0) - 1); }
     }
     this.renderMs += .1 * (performance.now() - start - this.renderMs);
     requestAnimationFrame(this.draw);
