@@ -98,4 +98,10 @@ export interface AntInfo {
   named: number[];
   /** where its named traits came from */
   namedOrigin: string;
+  /** social identity (society.ts): name, personality, mood, clan, life story */
+  name?: string;
+  persona?: string;
+  mood?: string;
+  clan?: string;
+  story?: string[];
 }

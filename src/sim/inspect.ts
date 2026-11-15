@@ -10,6 +10,7 @@ import { thermalRate } from './sim.ts';
 import { wildlifeById } from './wildlife-defs.ts';
 import { NT, TRAITS, has, maskList } from './traits.ts';
 import { FLAG_APHID, FLAG_PLUG } from './world.ts';
+import { PERSONALITIES, antName, clanName, moodOf, personalityOf, society, societySummary } from './society.ts';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -115,7 +116,13 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
   for (const p of [P.SPEED, P.METCOST, P.DESICC, P.DIGRATE, P.ATTACK, P.DEFENSE]) traits.push({ name: PHENO_NAMES[p] + ' (derived)', value: a.pheno[o + p].toFixed(2), kind: 'developmental' });
   let why = WHY_TEXT[a.why[i]] || TASK_NAMES[a.task[i]];
   if (a.task[i] === TASK.FORAGE && a.nav[i] === NAV.EXPLORE && a.why[i] === 0) why = WHY_TEXT[3];
+  const soc = society(sim, c), pers = personalityOf(a.id[i]).map((p) => PERSONALITIES[p]);
+  const kills = soc.kills[a.id[i]] ?? 0;
+  const ruler = soc.ruler === a.id[i];
   return {
+    name: `${ruler ? 'Queen ' : ''}${antName(a.id[i])}`, mood: moodOf(sim, i), clan: caste === CASTE.QUEEN ? `ruler of ${soc.kingdom}` : `${clanName(a.father[i])} of ${soc.kingdom}`,
+    persona: `${pers.map((p) => p.name).join(' & ')}: ${pers.map((p) => p.text).join('; ')}.${kills ? ` ${kills} foe${kills === 1 ? '' : 's'} slain.` : ''}`,
+    story: soc.bios[a.id[i]] ?? [],
     id: a.id[i], colony: c.name, colonyId: c.id, species: `${sp.name} (${sp.commonName})`, caste: caste === CASTE.WORKER && a.major[i] ? 'major worker (soldier)' : CASTE_NAMES[caste], task: TASK_NAMES[a.task[i]], why,
     lines, traits, named: maskList(a.traits, i * 2),
     namedOrigin: a.mother[i]
@@ -175,6 +182,7 @@ export function colonySummaries(sim: Sim) {
       brood: stages, reproBrood, store: { ...col.store, mineral: Math.round(col.store.mineral) }, stim: col.stim, nestVolume: col.nestVolume, nestDepth: col.nestDepth,
       hasExit: col.hasExit, tasks, stats: col.stats, entrance: col.entrance, notes, ageDays: (sim.tick - col.foundedTick) / DAY_TICKS,
       playerEdited: col.playerEdited, mother: col.motherColony, exposure: col.exposure.slice(-30),
+      society: col.alive ? societySummary(sim, col) : null,
       broodList: col.brood.slice(0, 40).map((b) => `${STAGE_NAMES[b.stage]}${b.stage ? ' ' + (b.major ? 'major worker' : DESTINY_NAMES[b.destiny]) : ''} ${Math.round(b.prog * 100)}%${b.stage === STAGE.LARVA ? ` fed ${Math.round((b.fed / b.need) * 100)}%` : ''}`),
     };
   });

@@ -1,6 +1,7 @@
 // Colony-level state: stores, brood, queens' sperm storage, statistics and lineage.
 import { SparseField } from './signals.ts';
 import type { World } from './world.ts';
+import type { Society } from './society.ts';
 
 export const STAGE = { EGG: 0, LARVA: 1, PUPA: 2 } as const;
 export const STAGE_NAMES = ['egg', 'larva', 'pupa'];
@@ -124,6 +125,8 @@ export interface Colony {
   plan?: NestPlan;
   /** last tick a returning scout's find was announced in the event log */
   lastReport?: number;
+  /** kingdom layer: ruler, culture, chronicle, diplomacy (created lazily; absent in older saves) */
+  society?: Society;
 }
 
 export type Strategy = 'grow' | 'forage' | 'defend' | 'fortify' | 'war' | 'raid';

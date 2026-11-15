@@ -13,6 +13,7 @@ import { FLAG_PLUG } from './world.ts';
 import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill, underSiege, warState } from './warfare.ts';
 import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
 import { TR, aggressionTrait, coldBonus, courage, has as hasTrait, heatBonus, lifeFactor } from './traits.ts';
+import { atPeace, cultureAggression, onFoodFound, onKill, persona } from './society.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DY = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -466,6 +467,7 @@ function tryPickFood(sim: Sim, i: number, c: Colony) {
   a.frTrips[i] = Math.min(255, a.frTrips[i] + 1);
   startRetrace(sim, i, c);
   sim.journalFoodFound(c, fx, fy);
+  onFoodFound(sim, c, i, MATERIALS[carried].name.toLowerCase());
 }
 
 function startRetrace(sim: Sim, i: number, c: Colony) {
@@ -586,7 +588,7 @@ function decide(sim: Sim, i: number) {
   // (quantitative differences in recruitment: Detrain & Pasteels 1992)
   const major = a.major[i] === 1;
   if (alarm > (major ? 0.6 : 0.3) && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i])) {
-    const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression) * (major ? 0.4 : 1);
+    const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression * cultureAggression(c)) * (major ? 0.4 : 1) / persona(a.id[i], 'brave');
     if (sim.rng.chance(stimulus(alarm, thr))) {
       a.task[i] = TASK.DEFEND; a.why[i] = major ? WHY.MAJOR_RECRUITED : WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = major ? 80 : 40;
       a.thrL[i * 4 + 3] = Math.max(0.5, a.thrL[i * 4 + 3] * 0.98);
@@ -679,9 +681,9 @@ function chooseTask(sim: Sim, i: number, c: Colony) {
   else if (sp.activity.diurnal && !sim.daytime) blocked = WHY.NIGHT;
   if (blocked) forageS = 0;
   if (!c.hasExit) forageS = 0;
-  forageS *= forageFactor(c);
-  const nurseS = s.nurse * (young ? 2 : 1);
-  const digS = Math.max(s.dig, s.exit * 2, planDigStimulus(c));
+  forageS *= forageFactor(c) * persona(a.id[i], 'forage');
+  const nurseS = s.nurse * (young ? 2 : 1) * persona(a.id[i], 'nurse');
+  const digS = Math.max(s.dig, s.exit * 2, planDigStimulus(c)) * persona(a.id[i], 'dig');
   const wasteS = s.waste;
   const p = [
     stimulus(forageS, thr(0, a.pheno[o + P.THR_FORAGE])),
@@ -738,7 +740,7 @@ function decideForage(sim: Sim, i: number, c: Colony, own: boolean) {
     return;
   }
   // first decision outside: choose information source
-  const maxSteps = 500 + 2200 * a.pheno[o + P.EXPLORE];
+  const maxSteps = (500 + 2200 * a.pheno[o + P.EXPLORE]) * persona(a.id[i], 'explore');
   if (a.stepCount[i] > maxSteps) { returnHome(sim, i, c, WHY.RETURN_EMPTY); return; }
   const nav = a.nav[i];
   if (nav === NAV.EXIT || nav === NAV.GOAL && a.stepCount[i] < 2) {
@@ -1436,6 +1438,8 @@ export function contactPhase(sim: Sim) {
     sim.idx.query(a, x, y, 3, (j) => {
       if (j === i) return;
       if (a.colony[j] === a.colony[i]) { friends++; return; }
+      // treaty partners pass each other peacefully, except intruders inside this colony's own nest
+      if (atPeace(sim, a.colony[i], a.colony[j]) && w.owner[a.y[j] * w.W + a.x[j]] !== a.colony[i] + 1) return;
       foes++;
       const d = Math.max(Math.abs(a.x[j] - x), Math.abs(a.y[j] - y));
       if (d > reach || !contactOpen(sim, x, y, a.x[j], a.y[j])) return;
@@ -1512,11 +1516,11 @@ export function contactPhase(sim: Sim) {
     c.stats.fights++;
     sim.noteFight(c, fc);
     if (a.health[foe] <= 0) {
-      if (fc && fc !== c) { noteKill(sim, c, fc); if (a.carryBrood[foe] >= 0) recaptureBrood(sim, i, c, foe, fc); }
+      if (fc && fc !== c) { noteKill(sim, c, fc); onKill(sim, c, i, fc); if (a.carryBrood[foe] >= 0) recaptureBrood(sim, i, c, foe, fc); }
       if (hasTrait(tr, tf, TR.acid_blood)) a.health[i] -= 0.25;
       sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1;
     }
-    if (a.health[i] <= 0) { if (fc && fc !== c) noteKill(sim, fc, c); sim.killAnt(i, 'combat'); }
+    if (a.health[i] <= 0) { if (fc && fc !== c) { noteKill(sim, fc, c); onKill(sim, fc, foe, c); } sim.killAnt(i, 'combat'); }
   }
 }
 

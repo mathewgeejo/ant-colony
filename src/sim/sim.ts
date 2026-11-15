@@ -19,6 +19,7 @@ import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
 import { STRATEGY_EVERY, majorChance, underSiege, updateStrategy } from './warfare.ts';
 import { architectureStep } from './architecture.ts';
+import { onBorn, onDeath, societyDaily } from './society.ts';
 import { NT, TRAITS, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
 
 export const SAVE_VERSION = 4;
@@ -602,6 +603,7 @@ export class Sim {
     if (caste === CASTE.WORKER) c.workers++;
     c.adults++;
     if (caste === CASTE.MALE || caste === CASTE.GYNE) { a.task[i] = TASK.ALATE; }
+    onBorn(this, c, i);
     return i;
   }
 
@@ -636,7 +638,7 @@ export class Sim {
     if (!c) return;
     if (a.caste[i] === CASTE.WORKER) c.workers--;
     c.adults--;
-    if (cause !== 'flew') c.stats.adultDeaths[cause] = (c.stats.adultDeaths[cause] ?? 0) + 1;
+    if (cause !== 'flew') { c.stats.adultDeaths[cause] = (c.stats.adultDeaths[cause] ?? 0) + 1; onDeath(this, c, i, cause); }
     if (a.caste[i] === CASTE.QUEEN) {
       const qid = a.id[i];
       c.queens = c.queens.filter((q) => q.antId !== qid);
@@ -1320,6 +1322,7 @@ export class Sim {
 
   private daily() {
     const day = Math.floor(this.tick / DAY_TICKS);
+    societyDaily(this);
     for (const c of this.colonies) {
       if (!c || !c.alive) continue;
       const n = Math.max(1, c.acc.n);
