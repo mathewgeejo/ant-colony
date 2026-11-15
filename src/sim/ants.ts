@@ -24,6 +24,7 @@ export const WHY = {
   NIGHT: 31, LIGHT_RECRUIT: 32, ENERGY: 33,
   GUARD: 34, WAR_MARCH: 35, WAR_FRONT: 36, RAID_MARCH: 37, RAID_DELVE: 38, RAID_LOOT_BROOD: 39, RAID_LOOT_FOOD: 40, RAID_HOME: 41,
   ABSORBED: 42, MOUND: 43, MIDDEN: 44, PLAN_DIG: 45, CLEAR_DISC: 46,
+  DIG_OUT: 47, SPOIL_DUMP: 48, MAJOR_STANDBY: 49, MUSTER: 50, MAJOR_RECRUITED: 51, RECAPTURE: 52, DIG_IN: 53, ATE_OUTSIDE: 54,
 } as const;
 export const WHY_TEXT: string[] = [
   '',
@@ -73,6 +74,14 @@ export const WHY_TEXT: string[] = [
   'Carrying refuse to the colony\'s midden.',
   'Excavating a planned chamber or shaft.',
   'Cutting vegetation to keep the nest disc clear.',
+  'Buried under fallen soil: digging toward the surface.',
+  'Carrying excavated soil away from the entrance to spread it.',
+  'Major worker on standby: majors rest in the nest until a strong cue (alarm, a shortage of minors) recruits them.',
+  'Mustering near the entrance until enough nestmates gather to set out together.',
+  'Major worker recruited by alarm from nestmates.',
+  'Carrying recaptured brood back into the nest.',
+  'The entrance is blocked: digging back into the nest from outside.',
+  'Starving away from the nest: fed on food found (or carried) outside.',
 ];
 
 export const MEM = 32; // route-memory waypoints per ant
@@ -121,6 +130,8 @@ export class AntStore {
   generation!: Uint16Array;
   born!: Float32Array; // tick born (as float to fit large ticks)
   anim!: Uint8Array;
+  major!: Uint8Array; // 1 = major worker (soldier subcaste) in dimorphic species
+  traits!: Uint32Array; // named-trait bitmask, 2 words per ant (see traits.ts)
 
   constructor(cap = 1024) {
     this.grow(cap);
@@ -165,6 +176,8 @@ export class AntStore {
     this.generation = re(this.generation, Uint16Array);
     this.born = re(this.born, Float32Array);
     this.anim = re(this.anim, Uint8Array);
+    this.major = re(this.major, Uint8Array);
+    this.traits = re(this.traits, Uint32Array, 2);
     this.cap = newCap;
   }
 
@@ -184,7 +197,7 @@ export class AntStore {
     this.carry[i] = 0; this.carryQ[i] = 0; this.carryBrood[i] = -1; this.moveAcc[i] = 0;
     this.submerged[i] = 0; this.contacts[i] = 0; this.memLen[i] = 0; this.frLen[i] = 0; this.frTrips[i] = 0;
     this.stepCount[i] = 0; this.fightTarget[i] = -1; this.age[i] = 0; this.anim[i] = 0;
-    this.nav[i] = 0; this.frIdx[i] = 0; this.bestQ[i] = 0;
+    this.nav[i] = 0; this.frIdx[i] = 0; this.bestQ[i] = 0; this.major[i] = 0; this.traits[i * 2] = 0; this.traits[i * 2 + 1] = 0;
     this.hx[i] = 1; this.hy[i] = 0;
     for (let k = 0; k < 4; k++) this.thrL[i * 4 + k] = 1;
     this.count++;
@@ -240,16 +253,16 @@ export class AntStore {
   static restore(s: any): AntStore {
     const a = new AntStore(Math.max(16, s.cap));
     a.n = s.n; a.count = s.count; a.free = s.free.slice(); a.nextId = s.nextId;
-    for (const k of SOA_KEYS) (a as any)[k].set(s[k]);
+    for (const k of SOA_KEYS) if (s[k]) (a as any)[k].set(s[k]); // fields added later are absent in older saves
     return a;
   }
 }
 
-const PER: Record<string, number> = { thrL: 4, memX: MEM, memY: MEM, frX: MEM, frY: MEM, ga: NL, gb: NL, pheno: NP };
+const PER: Record<string, number> = { traits: 2, thrL: 4, memX: MEM, memY: MEM, frX: MEM, frY: MEM, ga: NL, gb: NL, pheno: NP };
 export const SOA_KEYS = [
   'alive', 'id', 'colony', 'caste', 'x', 'y', 'px', 'py', 'hx', 'hy', 'age', 'health', 'energy', 'hydration', 'task', 'why', 'timer',
   'stuck', 'fails', 'carry', 'carryQ', 'carryBrood', 'moveAcc', 'tx', 'ty', 'submerged', 'contacts', 'thrL', 'memX', 'memY', 'memLen',
-  'frX', 'frY', 'frLen', 'frTrips', 'stepCount', 'fightTarget', 'nav', 'frIdx', 'bestQ', 'ga', 'gb', 'pheno', 'mother', 'father', 'generation', 'born', 'anim',
+  'frX', 'frY', 'frLen', 'frTrips', 'stepCount', 'fightTarget', 'nav', 'frIdx', 'bestQ', 'ga', 'gb', 'pheno', 'mother', 'father', 'generation', 'born', 'anim', 'major', 'traits',
 ];
 
 /** Uniform grid of cell buckets for neighbour queries (rebuilt each tick, O(n)). */

@@ -89,9 +89,19 @@ export interface SpeciesDef {
     submersionTicks: number;
   };
   workers: {
-    polymorphism: 'monomorphic' | 'size-variable';
+    polymorphism: 'monomorphic' | 'size-variable' | 'dimorphic';
     lifespanDays: number;
-    /** ant can dig through granular/cohesive soils */
+    /** dimorphic species: a discrete major-worker (soldier) subcaste reared from well-fed larvae */
+    soldiers?: {
+      /** share of new workers reared as majors when no rivals are perceived */
+      baseFraction: number;
+      /** share reached when the colony perceives strong competition (Passera et al. 1996) */
+      maxFraction: number;
+      /** major body size relative to a minor */
+      sizeFactor: number;
+      /** workers needed before the colony starts rearing majors */
+      minColony: number;
+    };
   };
   communication: {
     recruitment: 'mass' | 'individual';
@@ -240,7 +250,55 @@ export const POGONOMYRMEX_CALIFORNICUS: SpeciesDef = {
   ],
 };
 
-export const BUILTIN_SPECIES: SpeciesDef[] = [LASIUS_NIGER, POGONOMYRMEX_CALIFORNICUS];
+export const PHEIDOLE_PALLIDULA: SpeciesDef = {
+  id: 'pheidole-pallidula',
+  name: 'Pheidole pallidula',
+  commonName: 'Big-headed ant',
+  status: 'researched-profile',
+  subfamily: 'Myrmicinae',
+  summary: 'Mediterranean omnivore with two discrete worker subcastes: small minors do most of the work, large-headed majors (soldiers) defend the colony. Colonies rear more soldiers after meeting competing colonies.',
+  founding: {
+    strategy: 'claustral', reserves: 90, forageBelowReserve: 0, sealsChamber: true,
+    association: 'haplometrosis', associationChance: 0, groupMetabolism: 1,
+    chamberDepth: 12, moisture: [0.15, 0.7],
+  },
+  queen: { lifespanDays: 500, eggsPerDay: 7, matings: [0.9, 0.1] },
+  nutrition: { sugar: 0.9, protein: 1, seed: 0.7, preference: { sugar: 0.8, protein: 1.0, seed: 0.5 } },
+  development: {
+    eggDays: 1.5, larvaDays: 2.4, pupaDays: 1.7, tMin: 15, tOpt: 28, tMax: 38,
+    cocoon: false, larvalProtein: 1.6, minHumidity: 0.3,
+  },
+  activity: { minForageTemp: 14, maxForageTemp: 40, diurnal: false },
+  nest: { targetDepth: 40, crowdingTarget: 0.9, architecture: { mound: 'crater', shaftAmp: 1, chamberSpacing: 4, clearsDisc: false, granaries: true } },
+  tolerances: { desiccation: 0.0012, heatMax: 42, coldMin: 5, submersionTicks: 4200 },
+  workers: { polymorphism: 'dimorphic', lifespanDays: 40, soldiers: { baseFraction: 0.1, maxFraction: 0.25, sizeFactor: 1.7, minColony: 12 } },
+  communication: {
+    recruitment: 'mass', trailDeposit: 1.0, trailRetention: 0.985, trailSharing: 0.2,
+    alarmStrength: 1.2, alarmChemical: 'poison-gland and mandibular secretions (abstracted)', returnRateRegulation: false,
+    contactDescription: 'Minors lay recruitment trails to food and to intruders; majors respond to strong recruitment (Detrain & Pasteels 1992).',
+  },
+  defense: { mode: 'sting', power: 0.35, range: 0, description: 'Minors bite and sting weakly; majors crush and shear opponents with their large mandibles.' },
+  aggression: 0.6,
+  reproduction: {
+    matureWorkers: 80, gyneFraction: 0.3, maleEggFraction: 0.4, gyneCostFactor: 4, maleCostFactor: 1.5,
+    flightSeason: 'summer', flightCue: 'warm summer day (abstracted)', workerMaleProduction: false,
+  },
+  traits: {
+    size: 0.8, sizeSpread: 0.08, mandible: 0.4, signal: 1.0, fidelity: 0.75, waterbal: 0.5,
+    topt: 27, tbreadth: 9, explore: 0.35, thrForage: 0.4, thrNurse: 0.35, thrDig: 0.5, devrateSpread: 0.12, chem: 0.4,
+  },
+  visual: { body: [128, 78, 42], head: [116, 68, 36], gaster: [74, 48, 32], sprite: 'myrmicine' },
+  sources: ['https://doi.org/10.1038/379630a0', 'https://doi.org/10.1007/bf00170170', 'https://doi.org/10.1007/bf00293108', 'https://pmc.ncbi.nlm.nih.gov/articles/PMC3014662/'],
+  simplifications: [
+    'Major/minor fate is decided when an egg hatches, from colony size and perceived competition, and needs a larger protein ration; real caste fate is set by larval nutrition and juvenile hormone during a later sensitive period.',
+    'The rise in soldier investment after meeting rivals follows Passera et al. (1996); its size and speed here are authored.',
+    'Majors do not mill seeds or store liquid food; their in-nest work comes only from high response thresholds being crossed when minors are scarce (Wilson 1984 "elasticity").',
+    'Facultative polygyny in P. pallidula is not modelled; colonies have one queen.',
+    'Workers are treated as sterile (no worker-laid males).',
+  ],
+};
+
+export const BUILTIN_SPECIES: SpeciesDef[] = [LASIUS_NIGER, POGONOMYRMEX_CALIFORNICUS, PHEIDOLE_PALLIDULA];
 
 // ---------------- validation for imported species ----------------
 type Check = [string, 'number' | 'string' | 'boolean' | 'array' | 'object', number?, number?];
@@ -281,7 +339,11 @@ const ENUMS: [string, string[]][] = [
   ['communication.recruitment', ['mass', 'individual']],
   ['defense.mode', ['formic-spray', 'sting']],
   ['visual.sprite', ['formicine', 'myrmicine']],
-  ['workers.polymorphism', ['monomorphic', 'size-variable']],
+  ['workers.polymorphism', ['monomorphic', 'size-variable', 'dimorphic']],
+];
+const SOLDIER_CHECKS: Check[] = [
+  ['workers.soldiers.baseFraction', 'number', 0, 0.6], ['workers.soldiers.maxFraction', 'number', 0, 0.6],
+  ['workers.soldiers.sizeFactor', 'number', 1.1, 3], ['workers.soldiers.minColony', 'number', 1, 2000],
 ];
 
 function getPath(o: any, p: string) {
@@ -292,7 +354,9 @@ function getPath(o: any, p: string) {
 export function validateSpecies(raw: unknown): string[] {
   const errs: string[] = [];
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return ['The file must contain a single JSON object describing one species.'];
-  for (const [path, type, lo, hi] of CHECKS) {
+  const soldiers = getPath(raw, 'workers.soldiers');
+  if (soldiers !== undefined && (typeof soldiers !== 'object' || soldiers === null || Array.isArray(soldiers))) errs.push('"workers.soldiers" must be an object.');
+  for (const [path, type, lo, hi] of soldiers ? [...CHECKS, ...SOLDIER_CHECKS] : CHECKS) {
     const v = getPath(raw, path);
     if (v === undefined) { errs.push(`Missing field "${path}" (${type}).`); continue; }
     if (type === 'array') { if (!Array.isArray(v)) errs.push(`"${path}" must be a list.`); continue; }
@@ -320,6 +384,7 @@ export function validateSpecies(raw: unknown): string[] {
     if (Array.isArray(v) && (v.length !== 3 || v.some((c: unknown) => typeof c !== 'number' || c < 0 || c > 255))) errs.push(`"${k}" must be [r, g, b] with values 0..255.`);
   }
   if (Array.isArray(r.founding?.moisture) && (r.founding.moisture.length !== 2 || r.founding.moisture.some((c: unknown) => typeof c !== 'number'||!Number.isFinite(c)||c<0||c>1)||r.founding.moisture[0]>r.founding.moisture[1])) errs.push('"founding.moisture" must be ordered [low, high] within 0..1.');
+  if (r.workers?.soldiers && r.workers.soldiers.maxFraction < r.workers.soldiers.baseFraction) errs.push('"workers.soldiers.maxFraction" must not be below "baseFraction".');
   if (r.development && r.development.tMin >= r.development.tOpt) errs.push('"development.tMin" must be below "development.tOpt".');
   if (r.development && r.development.tOpt >= r.development.tMax) errs.push('"development.tOpt" must be below "development.tMax".');
   if (typeof r.id === 'string' && !/^[a-z0-9-]{3,40}$/.test(r.id)) errs.push('"id" must be 3-40 lowercase letters, digits or hyphens.');

@@ -27,6 +27,10 @@ export interface Brood {
   queenFed: boolean;
   carried: boolean;
   warmBoost: number; // fictional thermogenesis contribution (degC) this update
+  /** worker larva on the major (soldier) developmental pathway; absent in older saves */
+  major?: boolean;
+  /** named traits inherited at conception (see traits.ts); absent in older saves */
+  tr?: number[];
 }
 
 export interface Sperm {
@@ -34,6 +38,8 @@ export interface Sperm {
   colonyId: number; // natal colony of the male (0 = background population)
   genome: Float32Array; // haploid
   share: number; // paternity share weight
+  /** the father's named traits (absent in older saves) */
+  tr?: number[];
 }
 
 export interface QueenData {
@@ -49,6 +55,8 @@ export interface QueenData {
 export interface ColonyStats {
   eggsLaid: number;
   workersEclosed: number;
+  /** major workers (soldiers) reared; absent in older saves */
+  majorsEclosed?: number;
   gynesEclosed: number;
   malesEclosed: number;
   broodDeaths: Record<string, number>;
@@ -114,6 +122,8 @@ export interface Colony {
   war?: WarState;
   /** nest architecture template that guides excavation (created lazily) */
   plan?: NestPlan;
+  /** last tick a returning scout's find was announced in the event log */
+  lastReport?: number;
 }
 
 export type Strategy = 'grow' | 'forage' | 'defend' | 'fortify' | 'war' | 'raid';
@@ -146,6 +156,12 @@ export interface WarState {
   reports: { tick: number; text: string }[];
   /** short explanation of the current strategy for the observatory */
   reason: string;
+  /** live major workers, counted at each strategy update (dimorphic species) */
+  majors?: number;
+  /** share of new workers the colony is currently aiming to rear as majors */
+  majorTarget?: number;
+  /** brood taken back from raiders */
+  recaptured?: number;
 }
 export interface PlanChamber { x: number; y: number; rx: number; ry: number; kind: 'brood' | 'royal' | 'granary' | 'mound' | 'store' }
 export interface NestPlan {
@@ -156,6 +172,8 @@ export interface NestPlan {
   chambers: PlanChamber[];
   /** secondary shafts from a chamber up to the surface (extra entrances) */
   shafts: { x: number; y0: number; y1: number }[];
+  /** lateral galleries and cross-links between chambers (absent in older saves) */
+  tunnels?: { x0: number; y0: number; x1: number; y1: number }[];
   mound: { kind: 'dome' | 'crater' | 'none'; r: number; h: number };
   midden: { x: number };
   todo: number; frontier: number[];

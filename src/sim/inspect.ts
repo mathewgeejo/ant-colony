@@ -8,6 +8,7 @@ import { DAY_TICKS } from './physics.ts';
 import type { Sim } from './sim.ts';
 import { thermalRate } from './sim.ts';
 import { wildlifeById } from './wildlife-defs.ts';
+import { NT, TRAITS, has, maskList } from './traits.ts';
 import { FLAG_APHID, FLAG_PLUG } from './world.ts';
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -93,6 +94,7 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
     if (a.contacts[i] > 0.2) lines.push(`Recent contacts with returning successful foragers: ${a.contacts[i].toFixed(1)}.`);
     const learned = ['forage', 'nurse', 'dig', 'defend'].map((n, k) => `${n} x${a.thrL[i * 4 + k].toFixed(2)}`).join(', ');
     lines.push(`Learned threshold adjustments (behavioural, this lifetime only): ${learned}.`);
+    if (a.major[i]) lines.push('Major worker (soldier subcaste): reared on a larger larval ration; large head and mandibles, high thresholds for routine work, responds to strong alarm.');
   }
   if (caste === CASTE.QUEEN) {
     const q = sim.queenData(c, a.id[i]);
@@ -114,8 +116,11 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
   let why = WHY_TEXT[a.why[i]] || TASK_NAMES[a.task[i]];
   if (a.task[i] === TASK.FORAGE && a.nav[i] === NAV.EXPLORE && a.why[i] === 0) why = WHY_TEXT[3];
   return {
-    id: a.id[i], colony: c.name, colonyId: c.id, species: `${sp.name} (${sp.commonName})`, caste: CASTE_NAMES[caste], task: TASK_NAMES[a.task[i]], why,
-    lines, traits,
+    id: a.id[i], colony: c.name, colonyId: c.id, species: `${sp.name} (${sp.commonName})`, caste: caste === CASTE.WORKER && a.major[i] ? 'major worker (soldier)' : CASTE_NAMES[caste], task: TASK_NAMES[a.task[i]], why,
+    lines, traits, named: maskList(a.traits, i * 2),
+    namedOrigin: a.mother[i]
+      ? `Inherited from mother #${a.mother[i]}${a.father[i] ? ` and father #${a.father[i]}` : caste === CASTE.MALE ? ' only (haploid male)' : ' and an off-map father'}. Each parent's trait passes on with its own chance; rare new traits appear at birth.`
+      : 'Founder: traits drawn at random (no recorded parents).',
   };
 }
 
@@ -138,12 +143,18 @@ export function colonySummaries(sim: Sim) {
     let reproBrood = 0;
     for (const b of col.brood) { stages[b.stage]++; if (b.destiny === 1 || b.destiny === 2) reproBrood++; }
     const tasks: Record<string, number> = {};
-    let alates = 0;
+    let alates = 0, majors = 0;
+    const traitCount = new Array(NT).fill(0);
     for (let i = 0; i < a.n; i++) {
       if (!a.alive[i] || a.colony[i] !== col.slot) continue;
-      if (a.caste[i] === CASTE.WORKER) tasks[TASK_NAMES[a.task[i]]] = (tasks[TASK_NAMES[a.task[i]]] ?? 0) + 1;
-      else if (a.caste[i] !== CASTE.QUEEN) alates++;
+      if (a.caste[i] === CASTE.WORKER) {
+        tasks[TASK_NAMES[a.task[i]]] = (tasks[TASK_NAMES[a.task[i]]] ?? 0) + 1; majors += a.major[i];
+        if (a.traits[i * 2] | a.traits[i * 2 + 1]) for (let t = 0; t < NT; t++) if (has(a.traits, i * 2, t)) traitCount[t]++;
+      } else if (a.caste[i] !== CASTE.QUEEN) alates++;
     }
+    const topTraits = traitCount.map((n, t) => ({ t, n })).filter((e) => e.n > 0).sort((p, q) => q.n - p.n).slice(0, 6);
+    const qi = col.queens.length ? a.findById(col.queens[0].antId) : -1;
+    const queenTraits = qi >= 0 ? maskList(a.traits, qi * 2) : [];
     const ch = col.chamber.x >= 0 ? col.chamber : col.entrance;
     const T = sim.w.tempAt(ch.x, ch.y);
     const notes: string[] = [];
@@ -156,14 +167,15 @@ export function colonySummaries(sim: Sim) {
     if (col.corpsesInside) notes.push(`${col.corpsesInside} corpse(s) inside the nest raise infection risk for brood.`);
     if (col.stage === 'queenless') notes.push('Queenless: no new fertilised eggs. Workers may lay male eggs.');
     if (col.reproductive) notes.push('Mature and in season: female larvae may be reared as gynes; some eggs are laid as males.');
+    if (sp.workers.soldiers) notes.push(`Soldiers: ${majors} major worker${majors === 1 ? '' : 's'} (${Math.round(100 * majors / Math.max(1, col.workers))}% of workers); currently rearing about ${Math.round(100 * (col.war?.majorTarget ?? sp.workers.soldiers.baseFraction))}% of new workers as majors${(col.war?.majorTarget ?? 0) > sp.workers.soldiers.baseFraction + 0.01 ? ' (raised after meeting rivals)' : ''}.`);
     return {
       id: col.id, slot: col.slot, name: col.name, alive: col.alive, species: sp.name, speciesId: sp.id, stage: col.stage, generation: col.generation,
-      marking: col.marking, workers: col.workers, adults: col.adults, alates, queens: col.queens.length,
+      marking: col.marking, workers: col.workers, majors, topTraits, queenTraits, queenId: qi >= 0 ? a.id[qi] : 0, adults: col.adults, alates, queens: col.queens.length,
       reserves: col.queens[0]?.reserves ?? 0,
       brood: stages, reproBrood, store: { ...col.store, mineral: Math.round(col.store.mineral) }, stim: col.stim, nestVolume: col.nestVolume, nestDepth: col.nestDepth,
       hasExit: col.hasExit, tasks, stats: col.stats, entrance: col.entrance, notes, ageDays: (sim.tick - col.foundedTick) / DAY_TICKS,
       playerEdited: col.playerEdited, mother: col.motherColony, exposure: col.exposure.slice(-30),
-      broodList: col.brood.slice(0, 40).map((b) => `${STAGE_NAMES[b.stage]}${b.stage ? ' ' + DESTINY_NAMES[b.destiny] : ''} ${Math.round(b.prog * 100)}%${b.stage === STAGE.LARVA ? ` fed ${Math.round((b.fed / b.need) * 100)}%` : ''}`),
+      broodList: col.brood.slice(0, 40).map((b) => `${STAGE_NAMES[b.stage]}${b.stage ? ' ' + (b.major ? 'major worker' : DESTINY_NAMES[b.destiny]) : ''} ${Math.round(b.prog * 100)}%${b.stage === STAGE.LARVA ? ` fed ${Math.round((b.fed / b.need) * 100)}%` : ''}`),
     };
   });
 }
@@ -179,11 +191,16 @@ export function evolutionDetail(sim: Sim) {
     const geno: number[] = [];
     for (let l = 0; l < NL; l++) geno.push(qi >= 0 ? (a.ga[qi * NL + l] + a.gb[qi * NL + l]) / 2 : NaN);
     const workers: number[][] = Array.from({ length: NL }, () => []);
+    const named = new Array(NT).fill(0);
+    let nw = 0;
     for (let i = 0; i < a.n; i++) {
       if (!a.alive[i] || a.colony[i] !== c.slot || a.caste[i] !== CASTE.WORKER) continue;
       for (let l = 0; l < NL; l++) if (workers[l].length < 300) workers[l].push((a.ga[i * NL + l] + a.gb[i * NL + l]) / 2);
+      nw++;
+      for (let t = 0; t < NT; t++) if (has(a.traits, i * 2, t)) named[t]++;
     }
-    return { id: c.id, name: c.name, species: c.speciesId, marking: c.marking, generation: c.generation, geno, workers, playerEdited: c.playerEdited };
+    return { id: c.id, name: c.name, species: c.speciesId, marking: c.marking, generation: c.generation, geno, workers, playerEdited: c.playerEdited,
+      named: named.map((n) => (nw ? n / nw : 0)), queenTraits: qi >= 0 ? maskList(a.traits, qi * 2) : [] };
   });
   // associations between founder genotype and reproductive success across colonies with outcomes
   const recs = sim.lineage.filter((r) => r.diedTick >= 0 || sim.tick - r.foundedTick > DAY_TICKS * 20);
@@ -197,7 +214,7 @@ export function evolutionDetail(sim: Sim) {
     return { locus: l.i, n: xs.length, r: corr(xs, ys) };
   });
   return {
-    mode: sim.mode, modeLabel: MODES[sim.mode].label, loci, history: sim.traitHistory.slice(-400), colonies, assoc,
+    mode: sim.mode, modeLabel: MODES[sim.mode].label, loci, traits: TRAITS.map((t) => ({ key: t.key, name: t.name, group: t.group, tone: t.tone, description: t.description, opposite: t.opposite ?? '', inherit: t.inherit, birth: t.birth, fantasy: !!t.fantasy })), history: sim.traitHistory.slice(-400), colonies, assoc,
     lineage: sim.lineage.slice(-300), mutations: sim.mutations.slice(-200).reverse(), mutationCount: sim.mutationCount,
     fantasyLoci: FANTASY_LOCI, counters: sim.counters, day: sim.tick / DAY_TICKS,
   };

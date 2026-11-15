@@ -1,5 +1,5 @@
 import type { FrameMsg, OverlayKind } from '../protocol.ts';
-import { M, MATERIALS } from '../sim/materials.ts';
+import { IS_SOLID, M, MATERIALS } from '../sim/materials.ts';
 import { TerrainRaster, TILE, terrainHash as hash } from './terrain.ts';
 import { AgentRaster } from './agents.ts';
 import type { RGB } from './sprites.ts';
@@ -17,6 +17,7 @@ export class Renderer {
   W = 512; H = 256;
   surface: Int16Array = new Int16Array(0);
   private ground: Int16Array = new Int16Array(0);
+  private anchored = new Uint8Array(0); private fillQueue = new Int32Array(0);
   frame: FrameMsg | null = null;
   colonies: any[] = [];
   species: any[] = [];
@@ -67,7 +68,27 @@ export class Renderer {
     this.field.width = W; this.field.height = H;
     this.agents=new AgentRaster(W,H);this.agentImage=new ImageData(this.agents.data,W*3,H*3);
     this.agentCanvas.width=W*3;this.agentCanvas.height=H*3;this.lastAgentFrame=-1;
-    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.ground = new Int16Array(W).fill(H); this.fit();
+    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.ground = new Int16Array(W).fill(H);
+    this.anchored = new Uint8Array(W * H); this.fillQueue = new Int32Array(W * H); this.fit();
+  }
+  /**
+   * Ground line per column for the cutaway backdrop: the top of solid material connected to the world floor.
+   * Blocks dropped into the sky, falling grains and floating debris are not connected, so the air beneath
+   * them stays open sky instead of being painted as an underground cavity.
+   */
+  private computeGround(out: Int16Array) {
+    const { W, H, map } = this, seen = this.anchored, q = this.fillQueue;
+    seen.fill(0); out.fill(H);
+    let n = 0;
+    for (let x = 0, k = (H - 1) * W; x < W; x++, k++) if (IS_SOLID[map[k]] || GROUND[map[k]]) { seen[k] = 1; q[n++] = k; }
+    for (let h = 0; h < n; h++) {
+      const k = q[h], x = k % W, y = (k - x) / W;
+      if (y < out[x]) out[x] = y;
+      if (x > 0 && !seen[k - 1] && (IS_SOLID[map[k - 1]] || GROUND[map[k - 1]])) { seen[k - 1] = 1; q[n++] = k - 1; }
+      if (x < W - 1 && !seen[k + 1] && (IS_SOLID[map[k + 1]] || GROUND[map[k + 1]])) { seen[k + 1] = 1; q[n++] = k + 1; }
+      if (y > 0 && !seen[k - W] && (IS_SOLID[map[k - W]] || GROUND[map[k - W]])) { seen[k - W] = 1; q[n++] = k - W; }
+      if (y < H - 1 && !seen[k + W] && (IS_SOLID[map[k + W]] || GROUND[map[k + W]])) { seen[k + W] = 1; q[n++] = k + W; }
+    }
   }
   fit() {
     if(!this.cutaway){
@@ -117,26 +138,29 @@ export class Renderer {
     if (f.surface) this.surface = f.surface;
     if(f.tints)for(let o=0;o<f.tints.length;o+=2)this.tint[f.tints[o]]=f.tints[o+1];
     let minX=this.W,minY=this.H,maxX=-1,maxY=-1;
-    const draw=(x:number,y:number)=>{const k=y*this.W+x;if(this.raster!.cell(x,y,this.map[k],this.cellDetails[k],this.cutaway?this.ground[x]:this.H,this.tint[k])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}};
+    // excavated nest cells (detail bit 64) always read as tunnel, even where a shaft opens to the sky
+    const draw=(x:number,y:number)=>{const k=y*this.W+x,m=this.map[k],q=this.cellDetails[k];if(this.raster!.cell(x,y,m,q,this.cutaway?(m===M.AIR&&q&64?0:this.ground[x]):this.H,this.tint[k])){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}};
     if (f.chunks) {
-      const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16), cells:number[] = [], cols = new Set<number>();
-      let o = 0;
+      const bytes = new Uint8Array(f.chunks), cw = Math.ceil(this.W / 16), cells:number[] = [];
+      let o = 0, solidity = false;
       for (let c = 0; c < f.chunkCount; c++) {
         const ci = bytes[o] | bytes[o + 1] << 8; o += 2;
         const cx = ci % cw * 16, cy = Math.floor(ci / cw) * 16;
-        for (let dx = 0; dx < 16 && cx + dx < this.W; dx++) cols.add(cx + dx);
         for (let dy = 0; dy < 16; dy++) for (let dx = 0; dx < 16; dx++) {
           const m = bytes[o++] | bytes[o++] << 8, q = bytes[o++], x = cx + dx, y = cy + dy;
           if (x >= this.W || y >= this.H) continue;
+          const prev = this.map[y * this.W + x];
+          if (prev !== m && (IS_SOLID[prev] || GROUND[prev]) !== (IS_SOLID[m] || GROUND[m])) solidity = true;
           this.map[y * this.W + x] = m;
           this.cellDetails[y*this.W+x]=q;
           cells.push(x, y);
         }
       }
-      // Tunnel backdrop only exists beneath real ground, so grains and drops falling through the sky never darken the air below them.
-      for (const x of cols) {
-        let y = 0; while (y < this.H && !GROUND[this.map[y * this.W + x]]) y++;
-        const old = this.ground[x]; if (old === y) continue;
+      // Tunnel backdrop only exists beneath real, anchored ground, so grains, drops and blocks in the sky never darken the air below them.
+      const next = new Int16Array(this.W);
+      if (solidity) this.computeGround(next); else next.set(this.ground);
+      for (let x = 0; x < this.W; x++) {
+        const old = this.ground[x], y = next[x]; if (old === y) continue;
         this.ground[x] = y; for (let yy = Math.min(old, y); yy < Math.max(old, y) && yy < this.H; yy++) draw(x, yy);
       }
       for (let k = 0; k < cells.length; k += 2) draw(cells[k], cells[k + 1]);

@@ -7,11 +7,12 @@ import { CASTE, MEM, NAV, TASK, WHY } from './ants.ts';
 import type { Colony } from './colony.ts';
 import { STAGE } from './colony.ts';
 import { P, thermalPerf } from './genetics.ts';
-import { DIG_RESIST, FOOD_OF, IS_SOLID, IS_LIQUID, CLIMBABLE, M, MOIST_CAP, MATERIALS } from './materials.ts';
+import { DIG_RESIST, FOOD_OF, IS_GRANULAR, IS_SOLID, IS_LIQUID, CLIMBABLE, M, MOIST_CAP, MATERIALS } from './materials.ts';
 import type { Sim } from './sim.ts';
 import { FLAG_PLUG } from './world.ts';
-import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill } from './warfare.ts';
+import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill, underSiege, warState } from './warfare.ts';
 import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
+import { TR, aggressionTrait, coldBonus, courage, has as hasTrait, heatBonus, lifeFactor } from './traits.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DY = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -226,6 +227,10 @@ export function step(sim: Sim, i: number) {
     // outbound trail followers must keep moving away from the nest; at a trail's end they search locally
     if (dist2(nx, ny, ex, ey) <= de0) a.stuck[i] = Math.min(255, a.stuck[i] + 1);
     else if (a.stuck[i] > 0) a.stuck[i]--;
+  } else if (nav === NAV.UP) {
+    // climbing toward air: no height gained counts as being stuck (e.g. shut in a pocket under fallen soil)
+    if (ny >= y) a.stuck[i] = Math.min(255, a.stuck[i] + 1);
+    else if (a.stuck[i] > 0) a.stuck[i]--;
   }
   if (nx <= 1 || nx >= W - 2) a.hx[i] = (nx <= 1 ? 1 : -1) as any; // world edge: turn around
   moveTo(sim, i, nx, ny);
@@ -251,7 +256,8 @@ export function moveTo(sim: Sim, i: number, nx: number, ny: number) {
   const own = w.owner[ni] === c.slot + 1;
   if (!own) {
     a.stepCount[i] = Math.min(65535, a.stepCount[i] + 1);
-    if ((a.stepCount[i] % 3) === 0 && a.task[i] === TASK.FORAGE) a.pushMem(i, nx, ny);
+    // foragers and spoil carriers remember their outbound path so they can retrace it home
+    if ((a.stepCount[i] % 3) === 0 && (a.task[i] === TASK.FORAGE || a.task[i] === TASK.HAUL)) a.pushMem(i, nx, ny);
   }
   // returning successful foragers reinforce the trail (surface-deposited signal)
   if (a.task[i] === TASK.RETURN && a.carry[i] && FOOD_OF[a.carry[i]] && !own) {
@@ -467,18 +473,49 @@ function deliver(sim: Sim, i: number, c: Colony) {
     sim.carriedFood[f - 1]--;
     if (f === 1) c.store.sugar++; else if (f === 2) c.store.protein++; else c.store.seed++;
     c.stats.foodIn[f - 1]++;
+    const food = MATERIALS[a.carry[i]].name.toLowerCase();
     a.carry[i] = 0;
     sim.recordDelivery(c, a.carryQ[i]);
     // contact information: nearby nestmates register a returning successful forager
     sim.idx.query(a, a.x[i], a.y[i], 3, (j) => {
       if (j !== i && a.colony[j] === a.colony[i] && a.caste[j] === CASTE.WORKER) a.contacts[j] = Math.min(6, a.contacts[j] + 1);
     });
+    reportFind(sim, i, c, food);
   }
   a.memLen[i] = 0;
   a.stepCount[i] = 0;
   a.task[i] = TASK.IDLE;
   a.nav[i] = NAV.NEST_WANDER;
   a.timer[i] = 0;
+}
+
+/**
+ * A forager back from a good source "reports" it: resting nestmates it touches inside the nest may be
+ * recruited and set out along its remembered route (an abstraction of group/tandem recruitment and of
+ * recruits learning the way; mass recruiters additionally follow its trail). Only ants in contact are told.
+ */
+function reportFind(sim: Sim, i: number, c: Colony, food: string) {
+  const a = sim.a, len = a.frLen[i];
+  const sp = sim.speciesOf(c), act = sp.activity;
+  if (len < 2 || a.carryQ[i] < 0.25 || !c.hasExit || c.stim.forage < 0.1) return;
+  if (sim.airT > act.maxForageTemp || sim.airT < act.minForageTemp || (act.diurnal && !sim.daytime)) return;
+  const share = sp.communication.recruitment === 'mass' ? 0.3 : 0.15;
+  const max = 1 + Math.round(3 * a.carryQ[i] * Math.min(1, c.stim.forage * 2));
+  let n = 0;
+  sim.idx.query(a, a.x[i], a.y[i], 3, (j) => {
+    if (n >= max || j === i || a.colony[j] !== a.colony[i] || a.caste[j] !== CASTE.WORKER || a.task[j] !== TASK.IDLE) return;
+    if (a.major[j] || a.carry[j] || a.carryBrood[j] >= 0 || a.age[j] < 1 || !inOwnNest(sim, j) || !sim.rng.chance(share)) return;
+    const o = j * MEM, s = i * MEM;
+    for (let k = 0; k < len; k++) { a.frX[o + k] = a.frX[s + k]; a.frY[o + k] = a.frY[s + k]; }
+    a.frLen[j] = len; a.frTrips[j] = 0; a.fails[j] = 0;
+    startForage(sim, j, c);
+    a.why[j] = WHY.CONTACT_RECRUITED;
+    n++;
+  });
+  if (n && a.frTrips[i] <= 1 && sim.tick - (c.lastReport ?? -1e9) > 900) {
+    c.lastReport = sim.tick;
+    sim.event('recruit', `${c.name}: a scout reported ${food} at x=${a.frX[i * MEM + len - 1]} and led ${n} nestmate${n === 1 ? '' : 's'} out to it.`, c);
+  }
 }
 
 // ---------------------------------------------------------------- decisions
@@ -510,13 +547,34 @@ function decide(sim: Sim, i: number) {
   }
   if (a.task[i] === TASK.ESCAPE) { a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER; }
   const own = w.owner[ci] === c.slot + 1;
+  // shut in a shallow pocket outside any nest (buried by spoil or a slump): climb, then dig toward the surface
+  if (a.why[i] === WHY.DIG_OUT) {
+    if (own || w.skyExposed(x, y)) {
+      a.why[i] = WHY.NONE; a.stuck[i] = 0;
+      if (a.task[i] === TASK.FORAGE) a.nav[i] = NAV.EXPLORE; else { a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; }
+    } else if (a.stuck[i] > 8 && startDigOut(sim, i)) return;
+    else { a.nav[i] = NAV.UP; return; }
+  } else if (!own && !w.owner[ci] && a.stuck[i] > 8 && y - w.surface[x] <= 12 && !w.skyExposed(x, y) && !isWarTask(a.task[i])) {
+    a.why[i] = WHY.DIG_OUT; a.nav[i] = NAV.UP; a.stuck[i] = 0;
+    return;
+  }
+  // blocked on the way home by loose spoil: shove through it toward the goal
+  const nv = a.nav[i];
+  if (!own && a.stuck[i] > 20 && (nv === NAV.HOME || nv === NAV.RETRACE || nv === NAV.GOAL) && startDigOut(sim, i, Math.sign(a.tx[i] - x))) return;
+  // locked out: fallen soil plugs the entrance from outside; dig back in (not while the colony holds a siege plug)
+  if (!own && a.stuck[i] > 30 && a.task[i] !== TASK.HAUL && !isWarTask(a.task[i]) && dist2(x, y, c.entrance.x, c.entrance.y) <= 25 && !underSiege(sim, c) && startDigIn(sim, i, c)) return;
+  // starving away from the nest: eat the carried load or adjacent food rather than die with food in reach
+  if (!own && a.energy[i] < 0.15 && feedOutside(sim, i, c) && a.task[i] !== TASK.HAUL) a.why[i] = WHY.ATE_OUTSIDE;
   // combat / alarm
   const alarm = c.alarm.get(x, y);
   if (a.fightTarget[i] >= 0) return; // engaged; contact phase resolves
-  if (alarm > 0.3 && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i])) {
-    const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression);
+  // minors answer weak alarm; majors ignore it but respond en masse to strong, sustained alarm
+  // (quantitative differences in recruitment: Detrain & Pasteels 1992)
+  const major = a.major[i] === 1;
+  if (alarm > (major ? 0.6 : 0.3) && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i])) {
+    const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression) * (major ? 0.4 : 1);
     if (sim.rng.chance(stimulus(alarm, thr))) {
-      a.task[i] = TASK.DEFEND; a.why[i] = WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = 40;
+      a.task[i] = TASK.DEFEND; a.why[i] = major ? WHY.MAJOR_RECRUITED : WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = major ? 80 : 40;
       a.thrL[i * 4 + 3] = Math.max(0.5, a.thrL[i * 4 + 3] * 0.98);
       return;
     }
@@ -544,8 +602,8 @@ function decide(sim: Sim, i: number) {
       } else if (a.nav[i] === NAV.HOME && own) {
         a.nav[i] = NAV.NEST_CUE;
       } else if (a.nav[i] === NAV.HOME && a.stuck[i] > 60) {
-        a.nav[i] = NAV.EXPLORE; a.stuck[i] = 0;
-      } else if (a.nav[i] === NAV.EXPLORE && sim.rng.chance(0.1)) {
+        a.nav[i] = NAV.WANDER; a.stuck[i] = 0;
+      } else if ((a.nav[i] === NAV.EXPLORE || a.nav[i] === NAV.WANDER) && sim.rng.chance(0.1)) {
         a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y;
       } else if (a.nav[i] === NAV.NEST_CUE && !own) {
         a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y;
@@ -570,8 +628,11 @@ function decide(sim: Sim, i: number) {
   }
   // --- IDLE: choose a task by response thresholds ---
   if (!own) {
-    // idle outside the nest: go home
-    a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y;
+    // idle outside the nest: go home, detouring for a while when the direct line is blocked
+    // (the detour is an undirected wander: exploring would push it further from the nest)
+    if (a.nav[i] === NAV.RETRACE && a.stuck[i] <= 30) return; // following its own outbound path back
+    if (a.nav[i] === NAV.HOME && a.stuck[i] > 40) { a.nav[i] = NAV.WANDER; a.stuck[i] = 0; }
+    else if (a.nav[i] !== NAV.WANDER || sim.rng.chance(0.15)) { a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; }
     if (a.carry[i] && !FOOD_OF[a.carry[i]]) { a.task[i] = TASK.HAUL; }
     return;
   }
@@ -636,6 +697,8 @@ function chooseTask(sim: Sim, i: number, c: Colony) {
     default:
       a.task[i] = TASK.IDLE; a.why[i] = blocked && s.forage > 0.3 ? blocked : WHY.IDLE_LOW_STIM;
       a.nav[i] = rng.chance(0.3) ? NAV.NEST_CUE : NAV.NEST_WANDER;
+      // majors wait near the brood and queen: an in-nest reserve that is cheap to keep idle
+      if (a.major[i]) { a.why[i] = WHY.MAJOR_STANDBY; a.nav[i] = rng.chance(0.7) ? NAV.NEST_CUE : NAV.STAY; a.timer[i] = 0; }
   }
 }
 
@@ -817,11 +880,89 @@ function decideDig(sim: Sim, i: number, c: Colony, own: boolean) {
   if (++a.fails[i] > 40) { a.fails[i] = 0; a.task[i] = TASK.IDLE; }
 }
 
+/** Start digging one cell up/sideways out of a pocket; the loosened soil is pushed aside, not carried. */
+function startDigOut(sim: Sim, i: number, toward = 0): boolean {
+  const a = sim.a, w = sim.w, x = a.x[i], y = a.y[i];
+  // toward != 0: only shove sideways/up through loose grains in that direction (homing through spoil)
+  const dirs = toward ? [[toward, 0], [toward, -1], [0, -1]] : [[0, -1], [-1, -1], [1, -1], [-1, 0], [1, 0]];
+  for (const [dx, dy] of dirs) {
+    const tx = x + dx, ty = y + dy;
+    if (!w.inb(tx, ty)) continue;
+    const m = w.get(tx, ty);
+    if (!DIG_RESIST[m] || FOOD_OF[m] || m === M.CORPSE || (toward && !IS_GRANULAR[m])) continue;
+    let wet = false;
+    for (let d = 0; d < 8 && !wet; d++) wet = w.get(tx + DX[d], ty + DY[d]) === M.WATER;
+    if (wet) continue;
+    a.tx[i] = tx; a.ty[i] = ty; a.why[i] = WHY.DIG_OUT; a.nav[i] = NAV.STAY; a.stuck[i] = 0;
+    a.timer[i] = Math.max(4, Math.round(DIG_RESIST[m] / a.pheno[i * 29 + P.DIGRATE] / 2));
+    return true;
+  }
+  return false;
+}
+
+/** Dig into a plugged cell of the colony's own nest from outside (shaft cells keep their nest ownership when filled). */
+function startDigIn(sim: Sim, i: number, c: Colony): boolean {
+  const a = sim.a, w = sim.w, x = a.x[i], y = a.y[i], own = c.slot + 1;
+  for (const [dx, dy] of [[0, 1], [-1, 1], [1, 1], [-1, 0], [1, 0], [0, -1]]) {
+    const tx = x + dx, ty = y + dy;
+    if (!w.inb(tx, ty)) continue;
+    const k = ty * w.W + tx, m = w.mat[k];
+    if (w.owner[k] !== own || !DIG_RESIST[m] || FOOD_OF[m] || m === M.CORPSE) continue;
+    a.tx[i] = tx; a.ty[i] = ty; a.why[i] = WHY.DIG_IN; a.nav[i] = NAV.STAY; a.stuck[i] = 0;
+    a.timer[i] = Math.max(4, Math.round(DIG_RESIST[m] / a.pheno[i * 29 + P.DIGRATE] / 2));
+    return true;
+  }
+  return false;
+}
+
+const FOOD_KEYS = ['sugar', 'protein', 'seed'] as const;
+function feedOutside(sim: Sim, i: number, c: Colony): boolean {
+  const a = sim.a, w = sim.w, nut = sim.speciesOf(c).nutrition;
+  const gain = (f: number) => f === 1 ? 0.45 * nut.sugar : f === 2 ? 0.25 : 0.5 * nut.seed;
+  const f0 = FOOD_OF[a.carry[i]];
+  if (f0 && gain(f0) > 0.1) {
+    sim.carriedFood[f0 - 1]--;
+    w.ledger.sink(FOOD_KEYS[f0 - 1], 'eaten by carrier', 1);
+    a.carry[i] = 0; a.energy[i] = Math.min(1, a.energy[i] + gain(f0));
+    return true;
+  }
+  for (let d = -1; d < 8; d++) {
+    const nx = a.x[i] + (d < 0 ? 0 : DX[d]), ny = a.y[i] + (d < 0 ? 0 : DY[d]);
+    if (!w.inb(nx, ny)) continue;
+    const k = ny * w.W + nx, f = FOOD_OF[w.mat[k]];
+    if (!f || gain(f) <= 0.1 || w.toxin[k] > 40) continue;
+    if (w.amt[k] <= 1) sim.setCell(k, M.AIR, 0, 'eaten by ants outside');
+    else { w.amt[k]--; w.touch(nx, ny); w.ledger.sink(FOOD_KEYS[f - 1], 'eaten by ants outside', 1); }
+    a.energy[i] = Math.min(1, a.energy[i] + gain(f));
+    return true;
+  }
+  return false;
+}
+
 function finishWork(sim: Sim, i: number) {
   const a = sim.a, w = sim.w;
   const c = sim.colonies[a.colony[i]];
   if (!c) return;
   const task = a.task[i];
+  if (a.why[i] === WHY.DIG_OUT || a.why[i] === WHY.DIG_IN) {
+    const k = a.ty[i] * w.W + a.tx[i], m = w.mat[k];
+    if (DIG_RESIST[m] && !FOOD_OF[m] && m !== M.CORPSE) {
+      const from = a.y[i] * w.W + a.x[i];
+      if (a.why[i] === WHY.DIG_IN) sim.excavate(k, c);
+      else if (IS_GRANULAR[m] && a.ty[i] <= a.y[i] && !IS_SOLID[w.mat[from]] && !IS_LIQUID[w.mat[from]]) {
+        // pushing up through loose grains: they settle into the space the ant leaves instead of refilling the hole
+        const amt = w.amt[k];
+        sim.setCell(k, M.AIR, 0, 'moved');
+        moveTo(sim, i, a.tx[i], a.ty[i]);
+        sim.setCell(from, m, amt, 'moved');
+      } else sim.setCell(k, M.AIR, 0, 'excavated');
+      a.energy[i] -= 0.002;
+    }
+    if (a.why[i] === WHY.DIG_IN) { a.why[i] = WHY.NONE; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; }
+    else a.nav[i] = NAV.UP;
+    a.stuck[i] = 0;
+    return;
+  }
   if (task === TASK.DIG || task === TASK.FOUND_DIG) {
     const tx = a.tx[i], ty = a.ty[i];
     if (!w.inb(tx, ty)) { a.nav[i] = NAV.DIG_WANDER; return; }
@@ -836,7 +977,7 @@ function finishWork(sim: Sim, i: number) {
     if (m === M.CLAY) c.store.mineral += 0.5;
     a.carry[i] = M.LOOSE;
     a.task[i] = TASK.HAUL; a.why[i] = WHY.HAUL; a.nav[i] = NAV.EXIT; a.timer[i] = 0;
-    a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0;
+    a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0; a.memLen[i] = 0;
     sim.thrUse(i, 2);
   } else if (task === TASK.NURSE) {
     a.nav[i] = NAV.NEST_CUE;
@@ -862,16 +1003,35 @@ function decideHaul(sim: Sim, i: number, c: Colony, own: boolean) {
       if (a.why[i] === WHY.MOUND) {
         const tx = a.tx[i];
         if (Math.abs(x - tx) <= 1 && Math.abs(y - (w.surface[tx] - 1)) <= 2) {
-          if (depositHeap(sim, tx)) { a.carry[i] = 0; a.task[i] = TASK.IDLE; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0; return; }
+          if (depositHeap(sim, tx)) { a.carry[i] = 0; a.task[i] = TASK.IDLE; startRetrace(sim, i, c); a.stepCount[i] = 0; return; }
           a.why[i] = WHY.HAUL;
         } else if (a.stuck[i] < 60) { a.nav[i] = NAV.GOAL; a.ty[i] = w.surface[tx] - 1; return; }
         else a.why[i] = WHY.HAUL;
       }
     }
   }
-  if (outside && farEnough) { if (dropCarried(sim, i, false)) return; }
-  if (outside && !farEnough) { a.nav[i] = NAV.EXPLORE; return; }
-  if (!own && !outside) a.nav[i] = NAV.UP;
+  if (outside) {
+    // spread the load over the ground away from the door instead of piling it at the nearest legal spot:
+    // heaps beside the entrance slide back into the shaft and bury passing ants
+    if (a.stepCount[i] > 1400 && !refuse) { a.carry[i] = 0; a.task[i] = TASK.IDLE; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0; return; }
+    if (a.why[i] !== WHY.SPOIL_DUMP || a.stuck[i] > 50) {
+      // sample a few spots and take the lowest ground, so dumped spoil fills hollows instead of growing one heap
+      const minR = refuse ? 12 : Math.max(9, (c.plan?.mound.r ?? 0) + 4);
+      let tx = -1;
+      for (let t = 0; t < 3; t++) {
+        const cx = Math.max(2, Math.min(w.W - 3, c.entrance.x + (sim.rng.chance(0.5) ? 1 : -1) * (minR + sim.rng.int(20))));
+        if (tx < 0 || w.surface[cx] > w.surface[tx]) tx = cx;
+      }
+      a.why[i] = WHY.SPOIL_DUMP; a.tx[i] = tx; a.stuck[i] = 0;
+    }
+    if (Math.abs(x - a.tx[i]) <= 2 && farEnough) {
+      if (dropCarried(sim, i, false)) return;
+      a.why[i] = WHY.HAUL; // nowhere to set it down here: pick another spot next time
+    }
+    a.nav[i] = NAV.GOAL; a.ty[i] = w.surface[a.tx[i]] - 1;
+    return;
+  }
+  if (!own) a.nav[i] = NAV.UP;
   else a.nav[i] = NAV.EXIT;
   // no way out (sealed or blocked): stash the pellet in a dead-end inside the nest
   const giveUp = (!c.hasExit && a.stepCount[i] > 120) || a.stepCount[i] > 700 || a.stuck[i] > 120;
@@ -901,6 +1061,8 @@ function dropCarried(sim: Sim, i: number, inside: boolean): boolean {
     if (inside && solids < 6) continue;
     if (!inside) {
       if (!IS_SOLID[w.get(nx, ny + 1)]) continue;
+      // angle of repose: never add to a local peak (it would only slide, or bury whoever passes below)
+      if (nx > 2 && nx < w.W - 3 && ny + 1 < Math.min(w.surface[nx - 2], w.surface[nx + 2]) - 1) continue;
       // never dump spoil where it could slide into a passage: no excavated cells nearby
       let nearTunnel = false;
       for (let dy = -2; dy <= 4 && !nearTunnel; dy++)
@@ -917,7 +1079,7 @@ function dropCarried(sim: Sim, i: number, inside: boolean): boolean {
   if (m === M.CORPSE || m === M.WASTE) w.owner[best] = 0;
   a.carry[i] = 0;
   a.task[i] = TASK.IDLE;
-  a.nav[i] = NAV.HOME; a.tx[i] = sim.colonies[a.colony[i]]!.entrance.x; a.ty[i] = sim.colonies[a.colony[i]]!.entrance.y;
+  startRetrace(sim, i, sim.colonies[a.colony[i]]!);
   a.stepCount[i] = 0;
   return true;
 }
@@ -1196,10 +1358,12 @@ export function physiology(sim: Sim, i: number) {
   let cause = '';
   if (a.energy[i] <= 0) { a.energy[i] = 0; dmg += 0.02; cause = 'starvation'; }
   if (a.hydration[i] <= 0) { a.hydration[i] = 0; dmg += 0.03; cause = 'desiccation'; }
-  const heatMax = sp.tolerances.heatMax + (a.pheno[o + P.TOPT] - sp.traits.topt) * 0.6;
-  if (T > heatMax) { dmg += 0.01 * (T - heatMax); cause = 'heat'; }
-  if (T < sp.tolerances.coldMin - 4) { dmg += 0.004 * (sp.tolerances.coldMin - 4 - T); cause = 'cold'; }
-  if (w.toxin[k] > 0) { dmg += w.toxin[k] / 255 * 0.08; cause = 'toxin'; }
+  const tr = a.traits, to = i * 2;
+  const heatMax = sp.tolerances.heatMax + (a.pheno[o + P.TOPT] - sp.traits.topt) * 0.6 + heatBonus(tr, to);
+  if (T > heatMax && !hasTrait(tr, to, TR.fire_proof)) { dmg += 0.01 * (T - heatMax); cause = 'heat'; }
+  const coldMin = sp.tolerances.coldMin - coldBonus(tr, to);
+  if (T < coldMin - 4) { dmg += 0.004 * (coldMin - 4 - T); cause = 'cold'; }
+  if (w.toxin[k] > 0 && !hasTrait(tr, to, TR.immune)) { dmg += w.toxin[k] / 255 * 0.08; cause = 'toxin'; }
   if(w.dose[k]){dmg+=w.dose[k]/255*.06;cause='radiation exposure (game units)';}
   if(w.charge[k]>80){dmg+=w.charge[k]/255*.08;cause='electrical shock';}
   if (IS_LIQUID[w.mat[k]]) {
@@ -1214,10 +1378,10 @@ export function physiology(sim: Sim, i: number) {
     a.health[i] -= dmg;
     if (a.health[i] <= 0) { sim.killAnt(i, cause); return; }
   } else if (a.energy[i] > 0.4 && a.hydration[i] > 0.4 && a.health[i] < 1) {
-    a.health[i] = Math.min(1, a.health[i] + 0.002);
+    a.health[i] = Math.min(1, a.health[i] + 0.002 * (hasTrait(tr, to, TR.regeneration) ? 4 : 1));
   }
   // senescence (Gompertz-like hazard beyond expected lifespan)
-  const life = isQueen ? sp.queen.lifespanDays : a.caste[i] === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6;
+  const life = (isQueen ? sp.queen.lifespanDays : a.caste[i] === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6) * lifeFactor(tr, to);
   const hazard = 0.02 * Math.exp(5 * (a.age[i] / life - 1)) * dtDays;
   if (sim.rng.next() < hazard) { sim.killAnt(i, 'old age'); return; }
   if (isQueen) sim.queenPhysiology(c, i, dtDays, q10);
@@ -1251,13 +1415,16 @@ export function contactPhase(sim: Sim) {
     const flashes=a.pheno[i*29+P.BIOLUM]>0&&a.task[i]===TASK.RETURN&&a.carry[i];
     if(!flashes&&!sim.idx.hasForeign(x,y,3,a.colony[i])){a.fightTarget[i]=-1;continue;}
     const reach = sp.defense.mode === 'formic-spray' ? 2 : 1;
-    let foe = -1, foeD = 99, friends = 0, foes = 0;
+    let foe = -1, foeD = 99, foeS = 1e9, friends = 0, foes = 0;
     sim.idx.query(a, x, y, 3, (j) => {
       if (j === i) return;
       if (a.colony[j] === a.colony[i]) { friends++; return; }
       foes++;
       const d = Math.max(Math.abs(a.x[j] - x), Math.abs(a.y[j] - y));
-      if (d <= reach && d < foeD && contactOpen(sim, x, y, a.x[j], a.y[j])) { foe = j; foeD = d; }
+      if (d > reach || !contactOpen(sim, x, y, a.x[j], a.y[j])) return;
+      // focus fire: prefer close rivals that are already held or wounded, and raiders carrying brood off
+      const s = d + 0.8 * a.health[j] - 0.3 * Math.min(3, holders[j]) - (a.carryBrood[j] >= 0 ? 1.5 : 0);
+      if (s < foeS) { foe = j; foeD = d; foeS = s; }
     });
     // fictional bioluminescence: returning foragers flash; nearby idle nestmates in line of sight are recruited
     if (a.pheno[i * 29 + P.BIOLUM] > 0 && a.task[i] === TASK.RETURN && a.carry[i] && (w.mat[y * w.W + x] === M.WATER || !w.skyExposed(x, y) || !sim.daytime)) {
@@ -1275,8 +1442,11 @@ export function contactPhase(sim: Sim) {
     if (fc && fc !== c && rng.chance(0.25)) noteEncounter(sim, c, fc, x, y, friends, foes);
     // nestmate recognition failed (different colony): fight or retreat
     const soldier = isWarTask(a.task[i]);
-    const injured = a.health[i] < (soldier ? 0.25 : 0.35);
-    const outnumbered = foes > friends + (soldier ? 5 : 2);
+    const major = a.major[i] === 1;
+    // committed fighters and big-headed majors hold their ground longer
+    const bold = courage(a.traits, i * 2);
+    const injured = a.health[i] < (soldier || major ? 0.25 : 0.35) - (major ? 0.05 : 0) - bold * 0.04;
+    const outnumbered = foes > friends + (soldier ? 5 : 2) + (major ? 3 : 0) + bold;
     const pinned = holders[i] >= 2;
     // a raider carrying stolen brood keeps running rather than fighting
     if (a.carryBrood[i] >= 0 && a.task[i] === TASK.RAID) continue;
@@ -1285,10 +1455,12 @@ export function contactPhase(sim: Sim) {
         a.task[i] = TASK.FLEE; a.why[i] = WHY.FLEE_OUTNUMBERED; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.timer[i] = 60;
         a.fightTarget[i] = -1;
         if (a.carry[i] && FOOD_OF[a.carry[i]]) dropCarried(sim, i, false);
+        // a retreating worker calls for help: alarm marks the spot it fled from
+        c.alarm.add(x, y, sp.communication.alarmStrength * 0.7);
       }
       continue;
     }
-    const aggressive = rng.chance(sp.aggression * (0.5 + 0.15 * friends) * (a.task[i] === TASK.DEFEND ? 2 : aggressionFactor(c, a.task[i])));
+    const aggressive = rng.chance(Math.min(1, sp.aggression * (0.5 + 0.15 * friends) * (a.task[i] === TASK.DEFEND ? 2 : aggressionFactor(c, a.task[i])) * (major ? 1.5 : 1) * aggressionTrait(a.traits, i * 2)));
     if (!aggressive) continue;
     a.fightTarget[i] = foe;
     a.why[i] = WHY.DEFEND_CONTACT;
@@ -1309,13 +1481,45 @@ export function contactPhase(sim: Sim) {
       if (holders[foe] < 255) holders[foe]++;
       if (holders[foe] >= 2) a.moveAcc[foe] = Math.min(a.moveAcc[foe], -0.5);
     }
+    // named traits: misses, dodges, venom, bad luck and spines
+    const tr = a.traits, ti = i * 2, tf = foe * 2;
+    if ((hasTrait(tr, ti, TR.clumsy) && rng.chance(0.15)) || (hasTrait(tr, tf, TR.agile) && rng.chance(0.15))) dmg = 0;
+    if (hasTrait(tr, ti, TR.venomous)) dmg *= 1.3;
+    if (hasTrait(tr, tf, TR.unlucky)) dmg *= 1.2;
+    if (dmg > 0 && hasTrait(tr, tf, TR.thorns)) a.health[i] -= 0.02;
     a.health[foe] -= dmg;
+    // a lucky ant sometimes survives a blow that should have killed it
+    if (a.health[foe] <= 0 && hasTrait(tr, tf, TR.lucky) && rng.chance(0.25)) a.health[foe] = 0.1;
     a.energy[i] -= 0.002;
     if (fc) { fc.alarm.add(a.x[foe], a.y[foe], sim.speciesOf(fc).communication.alarmStrength * 0.6); }
     c.stats.fights++;
     sim.noteFight(c, fc);
-    if (a.health[foe] <= 0) { if (fc && fc !== c) noteKill(sim, c, fc); sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1; }
+    if (a.health[foe] <= 0) {
+      if (fc && fc !== c) { noteKill(sim, c, fc); if (a.carryBrood[foe] >= 0) recaptureBrood(sim, i, c, foe, fc); }
+      if (hasTrait(tr, tf, TR.acid_blood)) a.health[i] -= 0.25;
+      sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1;
+    }
+    if (a.health[i] <= 0) { if (fc && fc !== c) noteKill(sim, fc, c); sim.killAnt(i, 'combat'); }
   }
+}
+
+/** The killer of a brood-carrying rival takes the brood; it now belongs to (and is reared by) the killer's colony. */
+function recaptureBrood(sim: Sim, i: number, c: Colony, foe: number, fc: Colony) {
+  const a = sim.a;
+  const k = fc.brood.findIndex((b) => b.id === a.carryBrood[foe]);
+  a.carryBrood[foe] = -1;
+  if (k < 0) return;
+  const b = fc.brood.splice(k, 1)[0];
+  b.x = a.x[foe]; b.y = a.y[foe]; b.carried = false;
+  c.brood.push(b);
+  const ws = warState(c);
+  ws.recaptured = (ws.recaptured ?? 0) + 1;
+  sim.journalUnlock('brood-recaptured');
+  if (a.carry[i] || a.carryBrood[i] >= 0 || a.caste[i] !== CASTE.WORKER) return;
+  b.carried = true; a.carryBrood[i] = b.id;
+  a.task[i] = TASK.CARRY_BROOD; a.why[i] = WHY.RECAPTURE; a.nav[i] = NAV.GOAL; a.timer[i] = 400; a.stuck[i] = 0;
+  const dest = c.chamber.x >= 0 ? c.chamber : c.entrance;
+  a.tx[i] = dest.x; a.ty[i] = dest.y;
 }
 
 function contactOpen(sim: Sim, x0: number, y0: number, x1: number, y1: number): boolean {

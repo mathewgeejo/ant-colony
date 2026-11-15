@@ -10,6 +10,7 @@ import { REFERENCE_LIQUIDS } from './sim/liquid-reactions.ts';
 import { REFERENCE_POWDERS } from './sim/powder-reactions.ts';
 import { SCENARIOS } from './sim/scenarios.ts';
 import { LOCI, MODES } from './sim/genetics.ts';
+import { TRAITS } from './sim/traits.ts';
 import type { Mode } from './sim/genetics.ts';
 import type { OverlayKind, ToWorker } from './protocol.ts';
 import type { Command } from './sim/sim.ts';
@@ -119,6 +120,7 @@ function flushBrush(){if(brushFlush)cancelAnimationFrame(brushFlush);brushFlush=
 let stats: any = null, evolution: any = null, species: any[] = [], running = true, tool = 'inspect', cat = 'terrain', material: number = M.SOIL;
 let runRevision=0;
 let selectedColony = -1, scenario = 'first-colony', seed = 42, mode: Mode = 'naturalistic', modalKind = '', journalTab = 'discoveries';
+let lastInspect = '', genoOpen = false, colonyTraitsOpen = false;
 let sound = false, audio: AudioContext | null = null, stroke = false, dragging = false, lastPoint: {x: number; y: number} | null = null, space = false;
 let shapeStart:{x:number;y:number}|null=null;
 let eraseStroke=false,intensify=false,shiftLatched=false,lineAnchor:{x:number;y:number}|null=null;
@@ -225,6 +227,34 @@ function settings() {
   $('#import-species').onclick=()=>$<HTMLInputElement>('#species-file').click();
 }
 
+// ---- named traits (WorldBox-style) ----
+const traitChip = (t: number, extra = '') => { const d = TRAITS[t]; return d ? `<span class="trait-chip ${d.fantasy ? 'fantasy' : d.tone}" title="${esc(d.description)}"${extra}>${esc(d.name)}</span>` : ''; };
+const traitChips = (list: number[]) => list.length ? `<div class="trait-chips">${list.map((t) => traitChip(t)).join('')}</div>` : '<p class="muted">No named traits.</p>';
+const TRAIT_GROUPS: [string, string][] = [['body', 'Body'], ['survival', 'Survival'], ['mind', 'Mind'], ['combat', 'Combat'], ['work', 'Work'], ['fantasy', 'Fantasy (fictional)']];
+/** Trait manager: toggle any named trait on one ant (sandbox override). A queen passes edits on to later offspring. */
+function traitManager(antId: number, label: string, current: number[]) {
+  const on = new Set(current);
+  const render = () => {
+    let body = `<p>Click a trait to add or remove it on <strong>${esc(label)}</strong>. Opposite traits replace each other. Changes apply now; a queen (or a male or winged gyne before its flight) passes the edited set on with each trait's inheritance chance. This is a sandbox override and marks the colony as edited.</p>`;
+    for (const [g, name] of TRAIT_GROUPS) {
+      if (g === 'fantasy' && mode !== 'fantasy') { body += `<p class="muted">Fantasy traits are available in Fantasy mode.</p>`; continue; }
+      body += `<h3 class="trait-group">${name}</h3><div class="trait-chips">${TRAITS.map((d, t) => d.group === g ? traitChip(t, ` role="button" tabindex="0" data-trait="${t}" aria-pressed="${on.has(t)}"`) : '').join('')}</div>`;
+    }
+    body += `<div class="trait-legend"><span class="trait-chip good">beneficial</span><span class="trait-chip bad">harmful</span><span class="trait-chip mixed">trade-off</span><span class="trait-chip fantasy">fictional</span></div>`;
+    openModal('Trait manager', body, 'traits');
+    document.querySelectorAll<HTMLElement>('[data-trait]').forEach((el) => {
+      const act = () => {
+        const t = Number(el.dataset.trait), d = TRAITS[t], add = !on.has(t);
+        send({ type: 'cmd', cmd: { t: 'editTraits', antId, trait: t, on: add } });
+        if (add) { on.add(t); if (d.opposite) on.delete(TRAITS.findIndex((x) => x.key === d.opposite)); } else on.delete(t);
+        render();
+      };
+      el.onclick = act; el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } };
+    });
+  };
+  render();
+}
+
 function journal() {
   send({type:'requestDetail',what:'evolution'});
   const tabs = `<div class="journal-tabs">${['discoveries','lineage','traits','mutations'].map(t=>`<button data-jtab="${t}" class="${journalTab===t?'selected':''}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>`;
@@ -232,7 +262,15 @@ function journal() {
   if(journalTab==='discoveries') body=`<p class="muted">Observations record what happened. They do not grant abilities.</p>${stats?.journal?.length?stats.journal.map((j:any)=>`<article class="journal-entry"><small>Day ${(j.tick/3600+1).toFixed(1)} · ${esc(j.kind)}</small><h3>${esc(j.title)}</h3><p>${esc(j.text)}</p></article>`).join(''):'<div class="empty"><h3>The first page is unwritten.</h3><p>Watch a queen establish her nest, a worker return with food, or a colony encounter a rival. Discoveries appear when those things happen.</p></div>'}`;
   if(journalTab==='lineage') body=`<p class="notice">Daughters inherit from actual reproductive parents. Background fathers come from an explicitly modelled off-map population.</p><div class="lineage">${evolution?.lineage?.map((l:any)=>`<article class="lineage-node" style="margin-left:${Math.min(l.generation,6)*14}px"><span class="gen">G${l.generation}</span><div><strong>${esc(l.name)}</strong><small>${l.motherColony?'Mother colony #'+l.motherColony:'Introduced founder'} · fathers ${esc(l.fatherColonies.map((f:number)=>f||'background').join(', '))}</small><small>Peak ${l.peakWorkers} workers · ${l.daughterColonies} daughter colonies · ${l.gynesFlown} gynes flown${l.playerEdited?' · sandbox edited':''}${l.diedTick>=0?' · extinct':''}</small></div></article>`).join('')??'Loading lineage…'}</div>`;
   if(journalTab==='traits') {
-    body='<p>Inherited variation is shown from living workers, sampled up to 300 per colony. Bars show genotype means (0–1); ranges show the sample minimum and maximum.</p>';
+    // named traits: catalogue with inheritance odds and how common each is among each colony's workers
+    body='<h3 class="trait-group">Named traits</h3><p>Every ant carries a few named traits. A trait carried by one parent passes on with its inheritance chance; carried by both, the chance is higher; any trait can appear spontaneously at birth. Opposites never co-occur. This layer is a game abstraction, not real ant genetics. Click an ant and use “Manage traits” to edit one.</p>';
+    for(const [g,name] of TRAIT_GROUPS){
+      if(g==='fantasy'&&mode!=='fantasy')continue;
+      body+=`<h4>${name}</h4>`;
+      TRAITS.forEach((d,t)=>{if(d.group!==g)return;
+        body+=`<article class="trait-row named">${traitChip(t)}<p>${esc(d.description)} <span class="muted">Inherit ${Math.round(d.inherit*100)}% per parent · birth ${(d.birth*100).toFixed(1)}%${d.opposite?` · opposite: ${esc(TRAITS.find(x=>x.key===d.opposite)?.name)}`:''}</span></p>${(evolution?.colonies??[]).map((c:any)=>{const f=c.named?.[t]??0;return `<div class="distribution"><span>${esc(c.name)}${c.queenTraits?.includes(t)?' · queen has it':''}</span><div class="bar"><i style="left:0;width:${Math.max(f>0?1:0,f*100)}%;background:rgb(${c.marking})"></i></div><small>${Math.round(f*100)}%</small></div>`;}).join('')}</article>`;});
+    }
+    body+='<h3 class="trait-group">Quantitative loci</h3><p>Inherited variation is shown from living workers, sampled up to 300 per colony. Bars show genotype means (0–1); ranges show the sample minimum and maximum.</p>';
     for(const l of evolution?.loci??[]){ if(l.i>16 && mode!=='fantasy')continue; body+=`<article class="trait-row"><strong>${esc(l.name)}</strong><p>${esc(l.effect)} <span class="muted">Cost: ${esc(l.cost)}</span></p>${evolution.colonies.map((c:any)=>{const vals=c.workers[l.i]??[], mean=vals.length?vals.reduce((a:number,b:number)=>a+b,0)/vals.length:c.geno[l.i],lo=vals.length?Math.min(...vals):mean,hi=vals.length?Math.max(...vals):mean;return `<div class="distribution"><span>${esc(c.name)} · G${c.generation}</span><div class="bar"><i style="left:${lo*100}%;width:${Math.max(1,(hi-lo)*100)}%;background:rgb(${c.marking})"></i><b style="left:${mean*100}%"></b></div><small>${Number(mean).toFixed(2)} · n=${vals.length}</small></div>`;}).join('')}</article>`;}
     body+='<p class="notice">Trait frequency and reproductive success can be associated in this run. Small samples, ancestry, and environment confound causal explanations.</p>';
   }
@@ -258,14 +296,22 @@ function updateStats(s: any) {
   const c=s.colonies.find((c:any)=>c.id===selectedColony)??s.colonies[0];
   $('#colony-peek').textContent=c?`${c.workers} workers · ${c.brood.reduce((a:number,b:number)=>a+b,0)} brood`:'Introduce a queen';
   const a=s.selectedAnt, cell=s.selectedCell;
-  if(a)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(a.caste)} #${a.id}<small>${esc(a.colony)}</small></div><p class="reason">${esc(a.why)}</p>${a.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}<details><summary>Traits & inheritance</summary>${a.traits.map((t:any)=>`<div class="ant-trait"><span>${esc(t.name)}<small>${esc(t.kind)}</small></span><b>${esc(t.value)}</b></div>`).join('')}</details>`;
-  else if(cell)$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(cell.material)}<small>${cell.x}, ${cell.y}</small></div><p>${esc(cell.description)}</p>${cell.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}`;
+  if(a){
+    // the inspector re-renders on every stats update; keep it stable while the trait details are open
+    const html=`<div class="inspect-title">${esc(a.caste)} #${a.id}<small>${esc(a.colony)}</small></div><p class="reason">${esc(a.why)}</p>${traitChips(a.named??[])}<button id="manage-traits" class="small-btn">Manage traits</button><p class="muted">${esc(a.namedOrigin??'')}</p>${a.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}<details id="geno-details"${genoOpen?' open':''}><summary>Inherited loci & phenotype</summary>${a.traits.map((t:any)=>`<div class="ant-trait"><span>${esc(t.name)}<small>${esc(t.kind)}</small></span><b>${esc(t.value)}</b></div>`).join('')}</details>`;
+    if(html!==lastInspect){lastInspect=html;$('#inspect-detail').innerHTML=html;
+      $('#manage-traits').onclick=()=>traitManager(a.id,`${a.caste} #${a.id} (${a.colony})`,a.named??[]);
+      $('#geno-details').ontoggle=()=>{genoOpen=($('#geno-details') as HTMLDetailsElement).open;};}
+  }
+  else if(cell){lastInspect='';$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(cell.material)}<small>${cell.x}, ${cell.y}</small></div><p>${esc(cell.description)}</p>${cell.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}`;}
   updateCellCard(s);
   if(document.body.classList.contains('panel-hidden'))return;
   if(c){
     const brood=c.brood.reduce((a:number,b:number)=>a+b,0);
-    $('#colony-detail').innerHTML=`<div class="species-line"><i>${esc(c.species)}</i><span class="stage">${esc(c.stage)}</span></div><div class="colony-count"><strong>${c.workers}</strong><span>workers<br><small>${c.queens} queen${c.queens===1?'':'s'} · generation ${c.generation}</small></span><button id="focus-colony" class="icon-btn" aria-label="Focus colony" title="Focus colony">${icon('fit')}</button></div><div class="brood-stages"><div><b>${c.brood[0]}</b><span>Eggs</span></div><span>›</span><div><b>${c.brood[1]}</b><span>Larvae</span></div><span>›</span><div><b>${c.brood[2]}</b><span>Pupae</span></div></div><div class="store-heading">Nest stores <small>food units</small></div><div class="resources"><span><i style="background:#e7bd69"></i>Sugar <b>${c.store.sugar.toFixed(0)}</b></span><span><i style="background:#d98a78"></i>Protein <b>${c.store.protein.toFixed(0)}</b></span><span><i style="background:#a9b473"></i>Seeds <b>${c.store.seed.toFixed(0)}</b></span></div>${c.stage==='founding'?`<div class="reserve-line"><span>Queen reserves</span><b>${c.reserves.toFixed(0)}</b></div><meter min="0" max="120" value="${c.reserves}"></meter>`:''}<p class="colony-note">${esc(c.notes[0]??(brood?'Brood developing in the nest. Inspect a worker to understand its task.':'The queen is looking for a suitable nest site.'))}</p><details class="tasks"><summary>Colony activity</summary>${Object.entries(c.tasks).map(([k,v])=>`<div>${esc(k)}<b>${v}</b></div>`).join('')||'<p>No workers yet.</p>'}<p>${c.stats.workersEclosed} workers emerged · ${c.stats.daughterColonies} daughters founded</p><p>Deaths: ${esc(JSON.stringify(c.stats.adultDeaths))}</p></details>`;
+    $('#colony-detail').innerHTML=`<div class="species-line"><i>${esc(c.species)}</i><span class="stage">${esc(c.stage)}</span></div><div class="colony-count"><strong>${c.workers}</strong><span>workers<br><small>${c.queens} queen${c.queens===1?'':'s'} · generation ${c.generation}</small></span><button id="focus-colony" class="icon-btn" aria-label="Focus colony" title="Focus colony">${icon('fit')}</button></div><div class="brood-stages"><div><b>${c.brood[0]}</b><span>Eggs</span></div><span>›</span><div><b>${c.brood[1]}</b><span>Larvae</span></div><span>›</span><div><b>${c.brood[2]}</b><span>Pupae</span></div></div><div class="store-heading">Nest stores <small>food units</small></div><div class="resources"><span><i style="background:#e7bd69"></i>Sugar <b>${c.store.sugar.toFixed(0)}</b></span><span><i style="background:#d98a78"></i>Protein <b>${c.store.protein.toFixed(0)}</b></span><span><i style="background:#a9b473"></i>Seeds <b>${c.store.seed.toFixed(0)}</b></span></div>${c.stage==='founding'?`<div class="reserve-line"><span>Queen reserves</span><b>${c.reserves.toFixed(0)}</b></div><meter min="0" max="120" value="${c.reserves}"></meter>`:''}<p class="colony-note">${esc(c.notes[0]??(brood?'Brood developing in the nest. Inspect a worker to understand its task.':'The queen is looking for a suitable nest site.'))}</p><details class="tasks"><summary>Colony activity</summary>${Object.entries(c.tasks).map(([k,v])=>`<div>${esc(k)}<b>${v}</b></div>`).join('')||'<p>No workers yet.</p>'}<p>${c.stats.workersEclosed} workers emerged · ${c.stats.daughterColonies} daughters founded</p><p>Deaths: ${esc(JSON.stringify(c.stats.adultDeaths))}</p></details><details class="tasks" id="colony-traits"${colonyTraitsOpen?' open':''}><summary>Traits</summary><p class="muted">Queen${c.queenId?` #${c.queenId}`:''} (passes traits to her offspring):</p>${traitChips(c.queenTraits??[])}${c.queenId?'<button id="manage-queen-traits" class="small-btn">Manage queen traits</button>':''}<p class="muted">Most common among workers:</p>${(c.topTraits??[]).length?`<div class="trait-chips">${c.topTraits.map((e:any)=>traitChip(e.t).replace('</span>',` ${Math.round(100*e.n/Math.max(1,c.workers))}%</span>`)).join('')}</div>`:'<p class="muted">None yet.</p>'}</details>`;
     $('#focus-colony').onclick=()=>renderer.focus(c.entrance.x,c.entrance.y+12);
+    $('#colony-traits').ontoggle=()=>{colonyTraitsOpen=($('#colony-traits') as HTMLDetailsElement).open;};
+    if(c.queenId)$('#manage-queen-traits').onclick=()=>traitManager(c.queenId,`queen #${c.queenId} of ${c.name}`,c.queenTraits??[]);
   }else $('#colony-detail').innerHTML='<p>No living colonies. Introduce a queen from Organisms.</p>';
   $('#event-count').textContent=String(s.events.length);
   $('#events').innerHTML=s.events.slice(-18).reverse().map((e:any)=>`<div><small>Day ${(e.tick/3600+1).toFixed(1)}</small><p>${esc(e.text)}</p></div>`).join('')||'<p class="muted">A new ecosystem. Events will appear here.</p>';

@@ -158,6 +158,15 @@ details[open]>summary{padding-bottom:6px}
 .reason{background:var(--bezel);border:2px solid var(--ink);padding:10px;color:var(--text)}
 .ant-trait{display:flex;align-items:center;justify-content:space-between;font-size:12px;margin:8px 0}
 .ant-trait small{display:block;font-size:11px}
+.trait-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.trait-chip{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;font-size:12px;font-weight:700;border:2px solid var(--ink);background:var(--raised);color:var(--text);box-shadow:0 2px 0 var(--ink)}
+.trait-chip.good{background:#2f4a24;color:#d8f2b8}.trait-chip.bad{background:#4f2421;color:#ffd2c8}
+.trait-chip.mixed{background:#4a3d1c;color:#ffe9a8}.trait-chip.fantasy{background:#3b2650;color:#ead2ff}
+.trait-chip[data-trait]{cursor:pointer;opacity:.55}.trait-chip[data-trait][aria-pressed="true"]{opacity:1;outline:2px solid var(--amber);outline-offset:1px}
+.trait-chip[data-trait]:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.trait-group{margin:16px 0 4px;color:var(--amber)}.trait-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.trait-row.named p{margin:6px 0}
+.small-btn{height:30px;padding:0 10px;font-size:12px;margin:4px 0}
 .event-list{padding:8px 14px;font-size:13px}
 .event-list>div{border-left:2px solid var(--edge);padding:0 0 8px 10px}
 .event-list small{color:var(--amber);font-size:11px}

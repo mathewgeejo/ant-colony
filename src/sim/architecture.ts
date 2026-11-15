@@ -56,6 +56,14 @@ export function planCells(p: NestPlan, W: number, H: number): Map<number, number
     px = sx;
   }
   for (const s of p.shafts) for (let y = s.y0; y <= s.y1; y++) { put(s.x, y, 2); put(s.x + 1, y, 2); }
+  // galleries and cross-links: two cells thick so large-bodied workers can pass
+  for (const t of p.tunnels ?? []) {
+    const n = Math.max(Math.abs(t.x1 - t.x0), Math.abs(t.y1 - t.y0), 1), flat = Math.abs(t.x1 - t.x0) >= Math.abs(t.y1 - t.y0);
+    for (let s = 0; s <= n; s++) {
+      const x = Math.round(t.x0 + ((t.x1 - t.x0) * s) / n), y = Math.round(t.y0 + ((t.y1 - t.y0) * s) / n);
+      put(x, y, 2); if (flat) put(x, y - 1, 2); else put(x + 1, y, 2);
+    }
+  }
   // pancake chambers: flat ellipses
   for (const ch of p.chambers) for (let dy = -ch.ry; dy <= ch.ry; dy++) for (let dx = -ch.rx; dx <= ch.rx; dx++) {
     if ((dx / (ch.rx + 0.5)) ** 2 + (dy / (ch.ry + 0.6)) ** 2 <= 1) put(ch.x + dx, ch.y + dy, 1);
@@ -77,7 +85,7 @@ function growPlan(sim: Sim, c: Colony, p: NestPlan) {
   const A = archOf(sim, c), rng = sim.rng, W = sim.w.W;
   let changed = false;
   const want = Math.max(1, Math.min(16, 1 + Math.floor((c.adults + c.brood.length * 0.5) / 9)));
-  let k = p.chambers.filter((ch) => ch.kind !== 'royal' && ch.kind !== 'mound').length;
+  let k = p.chambers.filter((ch) => ch.kind === 'brood' || ch.kind === 'granary').length;
   while (k + 1 < want) {
     k++;
     const y = p.baseY + 4 + Math.round(A.chamberSpacing * k ** 1.18);
@@ -97,6 +105,29 @@ function growPlan(sim: Sim, c: Colony, p: NestPlan) {
     if (ch) {
       const x = ch.x + (ch.x >= p.ex ? ch.rx - 1 : -ch.rx);
       if (x > 2 && x < W - 3) { p.shafts.push({ x, y0: sim.w.surface[x], y1: ch.y }); changed = true; }
+    }
+  }
+  // lateral galleries: as the colony grows, chambers sprout side galleries ending in satellite chambers,
+  // and galleries on the same side are cross-linked, turning the single shaft into a branching network.
+  // (Real nests are mostly tree-like; the cross-links are a game abstraction.) Galleries stop short of
+  // halfway to a neighbouring colony so nests do not tunnel into each other.
+  const tunnels = (p.tunnels ??= []);
+  let reach = 40;
+  for (const o of sim.colonies) if (o && o.alive && o !== c) reach = Math.min(reach, Math.floor(Math.abs(o.entrance.x - p.ex) / 2) - 4);
+  const main = p.chambers.filter((ch) => ch.kind === 'brood' || ch.kind === 'granary');
+  const ends = p.chambers.filter((ch) => ch.kind === 'store');
+  const wantGal = Math.min(main.length, Math.floor(c.workers / 22));
+  if (reach >= 10 && ends.length < wantGal) {
+    const ch = main[ends.length], dir = ch.x >= shaftX(p, ch.y) ? 1 : -1;
+    const x1 = Math.max(5, Math.min(W - 6, ch.x + dir * (ch.rx + Math.min(reach - ch.rx - Math.abs(ch.x - p.ex), 8 + rng.int(10)))));
+    const y1 = Math.min(p.baseY + p.depth, ch.y + rng.int(3) - 1);
+    if (Math.abs(x1 - ch.x) > ch.rx + 3) {
+      tunnels.push({ x0: ch.x + dir * ch.rx, y0: ch.y, x1, y1 });
+      p.chambers.push({ x: Math.max(4, Math.min(W - 5, x1 + dir * 2)), y: y1, rx: 3, ry: 1, kind: 'store' });
+      // cross-link to the previous satellite chamber on the same side
+      const prev = ends.filter((e) => Math.sign(e.x - p.ex) === dir).pop();
+      if (prev) tunnels.push({ x0: prev.x, y0: prev.y + 1, x1: x1 + dir * 2, y1: y1 - 1 });
+      changed = true;
     }
   }
   // the mound grows with the excavated volume
@@ -202,6 +233,8 @@ export function depositHeap(sim: Sim, x: number): boolean {
   if (y < 1) return false;
   const k = y * w.W + x;
   if (w.mat[k] !== M.AIR || w.owner[k] || sim.occ[k] > 0) return false;
+  // angle of repose: a pellet never stands more than one cell above both neighbouring columns (no spires)
+  if (x > 0 && x < w.W - 1 && y < Math.min(w.surface[x - 1], w.surface[x + 1]) - 1) return false;
   sim.setCell(k, M.SOIL, 0, 'moved');
   return true;
 }

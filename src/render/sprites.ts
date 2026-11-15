@@ -84,10 +84,27 @@ const MALE_B: Grid = [
   '1.1.1.....',
 ];
 
+// major worker (soldier): longer body and an oversized, square head with heavy mandibles
+const W_MAJOR_A: Grid = [
+  '........1..',
+  '.44...3333.',
+  '45411233337',
+  '464..233331',
+  '.1.1.1.....',
+];
+const W_MAJOR_B: Grid = [
+  '........1..',
+  '.44...3333.',
+  '45411233337',
+  '464..233331',
+  '1.1.1......',
+];
+
 export interface SpriteSet { frames: Grid[]; wings?: Grid }
 
-export function spriteFor(kind: 'formicine' | 'myrmicine', caste: number): SpriteSet {
+export function spriteFor(kind: 'formicine' | 'myrmicine', caste: number, major = false): SpriteSet {
   // caste: 0 worker, 1 queen, 2 male, 3 gyne
+  if (caste === 0 && major) return { frames: [W_MAJOR_A, W_MAJOR_B] };
   if (caste === 2) return { frames: [MALE_A, MALE_B] };
   if (caste === 1 || caste === 3) {
     const f = kind === 'myrmicine' ? [Q_MYRMICINE_A, Q_MYRMICINE_B] : [Q_FORMICINE_A, Q_FORMICINE_B];

@@ -15,11 +15,11 @@ export class AgentRaster {
  private speciesList:any[]|null=null;
  readonly bounds={x:0,y:0,w:0,h:0};
  constructor(W:number,H:number){this.width=W*3;this.height=H*3;this.data=new Uint8ClampedArray(this.width*this.height*4);this.pixels=new Uint32Array(this.data.buffer);}
- private sprite(slot:number,caste:number,anim:number,orient:number,colonies:any[],species:any[]):Bitmap{
-  const key=slot*64+caste*16+anim*8+orient;let b=this.sprites.get(key);if(b)return b;
+ private sprite(slot:number,caste:number,anim:number,orient:number,major:boolean,colonies:any[],species:any[]):Bitmap{
+  const key=slot*128+(major?64:0)+caste*16+anim*8+orient;let b=this.sprites.get(key);if(b)return b;
   const col=colonies.find(c=>c.slot===slot),sp=species.find(s=>s.id===col?.speciesId);
   const v=sp?.visual??{body:[50,38,29],head:[34,27,23],gaster:[62,45,32],sprite:'formicine'};
-  const def=spriteFor(v.sprite,caste),grid=orientGrid(def.wings?[...def.wings,...def.frames[anim]]:def.frames[anim],orient);
+  const def=spriteFor(v.sprite,caste,major),grid=orientGrid(def.wings?[...def.wings,...def.frames[anim]]:def.frames[anim],orient);
   const pal=antColors({...v,marking:col?.marking??[239,181,86]},caste),w=Math.max(...grid.map(r=>r.length)),h=grid.length,pixels=new Uint32Array(w*h);
   for(let y=0;y<h;y++)for(let x=0;x<grid[y].length;x++){const ch=grid[y][x],c=pal[ch];if(c)pixels[y*w+x]=rgb(c[0],c[1],c[2],ch==='8'?140:255);}
   const offsets:number[]=[],colors:number[]=[];
@@ -46,7 +46,7 @@ export class AgentRaster {
  }
  draw(f:FrameMsg,colonies:any[],species:any[],lowDetail:boolean){
   if(this.speciesList!==species){this.sprites.clear();this.paletteOwners.fill(0);this.speciesList=species;}
-  for(const c of colonies)if(c&&this.paletteOwners[c.slot]!==c.id){for(let i=0;i<64;i++)this.sprites.delete(c.slot*64+i);this.paletteOwners[c.slot]=c.id;}
+  for(const c of colonies)if(c&&this.paletteOwners[c.slot]!==c.id){for(let i=0;i<128;i++)this.sprites.delete(c.slot*128+i);this.paletteOwners[c.slot]=c.id;}
   this.pixels.fill(0);const a=f.ants,p=this.pixels,W=this.width,H=this.height;
   let minX=W,minY=H,maxX=0,maxY=0;
   for(let k=0;k<f.antCount;k++){
@@ -56,7 +56,7 @@ export class AgentRaster {
    if(lowDetail&&caste===0)this.rect(X,Y,3,2,rgb(31,28,23));
    else{
     const dx=x-a[o+2],dy=y-a[o+3],orient=Math.abs(dy)>Math.abs(dx)?dy<0?4:6:dx<0?1:0;
-    const b=this.sprite(slot,caste,effects&1,orient,colonies,species),bx=Math.round(X+1.5-b.w/2),by=Math.round(Y+1.5-b.h/2);
+    const b=this.sprite(slot,caste,effects&1,orient,!!(effects&16384),colonies,species),bx=Math.round(X+1.5-b.w/2),by=Math.round(Y+1.5-b.h/2);
     if(bx>=0&&by>=0&&bx+b.w<=W&&by+b.h<=H){const at=by*W+bx;for(let j=0;j<b.colors.length;j++)p[at+b.offsets[j]]=b.colors[j];}
     else for(let yy=0;yy<b.h;yy++){
      const sy=by+yy;if(sy<0||sy>=H)continue;

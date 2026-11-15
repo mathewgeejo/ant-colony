@@ -7,7 +7,7 @@ import { COLONY_MARKINGS, DESTINY, STAGE, makeColonyFields, newStats } from './c
 import { Critters } from './critters.ts';
 import { lifeEcology } from './life-ecology.ts';
 import { ecologyStep } from './ecology.ts';
-import type { Mode, MutationRecord } from './genetics.ts';
+import type { DevConditions, Mode, MutationRecord } from './genetics.ts';
 import { LOCI, MODES, NL, NP, P, broodCost, founderGenome, gval, makeEgg, phenotype } from './genetics.ts';
 import { FOOD_OF, IS_SOLID, IS_WATER, IS_LIQUID, M, MATERIALS, MOIST_CAP, WATER_UNITS,FANTASY_MATERIALS } from './materials.ts';
 import type { Climate } from './physics.ts';
@@ -17,8 +17,9 @@ import type { SpeciesDef } from './species.ts';
 import { BUILTIN_SPECIES } from './species.ts';
 import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
-import { STRATEGY_EVERY, underSiege, updateStrategy } from './warfare.ts';
+import { STRATEGY_EVERY, majorChance, underSiege, updateStrategy } from './warfare.ts';
 import { architectureStep } from './architecture.ts';
+import { NT, TRAITS, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
 
 export const SAVE_VERSION = 4;
 
@@ -64,6 +65,7 @@ export type Command =
   | { t: 'colony'; species: string; x: number; y: number; workers: number }
   | { t: 'critter'; kind: string; x: number; y: number }
   | { t: 'editGenome'; colonyId: number; locus: number; value: number }
+  | { t: 'editTraits'; antId: number; trait: number; on: boolean }
   | { t: 'setting'; key: keyof Settings; value: number | boolean }
   | { t: 'climate'; key: keyof Climate; value: number };
 
@@ -92,7 +94,7 @@ export class Sim {
   mutationCount = 0;
   events: SimEvent[] = [];
   journal: JournalEntry[] = [];
-  swarm: { species: string; sex: 'F' | 'M'; a: Float32Array; b: Float32Array | null; colonyId: number; antId: number; generation: number }[] = [];
+  swarm: { species: string; sex: 'F' | 'M'; a: Float32Array; b: Float32Array | null; colonyId: number; antId: number; generation: number; tr?: number[] }[] = [];
   flightDays: Record<string, number[]> = {};
   flightEnd: Record<string, number> = {};
   critters: Critters;
@@ -435,6 +437,29 @@ export class Sim {
         this.event('override', `Sandbox override: ${c.name} queen germline ${LOCI[cmd.locus].name} set to ${v.toFixed(2)} (future offspring only).`, c);
         break;
       }
+      case 'editTraits': {
+        // SANDBOX OVERRIDE: add/remove a named trait on one living ant. Its phenotype changes now; a queen
+        // (or a male/gyne before flight) passes the edited set on to offspring conceived later.
+        const i = this.a.findById(cmd.antId), def = TRAITS[cmd.trait];
+        if (i < 0 || !def || cmd.trait >= NT) break;
+        if (def.fantasy && !MODES[this.mode].fantasy) { this.event('sandbox', `${def.name} is a fictional trait and requires Fantasy mode.`); break; }
+        const a = this.a, o = i * 2;
+        const flip = (t: number, on: boolean) => {
+          if (has(a.traits, o, t) === on) return;
+          const w = o + (t >> 5), b = 1 << (t & 31);
+          a.traits[w] = on ? (a.traits[w] | b) >>> 0 : (a.traits[w] & ~b) >>> 0;
+          applyTraitPheno(t, a.pheno, i * NP, on ? 1 : -1);
+        };
+        if (cmd.on && def.opposite) flip(TRAITS.findIndex((t) => t.key === def.opposite), false);
+        flip(cmd.trait, cmd.on);
+        const c = this.colonies[a.colony[i]];
+        if (c) {
+          c.playerEdited = true;
+          if (a.caste[i] === CASTE.QUEEN) { const q = this.queenData(c, a.id[i]); if (q) q.playerEdited = true; const rec = this.lineage.find((r) => r.id === c.id); if (rec) rec.playerEdited = true; }
+          this.event('override', `Sandbox override: ${cmd.on ? 'gave' : 'removed'} trait "${def.name}" ${cmd.on ? 'to' : 'from'} ant #${a.id[i]} of ${c.name}.`, c);
+        }
+        break;
+      }
       case 'setting': {
         (this.cfg.settings as any)[cmd.key] = cmd.value;
         break;
@@ -464,7 +489,7 @@ export class Sim {
 
   /** Create a colony around a newly landed (mated) queen. */
   foundColony(sp: SpeciesDef, x: number, y: number, ga: Float32Array, gb: Float32Array, sperm: Sperm[], generation: number,
-    motherColony: number, natal: Colony | null, fromBroodId = 0): Colony | null {
+    motherColony: number, natal: Colony | null, fromBroodId = 0, traits?: number[]): Colony | null {
     const slot = this.allocSlot();
     if (slot < 0) return null;
     const w = this.w;
@@ -487,7 +512,7 @@ export class Sim {
       acc: { temp: 0, moist: 0, n: 0, flooded: 0, starving: 0 }, playerEdited: false,
     };
     this.colonies[slot] = c;
-    const qi = this.spawnAdult(c, CASTE.QUEEN, x, yy, ga, gb, { nutrition: 1, meanTemp: 22, mineral: 1 }, 0, 0, generation);
+    const qi = this.spawnAdult(c, CASTE.QUEEN, x, yy, ga, gb, { nutrition: 1, meanTemp: 22, mineral: 1 }, 0, 0, generation, traits ?? founderTraits(this.rng, this.mode));
     this.a.task[qi] = TASK.FOUND_SEARCH;
     this.a.nav[qi] = NAV.WANDER;
     const q: QueenData = { antId: this.a.id[qi], reserves: sp.founding.reserves, sperm, mated: sperm.length > 0, eggsLaid: 0, natalColony: natal ? natal.id : 0, playerEdited: false };
@@ -521,8 +546,12 @@ export class Sim {
     for (let k = 0; k < workers; k++) {
       const eggA = makeEgg(this.rng, this.a.ga.subarray(qi * NL, qi * NL + NL), this.a.gb.subarray(qi * NL, qi * NL + NL), this.mode);
       const sperm = this.pickSperm(c.queens[0]);
+      const sol = sp.workers.soldiers;
+      const major = sol && k < Math.round(workers * sol.baseFraction) ? sol.sizeFactor : 0;
       const wi = this.spawnAdult(c, CASTE.WORKER, ex + (k % 10) - 4, ey + depth + 1, eggA, sperm ? sperm.genome.slice() : eggA.slice(),
-        { nutrition: 1, meanTemp: 24, mineral: 1 }, c.queens[0].antId, sperm?.maleId ?? 0, 0);
+        { nutrition: 1, meanTemp: 24, mineral: 1, major }, c.queens[0].antId, sperm?.maleId ?? 0, 0,
+        inheritTraits(this.rng, this.mode, this.a.traits, qi * 2, sperm?.tr ?? null));
+      if (major) this.a.major[wi] = 1;
       this.a.age[wi] = this.rng.range(0, sp.workers.lifespanDays * 0.5);
     }
     c.store.sugar = 20; c.store.protein = 20;
@@ -545,7 +574,7 @@ export class Sim {
   }
 
   spawnAdult(c: Colony, caste: number, x: number, y: number, ga: Float32Array, gb: Float32Array | null,
-    dev: { nutrition: number; meanTemp: number; mineral: number }, mother: number, father: number, generation: number): number {
+    dev: DevConditions, mother: number, father: number, generation: number, traits?: ArrayLike<number>): number {
     const a = this.a;
     const i = a.spawn();
     a.colony[i] = c.slot;
@@ -563,6 +592,7 @@ export class Sim {
     a.ga.set(ga, i * NL);
     if (gb) a.gb.set(gb, i * NL); else a.gb.set(ga, i * NL);
     phenotype(this.speciesOf(c), this.mode, ga, gb, dev, a.pheno, i * NP);
+    if (traits) { a.traits[i * 2] = traits[0] >>> 0; a.traits[i * 2 + 1] = traits[1] >>> 0; for (const t of maskList(a.traits, i * 2)) applyTraitPheno(t, a.pheno, i * NP, 1); }
     a.mother[i] = mother; a.father[i] = father;
     a.generation[i] = generation;
     a.born[i] = this.tick;
@@ -638,7 +668,7 @@ export class Sim {
   }
 
   /** Sample mates for a gyne: from the flight swarm, plus an off-map background population. */
-  sampleMates(sp: SpeciesDef, males: { a: Float32Array; colonyId: number; antId: number }[], natalColony: number): Sperm[] {
+  sampleMates(sp: SpeciesDef, males: { a: Float32Array; colonyId: number; antId: number; tr?: number[] }[], natalColony: number): Sperm[] {
     const rng = this.rng;
     let r = rng.next();
     let k = 1;
@@ -648,12 +678,12 @@ export class Sim {
       const useBackground = males.length === 0 || rng.chance(this.settings.immigration);
       if (useBackground) {
         if (this.settings.immigration <= 0 && males.length === 0) break;
-        out.push({ maleId: 0, colonyId: 0, genome: founderGenome(rng), share: rng.range(0.5, 1.5) });
+        out.push({ maleId: 0, colonyId: 0, genome: founderGenome(rng), share: rng.range(0.5, 1.5), tr: founderTraits(rng, this.mode) });
       } else {
         // mild avoidance of nestmate brothers
         let pick = males[rng.int(males.length)];
         if (pick.colonyId === natalColony && natalColony) pick = males[rng.int(males.length)];
-        out.push({ maleId: pick.antId, colonyId: pick.colonyId, genome: pick.a.slice(), share: rng.range(0.5, 1.5) });
+        out.push({ maleId: pick.antId, colonyId: pick.colonyId, genome: pick.a.slice(), share: rng.range(0.5, 1.5), tr: pick.tr?.slice() ?? [0, 0] });
       }
     }
     // sperm precedence is skewed: first male tends to dominate paternity (simplification)
@@ -764,7 +794,7 @@ export class Sim {
       if (a.task[qi] !== TASK.QUEEN_LAY) continue;
       const T = w.tempAt(a.x[qi], a.y[qi]);
       const th = thermalRate(sp, T);
-      let rate = sp.queen.eggsPerDay * th * dt;
+      let rate = sp.queen.eggsPerDay * th * dt * fertility(a.traits, qi * 2);
       const claustralLimit = c.workers === 0 ? 12 : Infinity;
       if (q.eggsLaid >= claustralLimit && c.workers === 0) rate = 0;
       const broodCap = 10 + 1.6 * c.workers;
@@ -782,7 +812,7 @@ export class Sim {
       for (let i = 0; i < a.n; i++) {
         if (a.alive[i] && a.colony[i] === c.slot && a.caste[i] === CASTE.WORKER && inOwnNest(this, i)) {
           const egg = makeEgg(rng, a.ga.subarray(i * NL, i * NL + NL), a.gb.subarray(i * NL, i * NL + NL), this.mode, 1);
-          this.addBrood(c, egg, null, a.id[i], 0, a.x[i], a.y[i], DESTINY.MALE, false);
+          this.addBrood(c, egg, null, a.id[i], 0, a.x[i], a.y[i], DESTINY.MALE, false, inheritTraits(rng, this.mode, a.traits, i * 2, null));
           this.journalUnlock('worker-males');
           break;
         }
@@ -820,21 +850,23 @@ export class Sim {
     const id = this.broodNextId;
     const egg = makeEgg(rng, ga, gb, this.mode, 1, (locus, from, to) => this.logMutation(locus, from, to, male ? 'male egg' : 'female egg', c, id));
     let pb: Float32Array | null = null;
-    let father = 0;
+    let father = 0, ftr: number[] | null = null;
     if (!male) {
       const s = this.pickSperm(q)!;
       pb = s.genome.slice();
       father = s.maleId;
+      ftr = s.tr ?? [0, 0];
     }
-    this.addBrood(c, egg, pb, q.antId, father, a.x[qi], a.y[qi], male ? DESTINY.MALE : DESTINY.UNDECIDED, c.workers === 0);
+    this.addBrood(c, egg, pb, q.antId, father, a.x[qi], a.y[qi], male ? DESTINY.MALE : DESTINY.UNDECIDED, c.workers === 0,
+      inheritTraits(rng, this.mode, a.traits, qi * 2, ftr));
     q.eggsLaid++;
     c.stats.eggsLaid++;
   }
 
-  addBrood(c: Colony, ga: Float32Array, gb: Float32Array | null, mother: number, father: number, x: number, y: number, destiny: number, queenFed: boolean) {
+  addBrood(c: Colony, ga: Float32Array, gb: Float32Array | null, mother: number, father: number, x: number, y: number, destiny: number, queenFed: boolean, tr?: number[]) {
     const b: Brood = {
       id: this.broodNextId++, stage: STAGE.EGG, prog: 0, destiny, a: ga, b: gb, mother, father, x, y,
-      fed: 0, need: 1, hunger: 0, drown: 0, dry: 0, infection: 0, tempSum: 0, tempN: 0, queenFed, carried: false, warmBoost: 0,
+      fed: 0, need: 1, hunger: 0, drown: 0, dry: 0, infection: 0, tempSum: 0, tempN: 0, queenFed, carried: false, warmBoost: 0, tr,
     };
     c.brood.push(b);
   }
@@ -891,7 +923,9 @@ export class Sim {
               // caste: environmentally (nutritionally/colony-state) determined in this model
               b.destiny = c.reproductive && rng.chance(sp.reproduction.gyneFraction) ? DESTINY.GYNE : DESTINY.WORKER;
             }
-            b.need = broodCost(sp, this.mode, b.a, b.b, b.destiny === DESTINY.GYNE ? 1 : b.destiny === DESTINY.MALE ? 2 : 0);
+            // dimorphic species: some worker larvae are put on the major (soldier) pathway
+            if (b.destiny === DESTINY.WORKER && sp.workers.soldiers && c.workers >= sp.workers.soldiers.minColony && rng.chance(majorChance(this, c))) b.major = true;
+            b.need = broodCost(sp, this.mode, b.a, b.b, b.destiny === DESTINY.GYNE ? 1 : b.destiny === DESTINY.MALE ? 2 : b.major ? 3 : 0);
           }
         } else if (b.stage === STAGE.LARVA) {
           b.hunger += dt;
@@ -907,7 +941,11 @@ export class Sim {
           const inc = rate * dt / d.larvaDays;
           if (b.prog < allowed) b.prog += inc;
           if (b.hunger > 2.5) died = 'starved';
-          if (b.prog >= 1 && b.fed >= b.need * 0.55) { b.stage = STAGE.PUPA; b.prog = 0; }
+          if (b.prog >= 1 && b.fed >= b.need * 0.55) {
+            // an underfed major-pathway larva cannot reach the soldier threshold and pupates as a minor
+            if (b.major && b.fed < b.need * 0.8) b.major = false;
+            b.stage = STAGE.PUPA; b.prog = 0;
+          }
         } else {
           b.prog += rate * dt / d.pupaDays;
           if (b.prog >= 1) {
@@ -931,10 +969,16 @@ export class Sim {
 
   private eclose(c: Colony, b: Brood, sp: SpeciesDef) {
     const caste = b.destiny === DESTINY.GYNE ? CASTE.GYNE : b.destiny === DESTINY.MALE ? CASTE.MALE : CASTE.WORKER;
-    const dev = { nutrition: b.need > 0 ? b.fed / b.need : 1, meanTemp: b.tempN ? b.tempSum / b.tempN : 22, mineral: Math.min(1, c.store.mineral / 3) };
+    const major = caste === CASTE.WORKER && b.major && sp.workers.soldiers ? sp.workers.soldiers.sizeFactor : 0;
+    const dev = { nutrition: b.need > 0 ? b.fed / b.need : 1, meanTemp: b.tempN ? b.tempSum / b.tempN : 22, mineral: Math.min(1, c.store.mineral / 3), major };
     if (dev.mineral > 0 && this.mode === 'fantasy') c.store.mineral = Math.max(0, c.store.mineral - 0.5);
-    const i = this.spawnAdult(c, caste, b.x, b.y, b.a, b.b, dev, b.mother, b.father, c.generation);
+    const i = this.spawnAdult(c, caste, b.x, b.y, b.a, b.b, dev, b.mother, b.father, c.generation, b.tr);
     if (caste === CASTE.WORKER) {
+      if (major) {
+        this.a.major[i] = 1;
+        if (!c.stats.majorsEclosed) { this.event('first-major', `${c.name}: first major worker (soldier) emerged.`, c); this.journalUnlock('first-major'); }
+        c.stats.majorsEclosed = (c.stats.majorsEclosed ?? 0) + 1;
+      }
       c.stats.workersEclosed++;
       if (c.stats.workersEclosed === 1) {
         this.event('first-worker', `${c.name}: first worker emerged (${b.queenFed ? 'nanitic, reared from queen reserves' : 'reared by workers'}).`, c);
@@ -1002,7 +1046,8 @@ export class Sim {
   }
 
   thrUse(i: number, k: number) {
-    this.a.thrL[i * 4 + k] = Math.max(0.5, this.a.thrL[i * 4 + k] * 0.97);
+    // learning speed is a named trait (wise / stupid)
+    this.a.thrL[i * 4 + k] = Math.max(0.5, this.a.thrL[i * 4 + k] * (1 - 0.03 * learnRate(this.a.traits, i * 2)));
   }
 
   /** Nurses compare a handful of nearby nest locations and pick the best for brood. */
@@ -1178,7 +1223,7 @@ export class Sim {
     const sex: 'F' | 'M' = a.caste[i] === CASTE.GYNE ? 'F' : 'M';
     this.swarm.push({
       species: c.speciesId, sex, a: a.ga.slice(i * NL, i * NL + NL), b: sex === 'F' ? a.gb.slice(i * NL, i * NL + NL) : null,
-      colonyId: c.id, antId: a.id[i], generation: c.generation,
+      colonyId: c.id, antId: a.id[i], generation: c.generation, tr: [a.traits[i * 2], a.traits[i * 2 + 1]],
     });
     if (sex === 'F') c.stats.gynesFlown++; else c.stats.malesFlown++;
     const rec = this.lineage.find((r) => r.id === c.id);
@@ -1190,7 +1235,7 @@ export class Sim {
     const sp = this.speciesById(speciesId);
     const all = this.swarm.filter((s) => s.species === speciesId);
     this.swarm = this.swarm.filter((s) => s.species !== speciesId);
-    const males = all.filter((s) => s.sex === 'M').map((s) => ({ a: s.a, colonyId: s.colonyId, antId: s.antId }));
+    const males = all.filter((s) => s.sex === 'M').map((s) => ({ a: s.a, colonyId: s.colonyId, antId: s.antId, tr: s.tr }));
     const gynes = all.filter((s) => s.sex === 'F');
     // deterministic shuffle
     for (let k = gynes.length - 1; k > 0; k--) { const j = this.rng.int(k + 1); [gynes[k], gynes[j]] = [gynes[j], gynes[k]]; }
@@ -1206,7 +1251,7 @@ export class Sim {
       if (y < 1 || this.w.get(x, y + 1) === M.WATER || this.w.get(x, y) === M.WATER) { this.counters.dispersedQueens++; continue; }
       const mother = this.colonies.find((c) => c && c.id === g.colonyId) ?? null;
       const broodId = this.reproBrood.get(g.antId) ?? 0;
-      const nc = this.foundColony(sp, x, y, g.a, g.b!, sperm, g.generation + 1, g.colonyId, mother, broodId);
+      const nc = this.foundColony(sp, x, y, g.a, g.b!, sperm, g.generation + 1, g.colonyId, mother, broodId, g.tr);
       if (!nc) break;
       capacity--; landed++;
       this.counters.landedQueens++;

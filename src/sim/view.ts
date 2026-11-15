@@ -70,7 +70,7 @@ export function packAnts(sim: Sim, out: Uint16Array | null): { buf: Uint16Array;
     const big = c && a.pheno[p + P.SIZE] > sim.speciesOf(c).traits.size * 1.12 ? 1 : 0;
     const small = c && a.pheno[p + P.SIZE] < sim.speciesOf(c).traits.size * 0.9 ? 1 : 0;
     buf[o + 5] = (a.anim[i] & 255) | ((a.pheno[p + P.BIOLUM] > 0 ? 1 : 0) << 8) | ((a.pheno[p + P.ARMOR] > 0 ? 1 : 0) << 9)
-      | ((a.pheno[p + P.PLASTRON] > 0 ? 1 : 0) << 10) | ((a.pheno[p + P.THERMO] > 0 ? 1 : 0) << 11) | (big << 12) | (small << 13);
+      | ((a.pheno[p + P.PLASTRON] > 0 ? 1 : 0) << 10) | ((a.pheno[p + P.THERMO] > 0 ? 1 : 0) << 11) | (big << 12) | (small << 13) | (a.major[i] << 14);
     buf[o + 6] = a.task[i] | ((a.hx[i] + 1) << 8) | ((a.hy[i] + 1) << 10);
     n++;
   }

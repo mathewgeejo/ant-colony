@@ -146,6 +146,8 @@ export interface DevConditions {
   nutrition: number; // 0..1+ fraction of required protein received
   meanTemp: number;
   mineral: number; // 0..1 availability of clay minerals in larval diet (fantasy armour)
+  /** major-worker (soldier) development: body size factor relative to a minor; absent/0 for minors */
+  major?: number;
 }
 
 import type { SpeciesDef } from './species.ts';
@@ -165,9 +167,12 @@ export function phenotype(sp: SpeciesDef, mode: Mode, a: Float32Array, b: Float3
   size *= 0.72 + 0.28 * Math.min(1, nut);
   size *= 1 - 0.25 * (devrate - 1);
   size *= 1 - 0.008 * Math.max(0, dev.meanTemp - 22);
+  // majors: a discrete developmental switch to a larger body with a disproportionately large head and mandibles
+  const major = dev.major && dev.major > 1 ? dev.major : 0;
+  if (major) size *= major;
   size = Math.max(0.4, size);
-  const cuticle = clamp01((0.5 + dv('cuticle') * 0.25 * s) * (0.8 + 0.2 * Math.min(1, nut)));
-  const mandible = clamp01(t.mandible + dv('mandible') * 0.2 * s);
+  const cuticle = clamp01((0.5 + dv('cuticle') * 0.25 * s) * (0.8 + 0.2 * Math.min(1, nut)) + (major ? 0.15 : 0));
+  const mandible = clamp01(t.mandible + dv('mandible') * 0.2 * s + (major ? 0.35 : 0));
   const sensory = Math.max(0.3, 1 + dv('sensory') * 0.2 * s);
   const signal = Math.max(0, t.signal * (1 + dv('signal') * 0.3 * s));
   const fidelity = clamp01(t.fidelity + dv('fidelity') * 0.15 * s);
@@ -176,9 +181,10 @@ export function phenotype(sp: SpeciesDef, mode: Mode, a: Float32Array, b: Float3
   const tbreadth = Math.max(3, t.tbreadth * (1 + dv('tbreadth') * 0.25 * s));
   const metab = Math.max(0.4, 1 + dv('metab') * 0.2 * s);
   const explore = clamp01(t.explore + dv('explore') * 0.2 * s);
-  const thrF = Math.max(0.05, t.thrForage * (1 + dv('thrForage') * 0.4 * s));
-  const thrN = Math.max(0.05, t.thrNurse * (1 + dv('thrNurse') * 0.4 * s));
-  const thrD = Math.max(0.05, t.thrDig * (1 + dv('thrDig') * 0.4 * s));
+  // majors have much higher thresholds for routine work (Wilson 1984; Detrain & Pasteels 1992)
+  const thrF = Math.max(0.05, t.thrForage * (1 + dv('thrForage') * 0.4 * s)) * (major ? 5 : 1);
+  const thrN = Math.max(0.05, t.thrNurse * (1 + dv('thrNurse') * 0.4 * s)) * (major ? 5 : 1);
+  const thrD = Math.max(0.05, t.thrDig * (1 + dv('thrDig') * 0.4 * s)) * (major ? 4 : 1);
   const chem = Math.max(0, t.chem * (1 + dv('chem') * 0.3 * s));
   const floodtol = Math.max(0.2, 1 + dv('floodtol') * 0.3 * s);
   // ---- fantasy loci: expressed only above 0.25 and when prerequisites are met ----
@@ -200,12 +206,12 @@ export function phenotype(sp: SpeciesDef, mode: Mode, a: Float32Array, b: Float3
   out[o + P.FLOODTOL] = floodtol; out[o + P.BIOLUM] = biolum; out[o + P.ARMOR] = armor; out[o + P.PLASTRON] = plastron; out[o + P.THERMO] = thermo;
   // ---- derived performance (trade-offs live here) ----
   const relSize = size / t.size;
-  out[o + P.SPEED] = 0.42 * Math.sqrt(metab) * Math.pow(relSize, 0.3) / (1 + 0.25 * cuticle) / (1 + 0.6 * armor) / (1 + 0.1 * (floodtol - 1));
+  out[o + P.SPEED] = 0.42 * Math.sqrt(metab) * Math.pow(relSize, 0.3) / (1 + 0.25 * cuticle) / (1 + 0.6 * armor) / (1 + 0.1 * (floodtol - 1)) * (major ? 0.8 : 1);
   out[o + P.METCOST] = Math.pow(relSize, 0.75) * metab * (1 + 0.08 * (sensory - 1)) * (1 + 0.12 * waterbal) * (1 + 0.1 * chem / Math.max(0.01, t.chem || 1)) * (1 + 0.15 * thermo);
   out[o + P.DESICC] = (1 / Math.cbrt(relSize)) * (1.3 - 0.8 * waterbal) * (1 - 0.25 * cuticle) * metab * (1 + 0.6 * plastron);
   out[o + P.DIGRATE] = (1.4 - 0.8 * mandible) * Math.sqrt(relSize) * Math.sqrt(metab);
   out[o + P.ATTACK] = relSize * (0.4 + mandible) * (1 + 0.1 * (metab - 1));
-  out[o + P.DEFENSE] = 0.3 * cuticle + 0.6 * armor;
+  out[o + P.DEFENSE] = 0.3 * cuticle + 0.6 * armor + (major ? 0.15 : 0);
   out[o + P.DROWN] = floodtol * (1 - 0.5 * armor) * (1 + 12 * plastron);
   out[o + P.CARRY] = relSize;
 }
@@ -225,6 +231,7 @@ export function broodCost(sp: SpeciesDef, mode: Mode, a: Float32Array, b: Float3
   }
   if (caste === 1) c *= sp.reproduction.gyneCostFactor;
   if (caste === 2) c *= sp.reproduction.maleCostFactor;
+  if (caste === 3) c *= Math.pow(sp.workers.soldiers?.sizeFactor ?? 1.5, 1.5); // major worker
   return Math.max(1, c);
 }
 

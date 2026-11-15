@@ -77,6 +77,35 @@ export function forageFactor(c: Colony) {
 }
 export function underSiege(sim: Sim, c: Colony) { return !!c.war && c.war.siegeUntil > sim.tick; }
 
+/** Perceived competition 0..1 from the colony's own encounter memory. */
+function competition(sim: Sim, c: Colony) {
+  let t = 0;
+  for (const r of c.war?.relations ?? []) if (byId(sim, r.id)) t = Math.max(t, Math.min(1, r.hostility / 2 + (sim.tick - r.lastSeen < 3600 ? 0.3 : 0)));
+  return t;
+}
+
+/** Share of new workers a dimorphic colony aims to rear as majors: rises after meeting rivals (Passera et al. 1996). */
+export function majorTarget(sim: Sim, c: Colony) {
+  const sol = sim.speciesOf(c).workers.soldiers;
+  return sol ? sol.baseFraction + (sol.maxFraction - sol.baseFraction) * competition(sim, c) : 0;
+}
+
+/** Probability that a hatching worker larva is put on the major pathway (steers the live major share toward the target). */
+export function majorChance(sim: Sim, c: Colony) {
+  const target = majorTarget(sim, c);
+  const share = (c.war?.majors ?? 0) / Math.max(1, c.workers);
+  return Math.min(0.9, target * (share < target ? 1.6 : 0.4));
+}
+
+/** Nestmates on the same war task close by: a squad sets out together rather than in a trickle. */
+function squadNear(sim: Sim, i: number) {
+  const a = sim.a;
+  let n = 0;
+  sim.idx.query(a, a.x[i], a.y[i], 5, (j) => { if (j !== i && a.colony[j] === a.colony[i] && a.task[j] === a.task[i]) n++; });
+  return n;
+}
+const MUSTER_SQUAD = 3;
+
 // ------------------------------------------------------------------ colony strategy
 
 function report(sim: Sim, cs: Colony[], text: string, kind = 'battle') {
@@ -104,8 +133,10 @@ export function updateStrategy(sim: Sim, c: Colony) {
   const recruits: number[] = [];
   const hunting = w.relations.filter((r) => !r.nestKnown && r.hostility > 0.2);
   const inTarget: Record<number, number> = {};
+  let majors = 0;
   for (let i = 0; i < a.n; i++) {
     if (!a.alive[i] || a.colony[i] !== c.slot || a.caste[i] !== CASTE.WORKER) continue;
+    if (a.major[i]) majors++;
     const t = a.task[i];
     if (t === TASK.GUARD) counts[0]++; else if (t === TASK.WAR) counts[1]++; else if (t === TASK.RAID) counts[2]++;
     const own = sim.w.owner[a.y[i] * sim.w.W + a.x[i]];
@@ -117,8 +148,19 @@ export function updateStrategy(sim: Sim, c: Colony) {
     const free = (t === TASK.IDLE || t === TASK.FORAGE || t === TASK.DIG || t === TASK.WASTE || t === TASK.DEFEND) && !a.carry[i] && a.carryBrood[i] < 0;
     if (free && a.health[i] > 0.6 && a.age[i] >= 2) recruits.push(i);
   }
+  w.majors = majors;
+  if (sim.speciesOf(c).workers.soldiers) w.majorTarget = majorTarget(sim, c);
   // rival nests move when entrances are re-dug; keep known positions current
   for (const r of w.relations) { const o = byId(sim, r.id); if (o && r.nestKnown) { r.nestX = o.entrance.x; r.nestY = o.entrance.y; } }
+  // ---- call off a raid that is bleeding raiders without taking anything ----
+  if (w.raid.active && counts[2] > 0) {
+    const lost = relation(c, w.raid.target).totalLosses - w.raid.lossesAtStart;
+    if (lost > Math.max(3, w.raid.party * 0.5) && w.raid.brood + w.raid.food === 0) {
+      for (let i = 0; i < a.n; i++) if (a.alive[i] && a.colony[i] === c.slot && a.task[i] === TASK.RAID && a.carryBrood[i] < 0) goHome(sim, i, c, WHY.RAID_HOME);
+      counts[2] = 0;
+      report(sim, [c], `${c.name} called off its raid after losing ${lost} raiders.`, 'raid');
+    }
+  }
   // ---- close out a finished raid ----
   if (w.raid.active && counts[2] === 0 && tick - w.raid.start > 120) {
     const o = sim.colonies.find((x) => x && x.id === w.raid.target);
@@ -146,6 +188,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
     const o = byId(sim, enemy.id)!;
     const strong = c.workers >= 24 && enemy.ratio < 1.1 && winRate(enemy) >= 0.5;
     if (w.strategy === 'raid' && w.raid.active) { s = 'raid'; reason = `Raid under way against ${o.name}.`; }
+    else if (enemy.losses > Math.max(4, enemy.kills * 2)) { s = 'forage'; reason = `Losing the recent battles against ${o.name}: pulling back from the front.`; }
     else if (strong && enemy.nestKnown && (c.workers > o.workers * 0.8 || !o.queens.length)) { s = 'raid'; reason = `Stronger than ${o.name} in recent fights and knows where its nest is: raiding for brood and food.`; }
     else if (winRate(enemy) >= 0.4) { s = 'war'; reason = `Contesting the foraging ground against ${o.name}.`; }
     else { s = 'forage'; reason = `Avoiding ${o.name}, which has won most fights.`; }
@@ -156,14 +199,16 @@ export function updateStrategy(sim: Sim, c: Colony) {
     if (s === 'war' || s === 'raid' || s === 'fortify') sim.event('strategy', `${c.name} ${s === 'war' ? `went to war with ${o?.name}` : s === 'raid' ? `is preparing to raid ${o?.name}` : `is under pressure from ${o?.name} and fortified its nest`}.`, c);
   }
   w.strategy = s; w.target = target; w.reason = reason;
-  // ---- staff the strategy (oldest healthy workers go first) ----
-  recruits.sort((p, q) => a.age[q] - a.age[p]);
+  // ---- staff the strategy: majors (soldiers) first, then the oldest healthy minors ----
+  recruits.sort((p, q) => a.major[q] - a.major[p] || a.age[q] - a.age[p]);
   const W = c.workers;
   const quota = [
     s === 'defend' || s === 'fortify' ? 2 + Math.round(W * 0.08) : s === 'war' || s === 'raid' ? 1 + Math.round(W * 0.04) : W > 40 ? 1 : 0,
     s === 'war' ? Math.round(W * 0.3) : s === 'defend' ? Math.round(W * 0.12) : 0,
     0,
   ];
+  // a colony that has met rivals keeps some of its majors posted at the entrance even in peacetime
+  if (majors && alive.length) quota[0] = Math.max(quota[0], Math.min(majors, 1 + Math.round(majors * 0.3)));
   const tr = target ? relation(c, target) : null;
   // raids are discrete expeditions with a rest period between them
   if (s === 'raid' && tr && !w.raid.active && (w.raids === 0 || tick - w.raid.start > 1500)) {
@@ -179,12 +224,12 @@ export function updateStrategy(sim: Sim, c: Colony) {
       if (kind === 0) { a.task[i] = TASK.GUARD; a.why[i] = WHY.GUARD; a.nav[i] = NAV.GOAL; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.timer[i] = 0; }
       else if (kind === 1) {
         if (!tr || tr.frontX < 0) break;
-        a.task[i] = TASK.WAR; a.why[i] = WHY.WAR_MARCH; a.nav[i] = NAV.GOAL; a.tx[i] = Math.round(tr.frontX); a.ty[i] = Math.round(tr.frontY); a.timer[i] = 260;
+        a.task[i] = TASK.WAR; a.why[i] = WHY.MUSTER; a.nav[i] = NAV.EXIT; a.tx[i] = Math.round(tr.frontX); a.ty[i] = Math.round(tr.frontY); a.timer[i] = 260;
       } else {
-        a.task[i] = TASK.RAID; a.why[i] = WHY.RAID_MARCH; a.nav[i] = NAV.GOAL; a.tx[i] = tr!.nestX; a.ty[i] = tr!.nestY; a.timer[i] = 700;
+        a.task[i] = TASK.RAID; a.why[i] = WHY.MUSTER; a.nav[i] = NAV.EXIT; a.tx[i] = tr!.nestX; a.ty[i] = tr!.nestY; a.timer[i] = 700;
         w.raid.party++;
       }
-      a.fightTarget[i] = -1; a.memLen[i] = 0; a.stuck[i] = 0;
+      a.fightTarget[i] = -1; a.memLen[i] = 0; a.stuck[i] = 0; a.fails[i] = 0;
       need--;
     }
   }
@@ -260,6 +305,20 @@ function goHome(sim: Sim, i: number, c: Colony, why: number) {
   a.task[i] = TASK.IDLE; a.why[i] = why; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stuck[i] = 0;
 }
 
+/** Recruits gather just outside the entrance until a small squad has formed (or they tire of waiting). */
+function muster(sim: Sim, i: number, own: boolean): boolean {
+  const a = sim.a;
+  if (a.why[i] !== WHY.MUSTER) return false;
+  const ready = !own && squadNear(sim, i) + 1 >= MUSTER_SQUAD;
+  if (ready || ++a.fails[i] > (own ? 60 : 30)) {
+    a.fails[i] = 0; a.stuck[i] = 0;
+    a.why[i] = a.task[i] === TASK.WAR ? WHY.WAR_MARCH : WHY.RAID_MARCH;
+    return false;
+  }
+  a.nav[i] = own ? NAV.EXIT : NAV.NEST_WANDER;
+  return true;
+}
+
 function decideGuard(sim: Sim, i: number, c: Colony) {
   const a = sim.a;
   // guards hold the top of the entrance shaft; contact phase handles any fighting
@@ -270,7 +329,9 @@ function decideGuard(sim: Sim, i: number, c: Colony) {
 function decideFront(sim: Sim, i: number, c: Colony, own: boolean) {
   const a = sim.a, w = c.war;
   const r = w && w.target ? w.relations.find((r) => r.id === w.target) : null;
-  if (!r || r.frontX < 0 || --a.timer[i] <= 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
+  if (!r || r.frontX < 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
+  if (muster(sim, i, own)) return;
+  if (--a.timer[i] <= 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
   const fx = Math.round(r.frontX), fy = Math.round(r.frontY);
   if (own) { a.nav[i] = NAV.EXIT; return; }
   if (d2(a.x[i], a.y[i], fx, fy) > 100) { a.nav[i] = NAV.GOAL; a.tx[i] = fx; a.ty[i] = fy; a.why[i] = WHY.WAR_MARCH; if (a.stuck[i] > 50) { a.nav[i] = NAV.WANDER; a.stuck[i] = 0; } }
@@ -297,7 +358,9 @@ function decideRaid(sim: Sim, i: number, c: Colony, own: boolean) {
     if (inForeign && a.stuck[i] > 40) { a.nav[i] = NAV.UP; a.stuck[i] = 0; }
     return;
   }
-  if (!o || --a.timer[i] <= 0) return goHome(sim, i, c, WHY.RAID_HOME);
+  if (!o) return goHome(sim, i, c, WHY.RAID_HOME);
+  if (muster(sim, i, own)) return;
+  if (--a.timer[i] <= 0) return goHome(sim, i, c, WHY.RAID_HOME);
   const here = w.owner[y * w.W + x];
   if (here === o.slot + 1) {
     a.why[i] = WHY.RAID_DELVE; a.nav[i] = NAV.DELVE;

@@ -94,4 +94,8 @@ export interface AntInfo {
   why: string;
   lines: string[];
   traits: { name: string; value: string; kind: 'inherited' | 'developmental' | 'behavioural' | 'fictional' }[];
+  /** named (WorldBox-style) traits this ant carries, by index into TRAITS */
+  named: number[];
+  /** where its named traits came from */
+  namedOrigin: string;
 }
