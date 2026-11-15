@@ -9,6 +9,7 @@ import type { Command, Settings } from './sim.ts';
 import { DEFAULT_SETTINGS, Sim } from './sim.ts';
 import type { SpeciesDef } from './species.ts';
 import { FLAG_APHID } from './world.ts';
+import { BIOMES, colonySites, decorateWorld, planWorld, type WorldOptions } from './worldgen.ts';
 
 export interface ScenarioDef {
   id: string;
@@ -25,6 +26,7 @@ export const SCENARIOS: ScenarioDef[] = [
   {id:'life-garden',title:'Living garden',mode:'naturalistic',defaultSize:[384,192],blurb:'A provisioned experimental garden with a pond, flowers, decomposers, grazers and predators. Wildlife uses simplified sandbox profiles.',goal:'Inspect animals to see their tasks and stages. Move food, cut a plant, drain the pond or add a wall. Watch locally available resources affect survival and reproduction.'},
   { id:'empty',title:'Empty particle sandbox',mode:'naturalistic',defaultSize:[384,192],blurb:'An empty canvas for falling sand, fluids, heat and circuits. Paint terrain before introducing a queen.',goal:'Choose powders, liquids, gases or energy devices. Draw containers, mix materials and inspect the results.' },
   { id:'physics-lab',title:'Particle physics lab',mode:'naturalistic',defaultSize:[384,192],blurb:'Prepared density tanks, a gated reservoir, combustible wood and a battery circuit. All motion and reactions use the live simulation.',goal:'Open the guide to pour grains, release the reservoir, ignite fuel or break the circuit. Inspect materials and use heat/cool/shock to experiment.' },
+  { id: 'living-world', title: 'Living world (generated)', mode: 'naturalistic', defaultSize: [768, 256], blurb: 'A procedurally generated strip of biomes (meadows, woodland, steppe, wetlands, hills, dunes) with renewable food and water. Several ant kingdoms start in the best sites and run on their own: rulers, clans, diplomacy and wars emerge.', goal: 'Leave it running. Open the observatory to follow each kingdom\'s ruler, clans, chronicle and relations. Change the seed for a different world.' },
   { id: 'sandbox', title: 'Free sandbox', mode: 'naturalistic', defaultSize: [512, 256], blurb: 'A temperate meadow with one newly mated black garden ant queen. Everything else is up to you.', goal: 'Build, break and observe.' },
   { id: 'first-colony', title: 'First colony', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'A mild meadow with no predators. A founding queen searches for a site, seals herself in and rears her first workers from body reserves.', goal: 'Watch the queen dig a chamber, lay eggs and rear the first (nanitic) workers. Try warming the chamber with the heat tool.' },
   { id: 'moved-food', title: 'Moved food', mode: 'naturalistic', defaultSize: [384, 192], blurb: 'An established colony exploits a rich sugar patch. Use the scenario button to move the food and watch the colony rediscover it.', goal: 'Let a trail form (signal overlay), then press "Move the sugar". Foragers with route memory return to the old site first.' },
@@ -62,6 +64,10 @@ export interface GenOptions {
   clayiness: number;
   surfaceFrac: number;
   roughness: number;
+  /** optional per-column hooks used by the world generator (worldgen.ts) */
+  lift?: Float32Array;
+  plantMul?: Float32Array;
+  pondAt?: number[];
 }
 const DEFAULT_GEN: GenOptions = { plants: 0.6, ponds: 0, logs: 2, sandiness: 0.5, clayiness: 0.5, surfaceFrac: 0.3, roughness: 7 };
 
@@ -74,7 +80,7 @@ export function generateTerrain(sim: Sim, seed: number, o: GenOptions = DEFAULT_
   const rock = fbm(rng, W, 3, 70);
   const base = Math.round(H * o.surfaceFrac);
   for (let x = 0; x < W; x++) {
-    const s = Math.round(base + surf[x] * o.roughness);
+    const s = Math.round(base + surf[x] * o.roughness + (o.lift ? o.lift[x] : 0));
     const td = 5 + Math.round((top[x] + 1) * 2.5);
     const bed = Math.round(H * 0.86 + rock[x] * 10);
     for (let y = 0; y < H; y++) {
@@ -102,8 +108,8 @@ export function generateTerrain(sim: Sim, seed: number, o: GenOptions = DEFAULT_
   for (let k = 0; k < Math.round(3 * area); k++) blob(rng.int(W), Math.round(H * (0.6 + rng.next() * 0.25)), 6 + rng.int(10), 2 + rng.int(3), M.GRAVEL, [M.SOIL]);
   w.recomputeAllSurface();
   // ponds: depressions filled with water
-  for (let k = 0; k < o.ponds; k++) {
-    const cx = 30 + rng.int(W - 60), rx = 10 + rng.int(14), depth = 4 + rng.int(4);
+  for (let k = 0; k < (o.pondAt ? o.pondAt.length : o.ponds); k++) {
+    const cx = o.pondAt ? o.pondAt[k] : 30 + rng.int(W - 60), rx = 10 + rng.int(14), depth = 4 + rng.int(4);
     let level = H;
     for (let x = cx - rx; x <= cx + rx; x++) level = Math.min(level, w.surface[x]);
     for (let x = cx - rx; x <= cx + rx; x++) {
@@ -140,7 +146,7 @@ export function generateTerrain(sim: Sim, seed: number, o: GenOptions = DEFAULT_
   w.recomputeAllSurface();
   // plants with some aphid groups
   for (let x = 2; x < W - 2; x++) {
-    if (!rng.chance(o.plants * 0.18)) continue;
+    if (!rng.chance(o.plants * 0.18 * (o.plantMul ? o.plantMul[x] : 1))) continue;
     const s = w.surface[x];
     if (w.mat[s * W + x] !== M.TOPSOIL && w.mat[s * W + x] !== M.ORGANIC) continue;
     if (w.mat[(s - 1) * W + x - 1] === M.PLANT) continue;
@@ -200,6 +206,8 @@ export interface CreateOptions {
   settings?: Partial<Settings>;
   climate?: Partial<Climate>;
   customSpecies?: SpeciesDef[];
+  /** generated-world options (living-world scenario) */
+  world?: WorldOptions;
 }
 
 export function createSim(opt: CreateOptions): Sim {
@@ -218,6 +226,8 @@ export function createSim(opt: CreateOptions): Sim {
   if (def.id === 'inheritance-garden') { Object.assign(climate,{meanTemp:27,deepTemp:25,dayAmp:2,seasonAmp:2,rainChancePerDay:0}); settings.weather=false;settings.naturalPredators=false; }
   if(['empty','physics-lab','liquid-lab','powder-lab'].includes(def.id)){settings.weather=false;settings.naturalPredators=false;}
   if(def.id==='life-garden'){Object.assign(climate,{meanTemp:24,deepTemp:22,baseHumidity:.8,dayAmp:2,seasonAmp:1});settings.weather=false;settings.naturalPredators=false;gen={...gen,plants:0,logs:0};}
+  const plan = def.id === 'living-world' ? planWorld(seed, W) : null;
+  if (plan) { Object.assign(climate, plan.climate); settings.maxColonies = Math.max(settings.maxColonies, 16); gen = { ...gen, plants: 0.75, logs: 0, lift: plan.lift, plantMul: plan.plantMul, pondAt: plan.pondAt }; }
   if (opt.climate) Object.assign(climate, opt.climate);
   if (opt.settings) Object.assign(settings, opt.settings);
   const sim = new Sim({ W, H, seed, mode, scenario: def.id, climate, settings, customSpecies: opt.customSpecies });
@@ -225,6 +235,7 @@ export function createSim(opt: CreateOptions): Sim {
   if(!['empty','physics-lab','liquid-lab','powder-lab'].includes(def.id))generateTerrain(sim, seed, gen);
   else sim.w.recomputeAllSurface();
   sim.scenarioInfo = { id: def.id, title: def.title, goal: def.goal, actions: [] };
+  if (plan) decorateWorld(sim, seed, plan);
   const lasius = sim.speciesById('lasius-niger');
   const pogo = sim.speciesById('pogonomyrmex-californicus');
   const pheidole = sim.speciesById('pheidole-pallidula');
@@ -329,6 +340,19 @@ export function createSim(opt: CreateOptions): Sim {
     case 'sandbox':
       queenAt(lasius, Math.round(W * 0.5));
       break;
+    case 'living-world': {
+      const n = Math.max(1, Math.min(8, Math.round(opt.world?.colonies ?? 3)));
+      for (const site of colonySites(sim, plan!, n)) {
+        const c = sim.establishedColony(sim.speciesById(site.species), site.x, surfaceY(sim, site.x) - 1, 30);
+        if (c) { c.store.sugar += 40; c.store.protein += 40; c.store.seed += 20; }
+      }
+      const mid = Math.round(W / 2);
+      sim.scenarioInfo.actions = [
+        { label: 'Bountiful season: drop food in the middle of the world', cmds: [{ t: 'paint', mat: M.SUGAR, x: mid - 4, y: surfaceY(sim, mid) - 3, r: 3 } as Command, { t: 'paint', mat: M.PROTEIN, x: mid + 4, y: surfaceY(sim, mid) - 3, r: 2 } as Command] },
+      ];
+      sim.event('experiment', `A new world: ${plan!.regions.map((r) => `${r.name} (${BIOMES[r.biome].name.toLowerCase()})`).join(', ')}. ${n} kingdom${n === 1 ? '' : 's'} founded; nothing further is scripted.`);
+      break;
+    }
     case 'first-colony':
       patch(sim, M.PROTEIN, Math.round(W * 0.52), 3);
       queenAt(lasius, Math.round(W * 0.45));

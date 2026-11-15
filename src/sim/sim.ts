@@ -22,6 +22,7 @@ import { architectureStep } from './architecture.ts';
 import { NT, TRAITS, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
 
 export const SAVE_VERSION = 4;
+const DX8 = [1, 1, 0, -1, -1, -1, 0, 1], DY8 = [0, 1, 1, 1, 0, -1, -1, -1];
 
 export interface Settings {
   /** fraction of mates drawn from an off-map background population (drift buffer) */
@@ -772,7 +773,9 @@ export class Sim {
       else if (b.stage === STAGE.EGG) eggs++;
     }
     const energyStore = c.store.sugar + c.store.seed * sp.nutrition.seed + c.store.protein * 0.5;
-    const target = 4 + 0.6 * c.adults + 1.5 * larvae;
+    // stockpiling: from late summer the colony aims to store enough to carry its adults through winter
+    const season0 = seasonName(this.tick);
+    const target = 4 + 0.6 * c.adults + 1.5 * larvae + (season0 === 'autumn' ? 2.5 : season0 === 'summer' ? 1.2 : 0) * c.adults;
     const hunger = Math.max(0, Math.min(1, (target - energyStore) / target));
     const proteinNeed = larvae > 0 ? Math.max(0, Math.min(1, (larvae * 1.2 - c.store.protein - c.store.seed * sp.nutrition.seed) / (larvae * 1.2))) : 0;
     c.stim.forage = c.workers > 0 ? Math.min(1, 0.12 + 0.75 * hunger + 0.4 * proteinNeed) : 0;
@@ -800,6 +803,12 @@ export class Sim {
       const broodCap = 10 + 1.6 * c.workers;
       if (c.brood.length >= broodCap) rate = 0;
       if (q.reserves < 8 && c.store.protein + c.store.seed < 1) rate = 0;
+      // queens adjust laying to how well the brood can be fed: eggs laid into a protein shortage only starve
+      if (c.workers > 0) {
+        let larvae = 0; for (const b of c.brood) if (b.stage === STAGE.LARVA) larvae++;
+        const protein = c.store.protein + (sp.nutrition.seed > 0.3 ? c.store.seed * sp.nutrition.seed : 0);
+        if (protein < larvae * 0.8) rate *= protein < 1 ? 0.15 : 0.45;
+      }
       if (rng.next() < rate) this.layEgg(c, q, qi, sp);
       // queen fed by workers (trophallaxis abstraction) when stores allow
       if (c.workers > 0 && q.reserves < sp.founding.reserves * 0.8) {
@@ -928,7 +937,9 @@ export class Sim {
             b.need = broodCost(sp, this.mode, b.a, b.b, b.destiny === DESTINY.GYNE ? 1 : b.destiny === DESTINY.MALE ? 2 : b.major ? 3 : 0);
           }
         } else if (b.stage === STAGE.LARVA) {
-          b.hunger += dt;
+          // a fully provisioned larva does not starve; hunger builds more slowly when cold slows metabolism
+          if (b.fed >= b.need) b.hunger = 0;
+          else b.hunger += dt * Math.max(0.3, Math.min(1, rate));
           // founding queens feed the first larvae from body reserves (claustral) - nanitic workers result
           if (c.workers === 0 && queenNear && qi >= 0 && q.reserves > 4 && Math.abs(a.x[qi] - b.x) + Math.abs(a.y[qi] - b.y) < 12) {
             // the queen tends the brood; she provisions each larva only to ~62% of a full ration
@@ -999,7 +1010,8 @@ export class Sim {
     if (c.store.protein > 0) { c.store.protein--; w.ledger.sink('protein', 'fed to larvae', 1); gain = sp.nutrition.protein; }
     else if (c.store.seed > 0 && sp.nutrition.seed > 0.3) { c.store.seed--; w.ledger.sink('seed', 'fed to larvae', 1); gain = 0.8 * sp.nutrition.seed; }
     // Sugar provides energy but cannot replace the protein required for larval growth.
-    else if (c.store.sugar > 0) { c.store.sugar--; w.ledger.sink('sugar', 'larval maintenance', 1); b.hunger = Math.max(0, b.hunger - 0.1); return true; }
+    // (adults keep a sugar reserve for themselves: larvae only get sugar beyond about half a unit per adult)
+    else if (c.store.sugar > c.adults * 0.5) { c.store.sugar--; w.ledger.sink('sugar', 'larval maintenance', 1); b.hunger = Math.max(0, b.hunger - 0.1); return true; }
     else return false;
     b.fed += gain;
     b.hunger = 0;
@@ -1018,8 +1030,9 @@ export class Sim {
   feedAdult(c: Colony, i: number): boolean {
     const sp = this.speciesOf(c), w = this.w, a = this.a;
     if (c.store.sugar > 0) { c.store.sugar--; w.ledger.sink('sugar', 'eaten by adults', 1); a.energy[i] = Math.min(1, a.energy[i] + 0.45 * sp.nutrition.sugar); return true; }
-    if (c.store.seed > 0 && sp.nutrition.seed > 0.3) { c.store.seed--; w.ledger.sink('seed', 'eaten by adults', 1); a.energy[i] = Math.min(1, a.energy[i] + 0.5 * sp.nutrition.seed); return true; }
-    if (c.store.protein > 2) { c.store.protein--; w.ledger.sink('protein', 'eaten by adults', 1); a.energy[i] = Math.min(1, a.energy[i] + 0.25); return true; }
+    // seeds the species digests poorly are still eaten before an adult starves (lower energy per unit)
+    if (c.store.seed > 0 && (sp.nutrition.seed > 0.3 || a.energy[i] < 0.2)) { c.store.seed--; w.ledger.sink('seed', 'eaten by adults', 1); a.energy[i] = Math.min(1, a.energy[i] + 0.5 * Math.max(0.3, sp.nutrition.seed)); return true; }
+    if (c.store.protein > 2 || (c.store.protein > 0 && a.energy[i] < 0.2)) { c.store.protein--; w.ledger.sink('protein', 'eaten by adults', 1); a.energy[i] = Math.min(1, a.energy[i] + 0.25); return true; }
     return false;
   }
 
@@ -1080,6 +1093,44 @@ export class Sim {
   nestCells = new Map<number, Int32Array>();
   nestDist!: Uint16Array;
   navDirty = false;
+
+  /** Per-colony walking distance to the nest's exits over the surrounding surface (not saved; rebuilt by scanNest). */
+  homeField = new Map<number, { x0: number; y0: number; w: number; h: number; d: Uint16Array }>();
+
+  /** Outside homing: workers know the ground around their own nest (path integration plus landmark learning),
+   *  so a worker heading home routes around mounds, spoil heaps and puddles instead of pressing into them.
+   *  Bounded BFS from the exits over standable cells near the entrance. */
+  private buildHomeField(c: Colony, seeds: number[]) {
+    const w = this.w, R = 90, x0 = Math.max(0, c.entrance.x - R), y0 = Math.max(0, c.entrance.y - 50);
+    const fw = Math.min(w.W, c.entrance.x + R + 1) - x0, fh = Math.min(w.H, c.entrance.y + 24) - y0;
+    let f = this.homeField.get(c.slot);
+    if (!f || f.w !== fw || f.h !== fh) { f = { x0, y0, w: fw, h: fh, d: new Uint16Array(fw * fh) }; this.homeField.set(c.slot, f); }
+    f.x0 = x0; f.y0 = y0; f.d.fill(0);
+    const q: number[] = [];
+    for (const k of seeds) { const x = k % w.W - x0, y = ((k / w.W) | 0) - y0; if (x >= 0 && y >= 0 && x < fw && y < fh) { f.d[y * fw + x] = 1; q.push(y * fw + x); } }
+    const own = c.slot + 1;
+    for (let h = 0; h < q.length; h++) {
+      const li = q[h], lx = li % fw, ly = (li / fw) | 0, d = f.d[li];
+      for (let dd = 0; dd < 8; dd++) {
+        const nx = lx + DX8[dd], ny = ly + DY8[dd];
+        if (nx < 0 || ny < 0 || nx >= fw || ny >= fh) continue;
+        const ni = ny * fw + nx;
+        if (f.d[ni]) continue;
+        const gx = nx + x0, gy = ny + y0, gk = gy * w.W + gx;
+        if (w.owner[gk] === own || IS_LIQUID[w.mat[gk]] || !canStand(this, gx, gy, false)) continue;
+        if (DX8[dd] && DY8[dd] && IS_SOLID[w.mat[(ly + y0) * w.W + gx]] && IS_SOLID[w.mat[gy * w.W + lx + x0]]) continue;
+        f.d[ni] = Math.min(65535, d + 1); q.push(ni);
+      }
+    }
+  }
+
+  /** Distance home from (x,y) for colony slot, or 0 when unknown. */
+  homeDist(slot: number, x: number, y: number) {
+    const f = this.homeField.get(slot);
+    if (!f) return 0;
+    const lx = x - f.x0, ly = y - f.y0;
+    return lx < 0 || ly < 0 || lx >= f.w || ly >= f.h ? 0 : f.d[ly * f.w + lx];
+  }
 
   /** Bounded BFS over the colony's excavated cells: volume, depth, exit status, flood status. */
   scanNest(c: Colony) {
@@ -1157,6 +1208,7 @@ export class Sim {
       }
     }
     this.nestCells.set(c.slot, Int32Array.from(out));
+    this.buildHomeField(c, exits.length ? exits : [c.entrance.y * w.W + c.entrance.x]);
     // nest odour: emitted by queen and brood (volatile, spreads through open passages only)
     for (const q of c.queens) { const qi = a.findById(q.antId); if (qi >= 0) c.nestOdor.add(a.x[qi], a.y[qi], 3); }
     for (const b of c.brood) c.nestOdor.add(b.x, b.y, 0.5);

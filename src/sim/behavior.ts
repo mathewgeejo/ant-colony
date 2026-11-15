@@ -135,6 +135,15 @@ export function step(sim: Sim, i: number) {
     if (occ >= 2) wt *= 0.2; else if (occ === 1) wt *= 0.7;
     switch (nav) {
       case NAV.GOAL: case NAV.HOME: case NAV.RETRACE: case NAV.ROUTE_OUT: {
+        // heading home over familiar ground: follow the colony's walking-distance field when it covers this spot
+        if (nav === NAV.HOME && c && tx === ex && ty === ey) {
+          const dh = sim.homeDist(c.slot, x, y);
+          if (dh > 0) {
+            const dn = w.owner[ni] === owner ? 1 : sim.homeDist(c.slot, nx, ny);
+            wt *= dn > 0 && dn < dh ? 8 : dn === dh ? 1 : 0.12;
+            break;
+          }
+        }
         const d1 = dist2(nx, ny, tx, ty);
         wt *= d1 < d0 ? 7 : d1 === d0 ? 1 : 0.12;
         break;
@@ -368,8 +377,11 @@ function foodWanted(sim: Sim, c: Colony, m: number): number {
   const p = sim.speciesOf(c).nutrition.preference;
   const need = c.stim;
   const pref = f === 1 ? p.sugar : f === 2 ? p.protein : p.seed;
-  // protein becomes more attractive when larvae are hungry
-  return pref * (f === 2 ? 0.6 + need.nurse : 1);
+  // protein becomes more attractive when larvae are hungry or the protein store is empty;
+  // sugar less so once the sugar store already covers the adults
+  if (f === 2) return pref * (0.6 + need.nurse + (c.store.protein < 2 + c.brood.length * 0.5 ? 1.2 : 0));
+  if (f === 1 && c.store.sugar > 6 + c.adults * 1.5) return pref * 0.4;
+  return pref;
 }
 
 /** Search for food within radius r with line of sight through open cells. Returns cell index or -1. */
@@ -414,6 +426,8 @@ function tryPickFood(sim: Sim, i: number, c: Colony) {
     a.nav[i] = NAV.GOAL; a.tx[i] = fx; a.ty[i] = fy;
     return;
   }
+  // a hungry forager feeds at the source before loading up (it drinks at the honeydew drop)
+  if (a.energy[i] < 0.5 && a.task[i] !== TASK.QUEEN_FORAGE && feedOutside(sim, i, c) && !FOOD_OF[w.mat[k]] && w.mat[k] !== M.CORPSE) return;
   const m = w.mat[k];
   let carried: number = m;
   let q: number;
@@ -1342,10 +1356,13 @@ export function physiology(sim: Sim, i: number) {
   const T = w.temp[w.tIdx(x, y)];
   const q10 = Math.pow(2, (T - 25) / 10);
   const active = a.nav[i] === NAV.STAY && a.timer[i] === 0 ? 0.5 : 1;
-  a.age[i] += dtDays;
+  // overwintering torpor: in a nest too cold for brood development adults are inactive, burn little energy
+  // and age slowly (temperate ant workers survive the winter this way). Rates are authored.
+  const torpid = T < sp.development.tMin && w.owner[k] === c.slot + 1;
+  a.age[i] += dtDays * (torpid ? 0.35 : 1);
   const isQueen = a.caste[i] === CASTE.QUEEN;
   // energy
-  const drain = (isQueen ? 0 : 0.15) * dtDays * a.pheno[o + P.METCOST] * Math.max(0.15, q10) * active;
+  const drain = (isQueen ? 0 : 0.15) * dtDays * a.pheno[o + P.METCOST] * Math.max(0.15, q10) * active * (torpid ? 0.3 : 1);
   a.energy[i] -= drain;
   if (a.pheno[o + P.BIOLUM] > 0 && a.anim[i] & 1) a.energy[i] -= drain * 0.25 * a.pheno[o + P.BIOLUM];
   // water balance: loss depends on air humidity, temperature and the water-balance phenotype
@@ -1356,7 +1373,7 @@ export function physiology(sim: Sim, i: number) {
   // damage
   let dmg = 0;
   let cause = '';
-  if (a.energy[i] <= 0) { a.energy[i] = 0; dmg += 0.02; cause = 'starvation'; }
+  if (a.energy[i] <= 0) { a.energy[i] = 0; dmg += 0.006; cause = 'starvation'; }
   if (a.hydration[i] <= 0) { a.hydration[i] = 0; dmg += 0.03; cause = 'desiccation'; }
   const tr = a.traits, to = i * 2;
   const heatMax = sp.tolerances.heatMax + (a.pheno[o + P.TOPT] - sp.traits.topt) * 0.6 + heatBonus(tr, to);

@@ -73,8 +73,18 @@ export function ecologyStep(sim: Sim) {
       const k = (s + d) * W + x + dx;
       if (s + d < H && (mat[k] === M.TOPSOIL || mat[k] === M.SOIL) && !w.owner[k]) sim.setCell(k, M.ROOT, 0, 'root growth');
     }
+    // arthropod fall: small insects living on vegetation die or drop to the ground and are scavenged as
+    // protein (ledgered source). Without this renewable prey the soil surface has almost no protein and
+    // colonies cannot rear larvae for long. Rate is an authored game value, highest in summer.
+    if (rng.chance((season === 'summer' ? 0.012 : season === 'spring' ? 0.008 : 0.004) * Math.min(1, height / 5))) {
+      const fx = x + rng.int(9) - 4;
+      if (fx > 0 && fx < W - 1) {
+        const fy = w.surface[fx] - 1, fk = fy * W + fx;
+        if (fy > 0 && mat[fk] === M.AIR && !w.owner[fk]) sim.setCell(fk, M.PROTEIN, 1 + rng.int(2), 'insect fall');
+      }
+    }
     // aphids colonise plants and drip honeydew
-    if (height >= 3 && rng.chance(0.0015)) flags[(s - 1 - rng.int(height)) * W + x] |= FLAG_APHID;
+    if (height >= 3 && rng.chance(0.004)) flags[(s - 1 - rng.int(height)) * W + x] |= FLAG_APHID;
     for (let h = 0; h < height; h++) {
       const k = (s - 1 - h) * W + x;
       if (!(flags[k] & FLAG_APHID) || !rng.chance(0.06)) continue;
