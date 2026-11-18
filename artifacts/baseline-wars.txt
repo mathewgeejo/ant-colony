@@ -1,0 +1,35 @@
+d1 T=14 ants=268 cols=5 ant #1:m w70 b4 q1 s67/45/20 | ant #2:g w50 b0 q1 s52/55/21 | ant #3:g w40 b0 q1 s44/50/20 | ant #4:g w28 b3 q1 s50/50/20 | ant #5:g w75 b0 q1 s48/48/20
+d2 T=15 ants=267 cols=5 ant #1:m w70 b5 q1 s128/49/20 | ant #2:g w49 b0 q1 s77/73/25 | ant #3:g w40 b0 q1 s45/53/21 | ant #4:g w28 b7 q1 s63/53/20 | ant #5:g w75 b0 q1 s49/53/20
+d3 T=16 ants=267 cols=5 ant #1:m w70 b6 q1 s155/53/20 | ant #2:g w49 b0 q1 s82/93/25 | ant #3:g w40 b0 q1 s34/55/24 | ant #4:g w28 b10 q1 s65/53/20 | ant #5:g w75 b0 q1 s30/57/21
+d4 T=17 ants=263 cols=5 ant #1:m w67 b9 q1 s183/59/20 | ant #2:g w48 b0 q1 s102/96/25 | ant #3:g w40 b0 q1 s30/59/24 | ant #4:g w28 b14 q1 s82/52/20 | ant #5:g w75 b1 q1 s5/57/21
+d5 T=18 ants=255 cols=5 ant #1:m w59 b14 q1 s223/66/20 | ant #2:g w48 b1 q1 s128/103/25 | ant #3:g w40 b0 q1 s17/62/24 | ant #4:g w28 b15 q1 s88/39/20 | ant #5:g w75 b8 q1 s1/54/20
+d6 T=18 ants=254 cols=5 ant #1:m w59 b15 q1 s260/72/31 | ant #2:g w48 b6 q1 s140/104/26 | ant #3:g w40 b2 q1 s6/65/26 | ant #4:g w27 b18 q1 s94/27/22 | ant #5:g w75 b9 q1 s12/50/5
+d7 T=19 ants=242 cols=5 ant #1:m w59 b21 q1 s304/68/39 | ant #2:g w48 b6 q1 s153/109/29 | ant #3:g w39 b5 q1 s12/67/28 | ant #4:g w27 b23 q1 s98/14/22 | ant #5:g w64 b11 q1 s20/63/6
+d8 T=19 ants=240 cols=5 ant #1:m w59 b26 q1 s360/61/46 | ant #2:g w48 b8 q1 s173/113/34 | ant #3:g w38 b6 q1 s1/69/26 | ant #4:g w27 b26 q1 s114/7/26 | ant #5:g w63 b12 q1 s31/64/6
+d9 T=19 ants=235 cols=5 ant #1:m w59 b27 q1 s406/62/49 | ant #2:g w48 b11 q1 s182/116/35 | ant #3:g w38 b6 q1 s0/73/24 | ant #4:g w27 b28 q1 s117/13/27 | ant #5:g w58 b14 q1 s32/67/6
+d10 T=19 ants=234 cols=5 ant #1:m w60 b30 q1 s439/51/52 | ant #2:g w48 b15 q1 s200/113/41 | ant #3:g w38 b8 q1 s12/72/15 | ant #4:g w28 b31 q1 s146/0/27 | ant #5:g w55 b15 q1 s24/67/7
+d11 T=19 ants=243 cols=5 ant #1:m w63 b29 q1 s461/40/57 | ant #2:g w48 b18 q1 s212/107/41 | ant #3:g w38 b8 q1 s16/74/17 | ant #4:g w33 b30 q1 s159/0/29 | ant #5:g w55 b17 q1 s22/57/10
+d12 T=19 ants=248 cols=5 ant #1:m w64 b31 q1 s503/39/59 | ant #2:g w48 b26 q1 s225/98/42 | ant #3:g w38 b12 q1 s17/68/15 | ant #4:g w38 b32 q1 s181/0/12 | ant #5:g w54 b17 q1 s39/41/11
+d13 T=19 ants=256 cols=5 ant #1:m w68 b30 q1 s541/34/61 | ant #2:g w48 b30 q1 s227/88/44 | ant #3:g w38 b14 q1 s24/59/15 | ant #4:g w41 b31 q1 s206/0/3 | ant #5:g w54 b18 q1 s35/35/11
+d14 T=18 ants=251 cols=5 ant #1:m w68 b32 q1 s571/21/64 | ant #2:g w41 b32 q1 s219/77/46 | ant #3:g w38 b14 q1 s19/56/18 | ant #4:g w44 b27 q1 s211/0/0 | ant #5:g w53 b18 q1 s34/35/12
+d15 T=18 ants=236 cols=5 ant #1:m w68 b34 q1 s588/10/67 | ant #2:g w38 b32 q1 s215/62/46 | ant #3:g w38 b16 q1 s16/52/18 | ant #4:g w44 b26 q1 s168/0/0 | ant #5:g w43 b18 q1 s33/32/13
+deaths per colony (lineage):
+  ant #1 alive=true peak=70 eclosed=12 adult={"predation":11,"combat":2,"old age":1} brood={}
+  ant #2 alive=true peak=50 eclosed=2 adult={"old age":1,"combat":13} brood={}
+  ant #3 alive=true peak=40 eclosed=0 adult={"old age":1,"starvation":1} brood={}
+  ant #4 alive=true peak=45 eclosed=19 adult={"starvation":1,"old age":2} brood={}
+  ant #5 alive=true peak=75 eclosed=0 adult={"starvation":16,"old age":3,"predation":13} brood={}
+events tail:
+  [14.7] ant #4: water is entering the nest (5 flooded cells).
+  [14.7] ant #5: water is entering the nest (8 flooded cells).
+  [14.7] Lasius niger: mating flight resolved - 0 gynes, 2 males; 0 mated queens landed in the area.
+  [14.8] Battle near x=164: ant #1 lost 1, ant #2 lost 2.
+  [14.8] ant #4: water is entering the nest (5 flooded cells).
+  [14.8] ant #5: water is entering the nest (8 flooded cells).
+  [14.8] ant #4: water is entering the nest (5 flooded cells).
+  [14.8] ant #5: water is entering the nest (8 flooded cells).
+  [14.9] ant #4: water is entering the nest (5 flooded cells).
+  [14.9] ant #5: water is entering the nest (9 flooded cells).
+  [15.0] ant #1 raid on ant #2 failed to take anything; 1 raider lost of 24.
+  [15.0] ant #1 went to war with ant #2.
+131 s

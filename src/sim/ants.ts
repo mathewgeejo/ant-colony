@@ -1,5 +1,6 @@
 // Structure-of-arrays storage for all individually represented ants.
 import { NL, NP } from './genetics.ts';
+import { NI as BRAIN_IN, NO_ACT, NW as BRAIN_W } from './brain.ts';
 
 export const CASTE = { WORKER: 0, QUEEN: 1, MALE: 2, GYNE: 3 } as const;
 export const CASTE_NAMES = ['worker', 'queen', 'male', 'gyne (winged queen)'];
@@ -24,7 +25,8 @@ export const WHY = {
   NIGHT: 31, LIGHT_RECRUIT: 32, ENERGY: 33,
   GUARD: 34, WAR_MARCH: 35, WAR_FRONT: 36, RAID_MARCH: 37, RAID_DELVE: 38, RAID_LOOT_BROOD: 39, RAID_LOOT_FOOD: 40, RAID_HOME: 41,
   ABSORBED: 42, MOUND: 43, MIDDEN: 44, PLAN_DIG: 45, CLEAR_DISC: 46,
-  DIG_OUT: 47, SPOIL_DUMP: 48, MAJOR_STANDBY: 49, MUSTER: 50, MAJOR_RECRUITED: 51, RECAPTURE: 52, DIG_IN: 53, ATE_OUTSIDE: 54,
+  DIG_OUT: 47, SPOIL_DUMP: 48, MAJOR_STANDBY: 49, MUSTER: 50, MAJOR_RECRUITED: 51, RECAPTURE: 52, DIG_IN: 53, ATE_OUTSIDE: 54, INFILTRATE: 55,
+  BRAIN_EAT: 56, BRAIN_REST: 57, BRAIN_FLEE: 58, BRAIN_FIGHT: 59,
 } as const;
 export const WHY_TEXT: string[] = [
   '',
@@ -82,6 +84,11 @@ export const WHY_TEXT: string[] = [
   'Carrying recaptured brood back into the nest.',
   'The entrance is blocked: digging back into the nest from outside.',
   'Starving away from the nest: fed on food found (or carried) outside.',
+  'Infiltrator: travelling through the colony\'s tunnels to the breach into a rival\'s underground territory.',
+  'Its brain chose to eat from the colony stores: eating has relieved its hunger before.',
+  'Resting: its brain values resting above any task right now.',
+  'Its brain judged this fight not worth the risk and fled (learnt from pain and fear).',
+  'Its brain chose to stand and fight (learnt from past fights).',
 ];
 
 export const MEM = 32; // route-memory waypoints per ant
@@ -89,7 +96,7 @@ export const MEM = 32; // route-memory waypoints per ant
 /** Navigation modes used by the movement step. */
 export const NAV = {
   WANDER: 0, GOAL: 1, TRAIL_OUT: 2, HOME: 3, ROUTE_OUT: 4, RETRACE: 5, NEST_CUE: 6, EXIT: 7, UP: 8, STAY: 9, EXPLORE: 10, NEST_WANDER: 11,
-  ALARM: 12, DIG_WANDER: 13, DELVE: 14,
+  ALARM: 12, DIG_WANDER: 13, DELVE: 14, TUNNEL: 15,
 } as const;
 
 export class AntStore {
@@ -132,6 +139,10 @@ export class AntStore {
   anim!: Uint8Array;
   major!: Uint8Array; // 1 = major worker (soldier subcaste) in dimorphic species
   traits!: Uint32Array; // named-trait bitmask, 2 words per ant (see traits.ts)
+  // learning brain (brain.ts): network weights, senses at the open decision, its action/start/reward so far
+  brainW!: Float32Array; brainS!: Float32Array; brainA!: Uint8Array; brainT!: Float32Array; brainR!: Float32Array;
+  brainLife!: Float32Array; brainErr!: Float32Array; brainLast!: Float32Array; brainN!: Uint32Array;
+  bored!: Float32Array; brainOk!: Uint8Array;
 
   constructor(cap = 1024) {
     this.grow(cap);
@@ -178,6 +189,10 @@ export class AntStore {
     this.anim = re(this.anim, Uint8Array);
     this.major = re(this.major, Uint8Array);
     this.traits = re(this.traits, Uint32Array, 2);
+    this.brainW = re(this.brainW, Float32Array, BRAIN_W); this.brainS = re(this.brainS, Float32Array, BRAIN_IN);
+    this.brainA = re(this.brainA, Uint8Array); this.brainT = re(this.brainT, Float32Array); this.brainR = re(this.brainR, Float32Array);
+    this.brainLife = re(this.brainLife, Float32Array); this.brainErr = re(this.brainErr, Float32Array); this.brainLast = re(this.brainLast, Float32Array);
+    this.brainN = re(this.brainN, Uint32Array); this.bored = re(this.bored, Float32Array); this.brainOk = re(this.brainOk, Uint8Array);
     this.cap = newCap;
   }
 
@@ -200,6 +215,7 @@ export class AntStore {
     this.nav[i] = 0; this.frIdx[i] = 0; this.bestQ[i] = 0; this.major[i] = 0; this.traits[i * 2] = 0; this.traits[i * 2 + 1] = 0;
     this.hx[i] = 1; this.hy[i] = 0;
     for (let k = 0; k < 4; k++) this.thrL[i * 4 + k] = 1;
+    this.brainOk[i] = 0; this.brainA[i] = NO_ACT; this.brainN[i] = 0; this.brainLife[i] = 0; this.brainR[i] = 0; this.bored[i] = 0;
     this.count++;
     return i;
   }
@@ -258,11 +274,12 @@ export class AntStore {
   }
 }
 
-const PER: Record<string, number> = { traits: 2, thrL: 4, memX: MEM, memY: MEM, frX: MEM, frY: MEM, ga: NL, gb: NL, pheno: NP };
+export const PER: Record<string, number> = { traits: 2, thrL: 4, memX: MEM, memY: MEM, frX: MEM, frY: MEM, ga: NL, gb: NL, pheno: NP, brainW: BRAIN_W, brainS: BRAIN_IN };
 export const SOA_KEYS = [
   'alive', 'id', 'colony', 'caste', 'x', 'y', 'px', 'py', 'hx', 'hy', 'age', 'health', 'energy', 'hydration', 'task', 'why', 'timer',
   'stuck', 'fails', 'carry', 'carryQ', 'carryBrood', 'moveAcc', 'tx', 'ty', 'submerged', 'contacts', 'thrL', 'memX', 'memY', 'memLen',
   'frX', 'frY', 'frLen', 'frTrips', 'stepCount', 'fightTarget', 'nav', 'frIdx', 'bestQ', 'ga', 'gb', 'pheno', 'mother', 'father', 'generation', 'born', 'anim', 'major', 'traits',
+  'brainW', 'brainS', 'brainA', 'brainT', 'brainR', 'brainLife', 'brainErr', 'brainLast', 'brainN', 'bored', 'brainOk',
 ];
 
 /** Uniform grid of cell buckets for neighbour queries (rebuilt each tick, O(n)). */

@@ -8,6 +8,7 @@ import type { SimConfig } from './sim.ts';
 import { validateSpecies } from './species.ts';
 import { MATERIALS,M,FANTASY_MATERIALS } from './materials.ts';
 import { wildlifeById } from './wildlife-defs.ts';
+import { NW, validBank } from './brain.ts';
 
 export interface SaveFile {
   format: 'ant-colony-sandbox';
@@ -60,7 +61,7 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
     reproBrood: [...sim.reproBrood.entries()], unlocked: [...sim.unlocked], ecoCursor: sim.ecoCursor,
     scheduled: structuredClone(sim.scheduled), scenarioInfo: structuredClone(sim.scenarioInfo),
     nestCells: [...sim.nestCells.entries()].map(([k, v]) => [k, v.slice()]), nestDist: sim.nestDist.slice(), occ: sim.occ.slice(),
-    createOpts: structuredClone(sim.createOpts), replayable: sim.replayable,
+    createOpts: structuredClone(sim.createOpts), replayable: sim.replayable, brainBank: structuredClone(sim.brainBank), census: structuredClone(sim.census),
     pending: structuredClone(sim.pending), navDirty: sim.navDirty, airT: sim.airT, daytime: sim.daytime,
   };
   return {
@@ -115,6 +116,8 @@ export function validateSave(file: any): string[] {
   if (!Array.isArray(s.rng) || s.rng.length !== 4) errs.push('Random generator state is missing.');
   if (!s.ants || typeof s.ants.n !== 'number') errs.push('Organism data is missing.');
   else if (!Number.isInteger(s.ants.cap) || s.ants.cap < 16 || s.ants.cap > 100000 || !Number.isInteger(s.ants.n) || s.ants.n < 0 || s.ants.n > s.ants.cap) errs.push('Organism capacity is invalid (maximum 100,000).');
+  else if (s.ants.brainW && (s.ants.brainW.length !== s.ants.n * NW || s.ants.brainW.some((v: number) => !Number.isFinite(v)))) errs.push('Ant brain weights are missing, the wrong size or not finite.');
+  for (const c of Array.isArray(s.colonies) ? s.colonies : []) if (c?.mind && (c.mind.w?.length !== NW || !Number.isFinite(c.mind.gen))) errs.push(`Colony ${c.name ?? '?'} has an invalid brain template.`);
   if (!Array.isArray(s.colonies) || s.colonies.length > 255) errs.push('Colony records are invalid.');
   if (!s.world?.temp || s.world.temp.length !== Math.ceil(W/4)*Math.ceil(H/4)) errs.push('Temperature field has the wrong size.');
   for (const sp of s.cfg?.customSpecies ?? []) { const e = validateSpecies(sp); if (e.length) errs.push(`Custom species invalid: ${e[0]}`); }
@@ -157,6 +160,7 @@ export function restore(file: SaveFile): Sim {
     for (const k of COLONY_FIELDS) c[k].restore(o[k]);
     c.brood = o.brood.map((b: any) => ({ ...b, a: Float32Array.from(b.a), b: b.b ? Float32Array.from(b.b) : null }));
     c.queens = o.queens.map((q: any) => ({ ...q, sperm: q.sperm.map((sp2: any) => ({ ...sp2, genome: Float32Array.from(sp2.genome) })) }));
+    if (o.mind) c.mind = { ...o.mind, w: Float32Array.from(o.mind.w) };
     return c;
   });
   sim.nextColonyId = s.nextColonyId; sim.broodNextId = s.broodNextId;
@@ -175,6 +179,8 @@ export function restore(file: SaveFile): Sim {
   sim.nestCells = new Map(s.nestCells.map(([k, v]: [number, any]) => [k, Int32Array.from(v)]));
   sim.nestDist.set(s.nestDist); sim.occ.set(s.occ);
   sim.createOpts = structuredClone(s.createOpts ?? null); sim.replayable = s.replayable ?? false;
+  sim.brainBank = Object.fromEntries(Object.entries(s.brainBank ?? {}).filter(([, e]) => validBank(e)).map(([k, e]: [string, any]) => [k, { ...e, w: Float32Array.from(e.w) }]));
+  sim.census = Array.isArray(s.census) ? structuredClone(s.census) : [];
   sim.pending = structuredClone(s.pending ?? []); sim.navDirty = s.navDirty ?? false;
   sim.airT = s.airT ?? sim.climate.meanTemp; sim.daytime = s.daytime ?? true;
   return sim;

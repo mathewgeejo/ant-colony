@@ -15,7 +15,7 @@
 import { CASTE, NAV, TASK, WHY } from './ants.ts';
 import type { Colony, Relation, WarState } from './colony.ts';
 import { STAGE } from './colony.ts';
-import { M } from './materials.ts';
+import { IS_SOLID, M } from './materials.ts';
 import type { Sim } from './sim.ts';
 
 export const STRATEGY_EVERY = 150;
@@ -154,7 +154,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
   for (const r of w.relations) { const o = byId(sim, r.id); if (o && r.nestKnown) { r.nestX = o.entrance.x; r.nestY = o.entrance.y; } }
   // ---- call off a raid that is bleeding raiders without taking anything ----
   if (w.raid.active && counts[2] > 0) {
-    const lost = relation(c, w.raid.target).totalLosses - w.raid.lossesAtStart;
+    const lost = Math.max(0, relation(c, w.raid.target).totalLosses - w.raid.lossesAtStart);
     if (lost > Math.max(3, w.raid.party * 0.5) && w.raid.brood + w.raid.food === 0) {
       for (let i = 0; i < a.n; i++) if (a.alive[i] && a.colony[i] === c.slot && a.task[i] === TASK.RAID && a.carryBrood[i] < 0) goHome(sim, i, c, WHY.RAID_HOME);
       counts[2] = 0;
@@ -165,7 +165,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
   if (w.raid.active && counts[2] === 0 && tick - w.raid.start > 120) {
     const o = sim.colonies.find((x) => x && x.id === w.raid.target);
     const r = relation(c, w.raid.target);
-    const lost = r.totalLosses - w.raid.lossesAtStart;
+    const lost = Math.max(0, r.totalLosses - w.raid.lossesAtStart);
     const won = w.raid.brood + w.raid.food > 0;
     if (won) w.raidsWon++;
     report(sim, [c], `${c.name} raid on ${o?.name ?? 'a rival'} ${won ? `returned with ${w.raid.brood} brood and ${w.raid.food} food` : 'failed to take anything'}; ${lost} raider${lost === 1 ? '' : 's'} lost of ${w.raid.party}.`, 'raid');
@@ -213,8 +213,21 @@ export function updateStrategy(sim: Sim, c: Colony) {
   // raids are discrete expeditions with a rest period between them
   if (s === 'raid' && tr && !w.raid.active && (w.raids === 0 || tick - w.raid.start > 1500)) {
     quota[2] = Math.max(5, Math.min(60, Math.round(W * 0.35)));
-    w.raid = { active: true, target, start: tick, brood: 0, food: 0, lossesAtStart: tr.totalLosses, party: 0 };
+    // an open breach between the two tunnel networks lets the raid go underground (infiltration)
+    const o = byId(sim, target);
+    const ct = o ? c.plan?.contacts?.find((k) => k.colony === target && k.breached && breachOpen(sim, c, o, k.x, k.y, k.dir)) : undefined;
+    w.raid = { active: true, target, start: tick, brood: 0, food: 0, lossesAtStart: tr.totalLosses, party: 0, ...(ct ? { tunnel: { x: ct.x, y: ct.y, dir: ct.dir } } : {}) };
     w.raids++;
+  }
+  // at war with a breached neighbour: send a few infiltrators through the tunnels even without a raid
+  if (s === 'war' && tr && !w.raid.active && tick - w.raid.start > 2400) {
+    const o = byId(sim, target);
+    const ct = o ? c.plan?.contacts?.find((k) => k.colony === target && k.breached && breachOpen(sim, c, o, k.x, k.y, k.dir)) : undefined;
+    if (ct) {
+      quota[2] = Math.max(4, Math.round(W * 0.12));
+      w.raid = { active: true, target, start: tick, brood: 0, food: 0, lossesAtStart: tr.totalLosses, party: 0, tunnel: { x: ct.x, y: ct.y, dir: ct.dir } };
+      w.raids++;
+    }
   }
   let ri = 0;
   for (const kind of [0, 1, 2]) {
@@ -226,7 +239,9 @@ export function updateStrategy(sim: Sim, c: Colony) {
         if (!tr || tr.frontX < 0) break;
         a.task[i] = TASK.WAR; a.why[i] = WHY.MUSTER; a.nav[i] = NAV.EXIT; a.tx[i] = Math.round(tr.frontX); a.ty[i] = Math.round(tr.frontY); a.timer[i] = 260;
       } else {
-        a.task[i] = TASK.RAID; a.why[i] = WHY.MUSTER; a.nav[i] = NAV.EXIT; a.tx[i] = tr!.nestX; a.ty[i] = tr!.nestY; a.timer[i] = 700;
+        const tun = w.raid.tunnel;
+        if (tun) { a.task[i] = TASK.RAID; a.why[i] = WHY.INFILTRATE; a.nav[i] = NAV.TUNNEL; a.tx[i] = tun.x; a.ty[i] = tun.y; a.timer[i] = 2400; }
+        else { a.task[i] = TASK.RAID; a.why[i] = WHY.MUSTER; a.nav[i] = NAV.EXIT; a.tx[i] = tr!.nestX; a.ty[i] = tr!.nestY; a.timer[i] = 700; }
         w.raid.party++;
       }
       a.fightTarget[i] = -1; a.memLen[i] = 0; a.stuck[i] = 0; a.fails[i] = 0;
@@ -235,7 +250,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
   }
   if (w.raid.party && w.raid.start === tick) {
     const o = byId(sim, target);
-    report(sim, [c], `${c.name} sent ${w.raid.party} raiders against ${o?.name}.`, 'raid');
+    report(sim, [c], w.raid.tunnel ? `${c.name} sent ${w.raid.party} infiltrators through the tunnels into ${o?.name}'s territory.` : `${c.name} sent ${w.raid.party} raiders against ${o?.name}.`, 'raid');
   }
   // release surplus guards/fighters when the strategy no longer calls for them
   for (const kind of [0, 1]) {
@@ -258,6 +273,19 @@ export function updateStrategy(sim: Sim, c: Colony) {
     const occupied = (inTarget[o.slot] ?? 0) >= 2;
     if ((occupied && o.workers <= c.workers * 0.6) || (o.workers <= 4 && r.nestKnown)) { absorb(sim, o, c); break; }
   }
+}
+
+/** True when colony c's tunnels touch target o's open tunnels near a border contact. */
+export function breachOpen(sim: Sim, c: Colony, o: Colony, x: number, y: number, dir: number) {
+  const w = sim.w, own = c.slot + 1, their = o.slot + 1;
+  for (let s = -2; s <= 18; s++) for (let dy = -3; dy <= 2; dy++) {
+    const xx = x + dir * s, yy = y + dy;
+    if (!w.inb(xx, yy) || !w.inb(xx + 1, yy + 1)) continue;
+    const k = yy * w.W + xx;
+    if (w.owner[k] !== own || IS_SOLID[w.mat[k]]) continue;
+    for (const j of [k - 1, k + 1, k - w.W, k + w.W]) if (w.owner[j] === their && !IS_SOLID[w.mat[j]]) return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ absorption
@@ -353,16 +381,23 @@ function decideRaid(sim: Sim, i: number, c: Colony, own: boolean) {
       return;
     }
     a.why[i] = WHY.RAID_LOOT_BROOD;
+    // infiltrators carry their loot back the way they came, through the tunnels
+    if (ws.raid.tunnel && !own && w.owner[y * w.W + x]) { a.nav[i] = NAV.TUNNEL; a.tx[i] = c.chamber.x >= 0 ? c.chamber.x : c.entrance.x; a.ty[i] = c.chamber.x >= 0 ? c.chamber.y : c.entrance.y; return; }
     const inForeign = w.owner[y * w.W + x] && !own;
     a.nav[i] = own ? NAV.NEST_CUE : inForeign ? NAV.EXIT : NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y;
     if (inForeign && a.stuck[i] > 40) { a.nav[i] = NAV.UP; a.stuck[i] = 0; }
     return;
   }
   if (!o) return goHome(sim, i, c, WHY.RAID_HOME);
-  if (muster(sim, i, own)) return;
+  const tun = ws.raid.tunnel;
+  if (!tun && muster(sim, i, own)) return;
   if (--a.timer[i] <= 0) return goHome(sim, i, c, WHY.RAID_HOME);
   const here = w.owner[y * w.W + x];
   if (here === o.slot + 1) {
+    if (tun && !ws.raid.entered) {
+      ws.raid.entered = true;
+      report(sim, [c, o], `Infiltrators of ${c.name} broke into ${o.name}'s tunnels at x=${x}.`, 'raid');
+    }
     a.why[i] = WHY.RAID_DELVE; a.nav[i] = NAV.DELVE;
     // seize the nearest unguarded brood item; pupae first, they are closest to becoming workers
     let pick = -1, best = -1;
@@ -396,6 +431,14 @@ function decideRaid(sim: Sim, i: number, c: Colony, own: boolean) {
       return;
     }
     if (a.stuck[i] > 80) { a.nav[i] = NAV.WANDER; a.stuck[i] = 0; }
+    return;
+  }
+  // infiltrating: through our own tunnels to the breach, then push into theirs toward the rival nest
+  if (tun) {
+    a.why[i] = WHY.INFILTRATE;
+    if (d2(x, y, tun.x, tun.y) <= 16 || !own) { a.nav[i] = NAV.DELVE; a.tx[i] = o.entrance.x; a.ty[i] = Math.max(o.entrance.y, tun.y); }
+    else { a.nav[i] = NAV.TUNNEL; a.tx[i] = tun.x; a.ty[i] = tun.y; }
+    if (a.stuck[i] > 80) { a.nav[i] = NAV.NEST_WANDER; a.stuck[i] = 0; }
     return;
   }
   // marching on the rival nest

@@ -11,6 +11,7 @@ import { REFERENCE_POWDERS } from './sim/powder-reactions.ts';
 import { SCENARIOS } from './sim/scenarios.ts';
 import { LOCI, MODES } from './sim/genetics.ts';
 import { TRAITS } from './sim/traits.ts';
+import { ACT_NAMES, NA as BRAIN_NA, NH as BRAIN_NH, NI as BRAIN_NI, SENSE_NAMES } from './sim/brain.ts';
 import type { Mode } from './sim/genetics.ts';
 import type { OverlayKind, ToWorker } from './protocol.ts';
 import type { Command } from './sim/sim.ts';
@@ -59,7 +60,9 @@ $('#app').innerHTML = `
   <div class="world-wrap">
     <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag, middle-drag, Alt-drag or the hand tool pans. Scroll or pinch to zoom. Arrow keys pan, plus and minus zoom."></canvas>
     <div class="world-heading"><span class="live-dot"></span><strong id="world-title">First colony</strong><span id="mode-badge">Naturalistic</span></div>
+    <div id="sheets"></div>
     <div class="hud-right">
+      <button id="kingdoms-btn" title="Kingdoms &amp; alliances" aria-label="Open kingdoms and alliances">${icon('map')}<span>Kingdoms</span></button>
       <button id="sidebar-toggle" title="Open colony observatory" aria-label="Toggle colony panel">${icon('ant')}<span id="colony-peek">Colony</span></button>
       <div class="world-weather">${icon('sun')}<span id="weather">21°C · mild</span></div>
     </div>
@@ -119,7 +122,9 @@ function queueBrush(cmd:Command){
 function flushBrush(){if(brushFlush)cancelAnimationFrame(brushFlush);brushFlush=0;if(!brushQueue.length)return;const cmds=brushQueue;brushQueue=[];send({type:'cmds',cmds});}
 let stats: any = null, evolution: any = null, species: any[] = [], running = true, tool = 'inspect', cat = 'terrain', material: number = M.SOIL;
 let runRevision=0;
-let selectedColony = -1, scenario = 'first-colony', seed = 42, mode: Mode = 'naturalistic', modalKind = '', journalTab = 'discoveries';
+// default: the generated living world (several kingdoms, god-game view); ?scenario=…&seed=… picks another
+const urlOpts = new URLSearchParams(location.search);
+let selectedColony = -1, scenario = SCENARIOS.some((s) => s.id === urlOpts.get('scenario')) ? urlOpts.get('scenario')! : 'living-world', seed = Number(urlOpts.get('seed') ?? 42) >>> 0, mode: Mode = 'naturalistic', modalKind = '', journalTab = 'discoveries';
 let lastInspect = '', genoOpen = false, colonyTraitsOpen = false, kingdomOpen = true;
 const STATUS_COLOR: Record<string, string> = { war: '#e0675c', tension: '#e7bd69', neutral: '#9aa3a8', peace: '#8fd18a', alliance: '#7fb7ff' };
 function kingdomHtml(k: any): string {
@@ -127,6 +132,245 @@ function kingdomHtml(k: any): string {
   const rel = k.relations.length ? k.relations.map((r: any) => `<div><span style="color:${STATUS_COLOR[r.status] ?? '#ccc'}">${esc(r.status)}${r.days ? ` (${r.days}d)` : ''}</span> ${esc(r.kingdom)} <small>${esc(r.colony)}</small></div>`).join('') : '<p class="muted">Has not met any other kingdom yet.</p>';
   return `<details class="tasks" id="kingdom"${kingdomOpen ? ' open' : ''}><summary>${esc(k.kingdom)}</summary><p>${k.ruler ? `Ruled by <b>Queen ${esc(k.ruler)}</b>${k.reign > 1 ? ` (ruler #${k.reign})` : ''}` : '<b>No ruler</b>'} · morale <b>${k.morale}%</b></p><p class="muted">${esc(k.cultureText)}</p><p class="muted">Clans (patrilines):</p>${k.clans.map((c: any) => `<div>${esc(c.name)}<b>${c.members}</b></div>`).join('') || '<p class="muted">None yet.</p>'}${k.heroes.length ? `<p class="muted">Heroes:</p>${k.heroes.map((h: any) => `<div>${esc(h.name)}<b>${h.kills} slain</b></div>`).join('')}` : ''}<p class="muted">Diplomacy:</p>${rel}<p class="muted">Chronicle:</p>${k.chronicle.map((l: string) => `<p><small>${esc(l)}</small></p>`).join('')}</details>`;
 }
+// ---------------------------------------------------------------- WorldBox-style datasheets
+// Floating, draggable sheets that appear only when asked for: an ant sheet when an ant is clicked, a kingdom
+// sheet per colony, and a Kingdoms & alliances window. Each re-renders only when its content changes.
+type SheetKind = 'ant' | 'colony' | 'list';
+const sheet = { ant: { open: false, tab: 'overview', id: 0, follow: false }, colony: { open: false, tab: 'overview', id: 0 }, list: { open: false, tab: 'world' } };
+const sheetHtml: Record<SheetKind, string> = { ant: '', colony: '', list: '' };
+let lastPickedAnt = 0;
+const rgb = (m: number[] | undefined) => m ? `rgb(${m[0]},${m[1]},${m[2]})` : '#888';
+const bar = (label: string, v: number, color: string, text?: string) => `<div class="sh-bar"><span>${esc(label)}</span><div><i style="width:${Math.round(Math.max(0, Math.min(1, v)) * 100)}%;background:${color}"></i></div><b>${esc(text ?? `${Math.round(v * 100)}%`)}</b></div>`;
+const kv = (k: string, v: string | number) => `<div class="sh-kv"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`;
+const sec = (t: string) => `<h4 class="sh-sec">${esc(t)}</h4>`;
+function sheetFrame(kind: SheetKind, title: string, sub: string, color: string, tabs: [string, string][], active: string, body: string, actions = '') {
+  return `<div class="sh-head" data-drag="${kind}"><i class="sh-swatch" style="background:${color}"></i><div class="sh-title"><strong>${esc(title)}</strong><small>${esc(sub)}</small></div><button class="icon-btn sh-x" data-sheet-close="${kind}" aria-label="Close">${icon('close')}</button></div>`
+    + (tabs.length > 1 ? `<div class="sh-tabs">${tabs.map(([k, n]) => `<button data-sheet-tab="${kind}:${k}" class="${k === active ? 'active' : ''}">${esc(n)}</button>`).join('')}</div>` : '')
+    + `<div class="sh-body">${body}</div>${actions ? `<div class="sh-actions">${actions}</div>` : ''}`;
+}
+const STRAT_TEXT: Record<string, string> = { grow: 'Growing', forage: 'Foraging widely', defend: 'Defending', fortify: 'Fortified', war: 'At war', raid: 'Raiding' };
+
+function antSheet(a: any): string {
+  const s = a.sheet, t = sheet.ant.tab;
+  let body = '';
+  if (t === 'overview') {
+    body = `<p class="sh-doing"><b>${esc(a.task)}</b> — ${esc(a.why)}</p>`
+      + bar('Health', s.health, '#e0675c') + bar('Energy', s.energy, '#e7bd69') + bar('Water', s.hydration, '#7fd8f0') + bar('Age', s.age / s.life, '#a9b473', `${s.age.toFixed(1)} / ${Math.round(s.life)} d`)
+      + kv('Mood', a.mood ?? '-') + kv('Clan', a.clan ?? '-') + kv('Where', `${s.underground ? 'underground' : 'surface'} · ${s.x}, ${s.y}`)
+      + (s.carrying ? kv('Carrying', s.carrying) : '') + kv('Foes slain', s.kills) + kv('Generation', s.generation)
+      + sec('Personality') + `<p class="muted">${esc(a.persona ?? '')}</p>`
+      + sec('Body') + kv('Size', `${s.size.toFixed(2)}×`) + kv('Attack', s.attack.toFixed(2)) + kv('Defence', s.defense.toFixed(2)) + kv('Speed', s.speed.toFixed(2));
+  } else if (t === 'brain') {
+    body = brainTab(a.brain);
+  } else if (t === 'story') {
+    body = (a.story?.length ? a.story.map((l: string) => `<p>${esc(l)}</p>`).join('') : '<p class="muted">Nothing notable has happened to this ant yet. Rulers, soldiers, princesses and fighters get life stories.</p>')
+      + sec('Named traits') + traitChips(a.named ?? []) + `<p class="muted">${esc(a.namedOrigin ?? '')}</p>`;
+  } else {
+    body = a.lines.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') + a.traits.map((tr: any) => `<div class="sh-kv"><span>${esc(tr.name)} <small>${esc(tr.kind)}</small></span><b>${esc(tr.value)}</b></div>`).join('');
+  }
+  const actions = t === 'brain' ? brainActions
+    : `<button data-sheet-act="follow" class="${sheet.ant.follow ? 'active' : ''}">${sheet.ant.follow ? 'Following' : 'Follow'}</button><button data-sheet-act="kingdom" data-colony="${a.colonyId}">Kingdom</button><button data-sheet-act="traits">Traits…</button>`;
+  return sheetFrame('ant', a.name ?? `${a.caste} #${a.id}`, `${a.caste} #${a.id} · ${s.kingdom}`, rgb(s.marking), [['overview', 'Overview'], ['brain', 'Brain'], ['story', 'Story'], ['genes', 'Genes']], t, body, actions);
+}
+
+// ---------------------------------------------------------------- learning brain (sim/brain.ts)
+const brainActions = '<button data-sheet-act="brains-export">Export brains</button><button data-sheet-act="brains-import">Import…</button><button data-sheet-act="brains-reset">Forget learnt</button>';
+const signed = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
+const wcol = (v: number) => { const k = Math.min(1, Math.abs(v) / 2); return v >= 0 ? `rgba(231,189,105,${(0.08 + 0.92 * k).toFixed(2)})` : `rgba(127,183,255,${(0.08 + 0.92 * k).toFixed(2)})`; };
+/** Weight map: sense->hidden (rows = senses) and hidden->action (rows = hidden units). Gold excites, blue inhibits. */
+function weightMap(w: number[]): string {
+  const w2 = BRAIN_NI * BRAIN_NH + BRAIN_NH; // layout: sense->hidden weights, hidden biases, hidden->action weights, action biases
+  let a = '<div class="brain-grid" style="grid-template-columns:repeat(' + BRAIN_NH + ',1fr)">';
+  for (let k = 0; k < BRAIN_NI; k++) for (let j = 0; j < BRAIN_NH; j++) { const v = w[k * BRAIN_NH + j]; a += `<i style="background:${wcol(v)}" title="${esc(SENSE_NAMES[k])} → hidden ${j + 1}: ${signed(v)}"></i>`; }
+  a += '</div>';
+  let b = '<div class="brain-grid" style="grid-template-columns:repeat(' + BRAIN_NA + ',1fr)">';
+  for (let j = 0; j < BRAIN_NH; j++) for (let k = 0; k < BRAIN_NA; k++) { const v = w[w2 + j * BRAIN_NA + k]; b += `<i style="background:${wcol(v)}" title="hidden ${j + 1} → ${esc(ACT_NAMES[k])}: ${signed(v)}"></i>`; }
+  b += '</div>';
+  return `<div class="brain-maps"><div><small>senses → hidden</small>${a}</div><div><small>hidden → actions</small>${b}</div></div>`;
+}
+function brainTab(b: any): string {
+  if (!b) return '<p class="muted">Only workers carry a learning brain. Queens and winged reproductives act on instinct.</p>';
+  const lo = Math.min(-0.5, ...b.q.map((q: any) => q.v)), hi = Math.max(1, ...b.q.map((q: any) => q.v));
+  const best = b.q.reduce((m: any, q: any) => (q.v > m.v ? q : m), b.q[0]);
+  return `<div class="brain"><p class="muted">A ${BRAIN_NI}–${BRAIN_NH}–${BRAIN_NA} neural network of its own. It learns from drive reduction (less hunger, thirst, pain, fear or boredom = reward) and from useful work, like a norn in Creatures. ${b.current ? `Now doing: <b>${esc(b.current)}</b>.` : ''}</p>`
+    + sec('Drives') + b.senses.filter((s: any) => s.drive).map((s: any) => bar(s.name, s.v, '#e0675c')).join('')
+    + sec('Senses') + b.senses.filter((s: any) => !s.drive).map((s: any) => bar(s.name, s.v, '#7fd8f0')).join('')
+    + sec('Expected value of each choice') + b.q.map((q: any) => bar(q.name + (q === best ? ' ★' : ''), (q.v - lo) / (hi - lo), q.name === b.current ? '#8fd18a' : '#e7bd69', signed(q.v))).join('')
+    + sec('Learning') + kv('Decisions made', b.decisions) + kv('Lifetime reward', b.lifetime.toFixed(2)) + kv('Average per decision', signed(b.avg))
+    + kv('Last outcome', signed(b.last)) + kv('Reward so far (current action)', signed(b.pending)) + kv('Surprise (avg. prediction error)', b.surprise.toFixed(2))
+    + kv('Curiosity (exploration)', b.temperature.toFixed(2)) + kv('Learning rate', b.learnRate.toFixed(3))
+    + sec('Learnt during its life') + (b.learnt.length ? b.learnt.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') : '<p class="muted">Nothing yet: still running on the template it was born with.</p>')
+    + sec('Strongest associations') + (b.instincts.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') || '<p class="muted">None.</p>')
+    + (b.template ? sec('Inherited template') + kv('Revision', b.template.gen) + kv('From', b.template.source) + kv('Lifetimes judged', b.template.lifetimes) + kv('Lifetimes kept', b.template.accepted) : '')
+    + sec('Weights') + weightMap(b.weights) + '</div>';
+}
+function mindTab(m: any): string {
+  if (!m) return '<p class="muted">No workers have been born yet, so the colony has no brain template.</p>';
+  const total = Math.max(1, m.choosing.reduce((n: number, e: any) => n + e.n, 0));
+  return `<div class="brain"><p class="muted">Newborn workers inherit this template (plus small variation). When a worker dies after a more rewarding life than average, what it learnt is blended in. The best template per species is kept in this browser and seeds colonies in new worlds.</p>`
+    + kv('Template revision', m.gen) + kv('Origin', m.source) + kv('Lifetimes judged', m.lifetimes) + kv('Lifetimes kept', m.accepted)
+    + kv('Average lifetime fitness', signed(m.meanFit)) + kv('Workers with brains', m.brains) + kv('Decisions so far', m.decisions) + kv('Reward per decision (living)', signed(m.avgReward))
+    + sec('Workers are choosing') + (m.choosing.map((e: any) => bar(e.name, e.n / total, '#e7bd69', String(e.n))).join('') || '<p class="muted">-</p>')
+    + sec('What the colony mind has learnt') + (m.assoc.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') || '<p class="muted">-</p>') + '</div>';
+}
+
+function colonySheet(c: any): string {
+  const k = c.society, tr = c.territory, war = c.war, t = sheet.colony.tab;
+  let body = '';
+  if (t === 'overview') {
+    const brood = c.brood.reduce((x: number, y: number) => x + y, 0);
+    body = (k ? kv('Ruler', k.ruler ? `Queen ${k.ruler}${k.reign > 1 ? ` (#${k.reign})` : ''}` : 'none') + kv('Culture', k.culture) + bar('Morale', k.morale / 100, '#8fd18a') : '')
+      + kv('Species', c.species) + kv('Stage', c.stage) + kv('Age', `${c.ageDays.toFixed(1)} days · generation ${c.generation}`)
+      + sec('Population') + popChart(c) + kv('Born / died today', `${c.today?.births ?? 0} / ${c.today?.deaths ?? 0}`) + kv('Crowding', `${c.density} ants per 100 nest cells`) + kv('Nest', `${c.nestVolume} cells dug · ${c.nestDepth} deep`) + kv('Workers', `${c.workers}${c.majors ? ` (${c.majors} soldiers)` : ''}`) + kv('Queens', c.queens) + kv('Winged', c.alates) + kv('Brood', `${brood} (${c.brood[0]} eggs · ${c.brood[1]} larvae · ${c.brood[2]} pupae)`)
+      + sec('Stores') + kv('Sugar', Math.round(c.store.sugar)) + kv('Protein', Math.round(c.store.protein)) + kv('Seeds', Math.round(c.store.seed))
+      + (c.notes.length ? sec('Notes') + c.notes.map((n: string) => `<p class="muted">${esc(n)}</p>`).join('') : '');
+  } else if (t === 'activity') {
+    const total = Math.max(1, c.workers), tasks = Object.entries(c.tasks as Record<string, number>).sort((p, q) => q[1] - p[1]);
+    body = tasks.length ? tasks.map(([n, v]) => bar(n, v / total, '#e7bd69', String(v))).join('') : '<p class="muted">No workers yet.</p>';
+    body += sec('Lifetime') + kv('Workers reared', c.stats.workersEclosed) + kv('Daughter colonies', c.stats.daughterColonies) + kv('Food brought in', c.stats.foodIn.join(' / ') + ' (sugar/protein/seed)')
+      + sec('Deaths') + (Object.entries(c.stats.adultDeaths as Record<string, number>).map(([n, v]) => kv(n, v)).join('') || '<p class="muted">None.</p>');
+  } else if (t === 'territory') {
+    body = bar('Map span', tr.span / 100, rgb(c.marking), `${tr.span}%`) + kv('Tunnel cells claimed', tr.cells) + kv('Still to dig', tr.todo) + kv('Outposts', tr.outposts) + kv('Entrances', tr.shafts)
+      + sec('Highways') + (tr.roads.length ? tr.roads.map((r: any) => `<div class="sh-kv"><span>${esc(r.name)}<small>${esc(r.status)}</small></span><b>${r.len} cells · ${r.outposts} outposts</b></div>`).join('') : '<p class="muted">Highways start once the colony has about 16 workers.</p>')
+      + sec('Underground borders') + (tr.contacts.length ? tr.contacts.map((b: any) => kv(b.colony, b.breached ? `breached at x=${b.x}` : `border at x=${b.x}`)).join('') : '<p class="muted">No tunnels have met another kingdom yet.</p>');
+  } else if (t === 'war') {
+    body = war ? kv('Stance', STRAT_TEXT[war.strategy] ?? war.strategy) + `<p class="muted">${esc(war.reason)}</p>` + (war.infiltrating ? '<p class="sh-alert">Infiltrators are in enemy tunnels.</p>' : '')
+      + kv('Raids', `${war.raidsWon} won of ${war.raids}`) + kv('Brood captured', war.broodStolen) + kv('Colonies absorbed', war.absorbed) : '<p class="muted">Has not met a rival yet.</p>';
+    body += sec('Relations') + (k?.relations.length ? k.relations.map((r: any) => `<div class="sh-kv"><span><a href="#" data-open-colony="${r.id}">${esc(r.kingdom)}</a><small>${esc(r.colony)}</small></span><b style="color:${STATUS_COLOR[r.status] ?? '#ccc'}">${esc(r.status)}${r.days ? ` · ${r.days}d` : ''}</b></div>`).join('') : '<p class="muted">No known kingdoms.</p>');
+    body += sec('Battle reports') + (war?.reports.length ? war.reports.map((r: string) => `<p><small>${esc(r)}</small></p>`).join('') : '<p class="muted">None yet.</p>');
+  } else if (t === 'mind') {
+    body = mindTab(c.mind);
+  } else {
+    body = sec('Clans (patrilines)') + (k?.clans.map((x: any) => kv(x.name, x.members)).join('') || '<p class="muted">None yet.</p>')
+      + sec('Heroes') + (k?.heroes.map((h: any) => kv(h.name, `${h.kills} slain`)).join('') || '<p class="muted">None yet.</p>')
+      + sec('Chronicle') + (k?.chronicle.map((l: string) => `<p><small>${esc(l)}</small></p>`).join('') || '');
+  }
+  const actions = `<button data-sheet-act="focus">Focus nest</button>${c.queenId ? '<button data-sheet-act="queen-traits">Queen traits…</button>' : ''}<button data-sheet-act="overlay">Show tunnels</button>`;
+  return sheetFrame('colony', k?.kingdom ?? c.name, `${c.name} · ${c.species}`, rgb(c.marking), [['overview', 'Overview'], ['activity', 'Activity'], ['mind', 'Mind'], ['territory', 'Territory'], ['war', 'War'], ['kingdom', 'Kingdom']], t, body, t === 'mind' ? brainActions : actions);
+}
+
+/** Line chart (SVG). series: [{ values, color }] sharing one x axis; values may differ in length (right-aligned). */
+function lineChart(series: { values: number[]; color: string; fill?: boolean }[], h = 70, label = ''): string {
+  const n = Math.max(2, ...series.map((s) => s.values.length)), max = Math.max(1, ...series.flatMap((s) => s.values));
+  const W = 260, pad = 2;
+  const pts = (v: number[]) => v.map((y, k) => `${(pad + ((n - v.length + k) / (n - 1)) * (W - 2 * pad)).toFixed(1)},${(h - pad - (y / max) * (h - 2 * pad)).toFixed(1)}`).join(' ');
+  const lines = series.filter((s) => s.values.length).map((s) => s.fill
+    ? `<polygon points="${pad},${h - pad} ${pts(s.values)} ${W - pad},${h - pad}" fill="${s.color}" opacity=".35"/>`
+    : `<polyline points="${pts(s.values)}" fill="none" stroke="${s.color}" stroke-width="1.6"/>`).join('');
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${h}" preserveAspectRatio="none">${lines}</svg><small>${esc(label)}<b>${Math.round(max)}</b></small></div>`;
+}
+function popChart(c: any): string {
+  const h = c.history ?? [];
+  if (h.length < 2) return '<p class="muted">Population history appears after the first full day.</p>';
+  return lineChart([{ values: h.map((e: number[]) => e[2]), color: '#e7bd69', fill: true }, { values: h.map((e: number[]) => e[1]), color: rgb(c.marking) }], 60, 'workers (line) · brood (fill) · peak');
+}
+function worldTab(cols: any[], census: any[]): string {
+  const alive = cols.filter((c) => c.alive), last = census[census.length - 1];
+  const ants = alive.reduce((n, c) => n + c.adults, 0), brood = alive.reduce((n, c) => n + c.brood.reduce((x: number, y: number) => x + y, 0), 0);
+  const born = alive.reduce((n, c) => n + (c.today?.births ?? 0), 0), died = alive.reduce((n, c) => n + (c.today?.deaths ?? 0), 0);
+  const top = [...alive].sort((p, q) => q.adults - p.adults).slice(0, 6);
+  const oldest = [...alive].sort((p, q) => q.ageDays - p.ageDays)[0], deepest = [...alive].sort((p, q) => q.nestDepth - p.nestDepth)[0];
+  const founded = census.reduce((n, d) => n + d.founded, 0), fallen = census.reduce((n, d) => n + d.fallen, 0);
+  return kv('Kingdoms', alive.length) + kv('Ants alive', ants) + kv('Brood (eggs, larvae, pupae)', brood)
+    + kv('Born today / died today', `${born} / ${died}`) + (last ? kv('Yesterday born / died', `${last.births} / ${last.deaths}`) : '')
+    + kv('Kingdoms founded / fallen', `${founded} / ${fallen}`)
+    + sec('World population') + (census.length > 1 ? lineChart([{ values: census.map((d) => d.brood), color: '#e7bd69', fill: true }, { values: census.map((d) => d.ants), color: '#8fd18a' }], 70, 'adults (line) · brood (fill) · peak') : '<p class="muted">The census is taken every dawn.</p>')
+    + (census.length > 1 ? lineChart([{ values: census.map((d) => d.births), color: '#7fd8f0' }, { values: census.map((d) => d.deaths), color: '#e0675c' }], 50, 'births (blue) · deaths (red) per day · peak') : '')
+    + sec('Kingdom sizes') + (top.some((c) => (c.history?.length ?? 0) > 1) ? lineChart(top.map((c) => ({ values: (c.history ?? []).map((e: number[]) => e[1]), color: rgb(c.marking) })), 70, 'workers per kingdom · peak') : '')
+    + top.map((c) => `<button class="sh-row" data-open-colony="${c.id}"><i class="sh-swatch" style="background:${rgb(c.marking)}"></i><span><strong>${esc(c.society?.kingdom ?? c.name)}</strong><small>${c.ageDays.toFixed(0)} days old · dynasty ${c.generationDynasty ?? 0} · ${c.density} ants per 100 cells</small></span><b>${c.adults}<small>${c.today?.births ?? 0} born · ${c.today?.deaths ?? 0} died</small></b></button>`).join('')
+    + sec('Records') + (oldest ? kv('Oldest kingdom', `${oldest.society?.kingdom ?? oldest.name} (${oldest.ageDays.toFixed(0)} d)`) : '') + (deepest ? kv('Deepest nest', `${deepest.society?.kingdom ?? deepest.name} (${deepest.nestDepth} cells)`) : '');
+}
+
+function listSheet(cols: any[]): string {
+  const alive = cols.filter((c) => c.alive), t = sheet.list.tab;
+  let body = '';
+  if (t === 'world') {
+    body = worldTab(cols, stats?.census ?? []);
+  } else if (t === 'kingdoms') {
+    body = alive.length ? alive.map((c) => `<button class="sh-row" data-open-colony="${c.id}"><i class="sh-swatch" style="background:${rgb(c.marking)}"></i><span><strong>${esc(c.society?.kingdom ?? c.name)}</strong><small>${esc(c.species)} · ${c.society?.ruler ? `Queen ${esc(c.society.ruler)}` : 'no ruler'} · ${c.ageDays.toFixed(0)} d</small></span><b>${c.workers}<small>${esc(STRAT_TEXT[c.war?.strategy ?? 'grow'] ?? '')}</small></b></button>`).join('') : '<p class="muted">No living kingdoms.</p>';
+  } else {
+    const seen = new Set<string>(), pacts: string[] = [], wars: string[] = [];
+    for (const c of alive) for (const r of c.society?.relations ?? []) {
+      const key = [c.id, r.id].sort().join('-') + r.status;
+      if (seen.has(key)) continue; seen.add(key);
+      const line = `<div class="sh-kv"><span>${esc(c.society.kingdom)} ↔ ${esc(r.kingdom)}</span><b style="color:${STATUS_COLOR[r.status]}">${esc(r.status)}${r.days ? ` · ${r.days}d` : ''}</b></div>`;
+      if (r.status === 'peace' || r.status === 'alliance') pacts.push(line); else if (r.status === 'war' || r.status === 'tension') wars.push(line);
+    }
+    body = sec('Alliances & treaties') + (pacts.join('') || '<p class="muted">No treaties in force.</p>') + sec('Wars & tensions') + (wars.join('') || '<p class="muted">The world is at peace.</p>');
+  }
+  return sheetFrame('list', 'Kingdoms of the world', `${alive.length} kingdom${alive.length === 1 ? '' : 's'}`, '#ffc23d', [['world', 'World'], ['kingdoms', 'Kingdoms'], ['diplomacy', 'Alliances & wars']], t, body);
+}
+
+function sheetEl(kind: SheetKind): HTMLElement {
+  let el = document.getElementById(`sheet-${kind}`);
+  if (!el) { el = document.createElement('section'); el.id = `sheet-${kind}`; el.className = `sheet sheet-${kind}`; $('#sheets').appendChild(el); }
+  return el;
+}
+function renderSheets(s: any) {
+  const a = s.selectedAnt;
+  if (a && a.id !== lastPickedAnt) { sheet.ant.open = true; sheet.ant.id = a.id; ($('#cell-card') as HTMLElement).hidden = true; }
+  lastPickedAnt = a?.id ?? 0;
+  if (sheet.ant.open && !a) { sheet.ant.open = false; sheet.ant.follow = false; }
+  const col = s.colonies.find((c: any) => c.id === sheet.colony.id && c.alive);
+  if (sheet.colony.open && !col) sheet.colony.open = false;
+  const want: Record<SheetKind, string> = {
+    ant: sheet.ant.open && a?.sheet ? antSheet(a) : '',
+    colony: sheet.colony.open && col ? colonySheet(col) : '',
+    list: sheet.list.open ? listSheet(s.colonies) : '',
+  };
+  for (const kind of ['ant', 'colony', 'list'] as SheetKind[]) {
+    if (want[kind] === sheetHtml[kind]) continue;
+    sheetHtml[kind] = want[kind];
+    const el = sheetEl(kind), body = el.querySelector('.sh-body'), scroll = body?.scrollTop ?? 0;
+    el.hidden = !want[kind];
+    el.innerHTML = want[kind];
+    const nb = el.querySelector('.sh-body'); if (nb) nb.scrollTop = scroll;
+  }
+  if (sheet.ant.follow && a?.sheet) renderer.focus(a.sheet.x, a.sheet.y);
+}
+function openColonySheet(id: number) { sheet.colony.open = true; sheet.colony.id = id; if (stats) renderSheets(stats); }
+$('#sheets').addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  const close = t.closest<HTMLElement>('[data-sheet-close]')?.dataset.sheetClose as SheetKind | undefined;
+  if (close) { sheet[close].open = false; if (close === 'ant') { sheet.ant.follow = false; send({ type: 'clearSelection' }); } }
+  const tab = t.closest<HTMLElement>('[data-sheet-tab]')?.dataset.sheetTab;
+  if (tab) { const [k, v] = tab.split(':') as [SheetKind, string]; sheet[k].tab = v; }
+  const oc = t.closest<HTMLElement>('[data-open-colony]')?.dataset.openColony;
+  if (oc) { e.preventDefault(); openColonySheet(Number(oc)); }
+  const act = t.closest<HTMLElement>('[data-sheet-act]');
+  if (act) {
+    const a = stats?.selectedAnt, c = stats?.colonies.find((x: any) => x.id === sheet.colony.id);
+    switch (act.dataset.sheetAct) {
+      case 'follow': sheet.ant.follow = !sheet.ant.follow; break;
+      case 'brains-export': send({ type: 'brains', op: 'export' }); break;
+      case 'brains-reset': if (confirm('Forget every learnt brain template stored in this browser? New worlds will start from instincts again.')) send({ type: 'brains', op: 'reset' }); break;
+      case 'brains-import': {
+        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+        inp.onchange = async () => { const f = inp.files?.[0]; if (f) send({ type: 'brains', op: 'import', json: await f.text() }); };
+        inp.click(); break;
+      }
+      case 'kingdom': openColonySheet(Number(act.dataset.colony)); break;
+      case 'traits': if (a) traitManager(a.id, `${a.name ?? a.caste} (${a.colony})`, a.named ?? []); break;
+      case 'focus': if (c) renderer.focus(c.entrance.x, c.entrance.y + 12); break;
+      case 'queen-traits': if (c?.queenId) traitManager(c.queenId, `queen of ${c.name}`, c.queenTraits ?? []); break;
+      case 'overlay': { const sel = document.querySelector<HTMLSelectElement>('#overlay'); if (sel && c) { sel.value = 'nest'; sel.dispatchEvent(new Event('change')); } if (c) renderer.focus(c.entrance.x, c.entrance.y + 20); break; }
+    }
+  }
+  if (stats) renderSheets(stats);
+});
+// drag sheets by their header
+$('#sheets').addEventListener('pointerdown', (e) => {
+  const head = (e.target as HTMLElement).closest<HTMLElement>('[data-drag]');
+  if (!head || (e.target as HTMLElement).closest('button')) return;
+  const el = head.parentElement!, wrap = $('#sheets').getBoundingClientRect(), r = el.getBoundingClientRect();
+  const ox = e.clientX - r.left, oy = e.clientY - r.top;
+  const move = (ev: PointerEvent) => { el.style.left = `${Math.max(0, Math.min(wrap.width - 60, ev.clientX - wrap.left - ox))}px`; el.style.top = `${Math.max(0, Math.min(wrap.height - 40, ev.clientY - wrap.top - oy))}px`; el.style.right = 'auto'; };
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  e.preventDefault();
+});
+$('#kingdoms-btn').onclick = () => { sheet.list.open = !sheet.list.open; if (stats) renderSheets(stats); };
+
 let sound = false, audio: AudioContext | null = null, stroke = false, dragging = false, lastPoint: {x: number; y: number} | null = null, space = false;
 let shapeStart:{x:number;y:number}|null=null;
 let eraseStroke=false,intensify=false,shiftLatched=false,lineAnchor:{x:number;y:number}|null=null;
@@ -311,6 +555,7 @@ function updateStats(s: any) {
   }
   else if(cell){lastInspect='';$('#inspect-detail').innerHTML=`<div class="inspect-title">${esc(cell.material)}<small>${cell.x}, ${cell.y}</small></div><p>${esc(cell.description)}</p>${cell.lines.map((l:string)=>`<p>${esc(l)}</p>`).join('')}`;}
   updateCellCard(s);
+  renderSheets(s);
   if(document.body.classList.contains('panel-hidden'))return;
   if(c){
     const brood=c.brood.reduce((a:number,b:number)=>a+b,0);
@@ -342,6 +587,8 @@ worker.onmessage=e=>{
   if(m.type==='saved'){toast('World saved in this browser');send({type:'listSaves'});}
   if(m.type==='loaded'){setRunning(false);toast('World loaded · paused');}
   if(m.type==='saves')saves(m.list);
+  if(m.type==='brainsResult')toast(m.text);
+  if(m.type==='brainsExported'){const url=URL.createObjectURL(new Blob([m.text],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=m.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('Brain bank exported');}
   if(m.type==='speciesResult'){toast(m.ok?`Imported ${m.name}`:m.errors.join(' '),!m.ok);}
   if(m.type==='exported'){const url=URL.createObjectURL(new Blob([m.data],{type:'application/gzip'}));const a=document.createElement('a');a.href=url;a.download=m.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('World exported');}
 };

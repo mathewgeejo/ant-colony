@@ -2,6 +2,7 @@
 import { SparseField } from './signals.ts';
 import type { World } from './world.ts';
 import type { Society } from './society.ts';
+import type { Mind } from './brain.ts';
 
 export const STAGE = { EGG: 0, LARVA: 1, PUPA: 2 } as const;
 export const STAGE_NAMES = ['egg', 'larva', 'pupa'];
@@ -79,7 +80,15 @@ export interface ExposureDay {
   brood: number;
   flooded: number;
   starving: number;
+  /** adults born (eclosed) and adults died that day; absent in older saves */
+  births?: number;
+  deaths?: number;
+  /** excavated nest cells at the end of the day */
+  cells?: number;
 }
+
+/** One day of the world census (god-game statistics). */
+export interface CensusDay { day: number; colonies: number; ants: number; brood: number; births: number; deaths: number; founded: number; fallen: number; cells: number }
 
 export interface Colony {
   id: number; // unique, never reused
@@ -117,7 +126,7 @@ export interface Colony {
   alarm: SparseField;
   digCue: SparseField;
   // running accumulators for daily exposure
-  acc: { temp: number; moist: number; n: number; flooded: number; starving: number };
+  acc: { temp: number; moist: number; n: number; flooded: number; starving: number; births?: number; deaths?: number };
   playerEdited: boolean;
   /** colony-level conflict memory and strategy (created lazily; absent in older saves) */
   war?: WarState;
@@ -127,6 +136,8 @@ export interface Colony {
   lastReport?: number;
   /** kingdom layer: ruler, culture, chronicle, diplomacy (created lazily; absent in older saves) */
   society?: Society;
+  /** learning-brain template given to newborn workers (brain.ts; created lazily, absent in older saves) */
+  mind?: Mind;
 }
 
 export type Strategy = 'grow' | 'forage' | 'defend' | 'fortify' | 'war' | 'raid';
@@ -155,7 +166,9 @@ export interface WarState {
   siegeUntil: number;
   relations: Relation[];
   raids: number; raidsWon: number; absorbed: number; broodStolen: number;
-  raid: { active: boolean; target: number; start: number; brood: number; food: number; lossesAtStart: number; party: number };
+  raid: { active: boolean; target: number; start: number; brood: number; food: number; lossesAtStart: number; party: number;
+    /** underground raid: the breach point where our tunnels join the target's (absent for surface raids) */
+    tunnel?: { x: number; y: number; dir: number }; entered?: boolean };
   reports: { tick: number; text: string }[];
   /** short explanation of the current strategy for the observatory */
   reason: string;
@@ -166,7 +179,11 @@ export interface WarState {
   /** brood taken back from raiders */
   recaptured?: number;
 }
-export interface PlanChamber { x: number; y: number; rx: number; ry: number; kind: 'brood' | 'royal' | 'granary' | 'mound' | 'store' }
+export interface PlanChamber { x: number; y: number; rx: number; ry: number; kind: 'brood' | 'royal' | 'granary' | 'mound' | 'store' | 'outpost' }
+/** A long underground highway at one depth, extended segment by segment away from the nest. */
+export interface Road { level: number; dir: number; y: number; x: number; len: number; outposts: number; stop?: 'edge' | 'border'; blockedBy?: number }
+/** Where a highway met another colony's claimed tunnels. */
+export interface Contact { x: number; y: number; dir: number; colony: number; breached: boolean; since: number }
 export interface NestPlan {
   baseY: number; ex: number;
   /** shaft path parameters: x(y) = ex + round(amp * sin(y * freq + phase)) */
@@ -183,6 +200,9 @@ export interface NestPlan {
   version: number;
   /** original ground surface for columns ex-30 .. ex+30; heap height is measured above it */
   ground: number[];
+  /** underground kingdom: highways and border contacts (absent in older saves) */
+  roads?: Road[];
+  contacts?: Contact[];
 }
 
 export function newStats(): ColonyStats {

@@ -44,7 +44,8 @@ describe('named traits: inheritance', () => {
     const qi = s.a.findById(c.queens[0].antId);
     s.a.traits[qi * 2] = mask('strong', 'fertile')[0]; s.a.traits[qi * 2 + 1] = mask('strong', 'fertile')[1];
     c.brood.length = 0;
-    tick(s, 7200);
+    // sample enough eggs that the inherited share is not a coin toss
+    for (let k = 0; k < 12 && c.brood.filter((b) => b.tr).length < 12; k++) tick(s, 1800);
     const laid = c.brood.filter((b) => b.tr);
     expect(laid.length).toBeGreaterThan(3);
     const share = laid.filter((b) => has(b.tr!, 0, TR.strong)).length / laid.length;

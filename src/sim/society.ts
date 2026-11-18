@@ -274,9 +274,16 @@ function sign(sim: Sim, c: Colony, o: Colony, kind: 'peace' | 'alliance', days: 
   sim.event('diplomacy', text, c);
 }
 
+/** The colony's society with its ruler brought up to date (founding queens are crowned once registered). */
+export function ensureRuler(sim: Sim, c: Colony) {
+  const s = society(sim, c);
+  if (s.ruler !== (c.queens[0]?.antId ?? 0)) crown(sim, c);
+  return s;
+}
+
 /** Summary for the UI. */
 export function societySummary(sim: Sim, c: Colony) {
-  const s = society(sim, c);
+  const s = ensureRuler(sim, c);
   const a = sim.a;
   const clans = new Map<number, number>();
   const heroes: { name: string; kills: number }[] = [];
@@ -291,7 +298,7 @@ export function societySummary(sim: Sim, c: Colony) {
     if (!o) return null;
     const t = s.treaties[r.id];
     const status = t && t.until > sim.tick ? t.kind : r.hostility > 1.2 ? 'war' : r.hostility > 0.4 ? 'tension' : 'neutral';
-    return { kingdom: society(sim, o).kingdom, colony: o.name, status, hostility: Math.round(r.hostility * 10) / 10, days: t ? Math.max(0, Math.round((t.until - sim.tick) / DAY_TICKS)) : 0 };
+    return { id: o.id, kingdom: society(sim, o).kingdom, colony: o.name, status, hostility: Math.round(r.hostility * 10) / 10, days: t ? Math.max(0, Math.round((t.until - sim.tick) / DAY_TICKS)) : 0 };
   }).filter(Boolean);
   return {
     kingdom: s.kingdom, culture: s.culture, cultureText: CULTURES[s.culture], ruler: s.rulerName, reign: s.reign, morale: Math.round(s.morale * 100),

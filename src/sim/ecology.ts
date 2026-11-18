@@ -2,7 +2,7 @@
 // decomposition of food, corpses and litter, toxin decay and springtail emergence.
 // Every food or water change goes through the ledger.
 import { CRITTER } from './critters.ts';
-import { M, MOIST_CAP } from './materials.ts';
+import { FOOD_OF, M, MOIST_CAP } from './materials.ts';
 import { seasonName } from './physics.ts';
 import type { Sim } from './sim.ts';
 import { FLAG_APHID } from './world.ts';
@@ -64,7 +64,7 @@ export function ecologyStep(sim: Sim) {
       const sx = x + rng.int(7) - 3;
       if (sx > 0 && sx < W - 1) {
         const sy = w.surface[sx] - 1;
-        if (sy > 0 && mat[sy * W + sx] === M.AIR) sim.setCell(sy * W + sx, M.SEED, 1, 'seed production');
+        if (sy > 0 && sy + 1 < H && mat[sy * W + sx] === M.AIR && !w.owner[sy * W + sx] && !FOOD_OF[mat[(sy + 1) * W + sx]]) sim.setCell(sy * W + sx, M.SEED, 1, 'seed production');
       }
     }
     // roots
@@ -76,11 +76,11 @@ export function ecologyStep(sim: Sim) {
     // arthropod fall: small insects living on vegetation die or drop to the ground and are scavenged as
     // protein (ledgered source). Without this renewable prey the soil surface has almost no protein and
     // colonies cannot rear larvae for long. Rate is an authored game value, highest in summer.
-    if (rng.chance((season === 'summer' ? 0.012 : season === 'spring' ? 0.008 : 0.004) * Math.min(1, height / 5))) {
+    if (rng.chance((season === 'summer' ? 0.024 : season === 'spring' ? 0.016 : 0.008) * Math.min(1, height / 5))) {
       const fx = x + rng.int(9) - 4;
       if (fx > 0 && fx < W - 1) {
         const fy = w.surface[fx] - 1, fk = fy * W + fx;
-        if (fy > 0 && mat[fk] === M.AIR && !w.owner[fk]) sim.setCell(fk, M.PROTEIN, 1 + rng.int(2), 'insect fall');
+        if (fy > 0 && fy + 1 < H && mat[fk] === M.AIR && !w.owner[fk] && !FOOD_OF[mat[fk + W]] && !w.owner[fk + W]) sim.setCell(fk, M.PROTEIN, 1 + rng.int(2), 'insect fall');
       }
     }
     // aphids colonise plants and drip honeydew
@@ -96,9 +96,9 @@ export function ecologyStep(sim: Sim) {
       if (gy < 0) continue;
       const gk = gy * W + gx;
       const below = (gy + 1) * W + gx;
-      if (gy + 1 < H && mat[below] === M.SUGAR && amt[below] < 8) { amt[below]++; w.ledger.source('sugar', 'honeydew', 1); w.touch(gx, gy + 1); }
-      else if (mat[gk] === M.SUGAR && amt[gk] < 8) { amt[gk]++; w.ledger.source('sugar', 'honeydew', 1); w.touch(gx, gy); }
-      else if (mat[gk] === M.AIR) sim.setCell(gk, M.SUGAR, 1, 'honeydew');
+      // honeydew soaks into an existing drop until it is full; it never piles up into towers or lands on a nest
+      if (gy + 1 < H && mat[below] === M.SUGAR) { if (amt[below] < 8) { amt[below]++; w.ledger.source('sugar', 'honeydew', 1); w.touch(gx, gy + 1); } }
+      else if (mat[gk] === M.AIR && !w.owner[gk] && gy + 1 < H && !FOOD_OF[mat[below]] && !w.owner[below]) sim.setCell(gk, M.SUGAR, 1, 'honeydew');
     }
   }
   // ---------------- rolling scan: decomposition etc. ----------------

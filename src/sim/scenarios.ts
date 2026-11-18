@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, Sim } from './sim.ts';
 import type { SpeciesDef } from './species.ts';
 import { FLAG_APHID } from './world.ts';
 import { BIOMES, colonySites, decorateWorld, planWorld, type WorldOptions } from './worldgen.ts';
+import { validBank, type BankEntry } from './brain.ts';
 
 export interface ScenarioDef {
   id: string;
@@ -208,6 +209,8 @@ export interface CreateOptions {
   customSpecies?: SpeciesDef[];
   /** generated-world options (living-world scenario) */
   world?: WorldOptions;
+  /** learnt brain templates carried in from earlier worlds (brain bank); part of the replayable creation options */
+  brains?: BankEntry[];
 }
 
 export function createSim(opt: CreateOptions): Sim {
@@ -232,6 +235,7 @@ export function createSim(opt: CreateOptions): Sim {
   if (opt.settings) Object.assign(settings, opt.settings);
   const sim = new Sim({ W, H, seed, mode, scenario: def.id, climate, settings, customSpecies: opt.customSpecies });
   sim.createOpts = structuredClone(opt);
+  for (const e of opt.brains ?? []) if (validBank(e)) sim.brainBank[e.speciesId] = { ...e, w: Float32Array.from(e.w) };
   if(!['empty','physics-lab','liquid-lab','powder-lab'].includes(def.id))generateTerrain(sim, seed, gen);
   else sim.w.recomputeAllSurface();
   sim.scenarioInfo = { id: def.id, title: def.title, goal: def.goal, actions: [] };

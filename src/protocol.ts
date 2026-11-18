@@ -10,6 +10,8 @@ export interface NewWorldOptions {
   size?: [number, number];
   settings?: Partial<Settings>;
   climate?: Partial<Climate>;
+  /** generated-world options (living-world scenario) */
+  world?: { colonies?: number };
 }
 
 export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge' | 'dose';
@@ -42,7 +44,9 @@ export type ToWorker =
   | { type: 'scenarioAction'; index: number }
   | { type: 'requestDetail'; what: 'evolution' | 'lineage' | 'colony'; colony?: number }
   | { type: 'benchmark'; minutes: number }
-  | { type: 'fullTerrain' };
+  | { type: 'fullTerrain' }
+  /** brain bank: download it, replace it from a file, or forget everything learnt */
+  | { type: 'brains'; op: 'export' | 'import' | 'reset'; json?: string };
 
 export interface FrameMsg {
   type: 'frame';
@@ -104,4 +108,21 @@ export interface AntInfo {
   mood?: string;
   clan?: string;
   story?: string[];
+  /** learning brain (workers): senses, action values, learning statistics and raw weights */
+  brain?: {
+    senses: { name: string; v: number; drive: boolean }[];
+    q: { name: string; v: number }[];
+    current: string;
+    decisions: number; lifetime: number; avg: number; last: number; pending: number; surprise: number;
+    temperature: number; learnRate: number;
+    instincts: string[]; learnt: string[];
+    weights: number[];
+    template: { gen: number; source: string; accepted: number; lifetimes: number; meanFit: number } | null;
+  };
+  /** numbers for the ant datasheet */
+  sheet?: {
+    health: number; energy: number; hydration: number; age: number; life: number; kills: number; x: number; y: number;
+    marking: [number, number, number]; kingdom: string; ruler: boolean; generation: number;
+    size: number; attack: number; defense: number; speed: number; carrying: string; underground: boolean;
+  };
 }

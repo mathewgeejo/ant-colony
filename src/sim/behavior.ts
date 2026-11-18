@@ -14,6 +14,7 @@ import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter
 import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
 import { TR, aggressionTrait, coldBonus, courage, has as hasTrait, heatBonus, lifeFactor } from './traits.ts';
 import { atPeace, cultureAggression, onFoodFound, onKill, persona } from './society.ts';
+import { ACT, NA, NI, NO_ACT, S, actMask, prefers, reward as brainReward, think } from './brain.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DY = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -48,9 +49,8 @@ export function supported(sim: Sim, x: number, y: number): boolean {
   if (y >= w.H - 1) return true;
   const i = y * w.W + x;
   if (CLIMBABLE[w.mat[i]]) return true;
-  // 2D cross-section simplification: underground passages have front and back walls,
-  // so any enclosed (not sky-exposed) open cell offers footing
-  if (y > w.surface[x]) return true;
+  // ants walk on floors, walls and ceilings (also underground): an open cell with nothing solid touching it is
+  // mid-air, so a worker there falls instead of floating across a chamber or cave
   for (let d = 0; d < 8; d++) {
     const nx = x + DX[d], ny = y + DY[d];
     // the world's side and top edges are not climbable walls
@@ -112,6 +112,13 @@ export function step(sim: Sim, i: number) {
   const ex = c ? c.entrance.x : x, ey = c ? c.entrance.y : y;
   const de0 = dist2(x, y, ex, ey);
   const owner = c ? c.slot + 1 : -1;
+  // underground travel: follow the walking-distance field through own (and a raid target's) tunnels
+  let net: Uint16Array | null = null, netHere = 0;
+  if (nav === NAV.TUNNEL && c) {
+    const rt = c.war?.raid.active ? sim.colonies.find((o) => o && o.alive && o.id === c.war!.raid.target) : null;
+    net = tx < 0 ? sim.frontierField(c) : sim.netDist(c, tx, ty, rt ? rt.slot + 1 : 0);
+    netHere = net[y * W + x];
+  }
   let total = 0;
   const wts = sim.scratchW;
   for (let d = 0; d < 8; d++) {
@@ -135,6 +142,13 @@ export function step(sim: Sim, i: number) {
     const occ = sim.occ[ni];
     if (occ >= 2) wt *= 0.2; else if (occ === 1) wt *= 0.7;
     switch (nav) {
+      case NAV.TUNNEL: {
+        const dn = net![ni];
+        if (netHere) { wt *= dn && dn < netHere ? 9 : dn === netHere ? 1 : 0.1; break; }
+        const d1 = dist2(nx, ny, tx, ty);
+        wt *= d1 < d0 ? 7 : d1 === d0 ? 1 : 0.12;
+        break;
+      }
       case NAV.GOAL: case NAV.HOME: case NAV.RETRACE: case NAV.ROUTE_OUT: {
         // heading home over familiar ground: follow the colony's walking-distance field when it covers this spot
         if (nav === NAV.HOME && c && tx === ex && ty === ey) {
@@ -290,6 +304,16 @@ export function updateAnt(sim: Sim, i: number) {
     if (!escapeSolid(sim, i)) { sim.killAnt(i, 'buried'); return; }
   }
   a.px[i] = a.x[i]; a.py[i] = a.y[i];
+  // gravity applies every tick to wingless ants, even mid-task (ground dug or washed away beneath them);
+  // only reproductives on their nuptial flight may be airborne
+  if (a.task[i] !== TASK.FLIGHT) {
+    const w = sim.w, x = a.x[i], y = a.y[i];
+    if (!IS_LIQUID[w.mat[y * w.W + x]] && !supported(sim, x, y) && y + 1 < w.H && !IS_SOLID[w.mat[(y + 1) * w.W + x]]) {
+      if (a.nav[i] === NAV.STAY) { a.nav[i] = NAV.NEST_WANDER; a.timer[i] = 0; }
+      moveTo(sim, i, x, y + 1);
+      return;
+    }
+  }
   if (((sim.tick + i) % DECIDE_EVERY) === 0) decide(sim, i);
   if (!a.alive[i]) return;
   // timed work (digging, feeding) holds the ant in place
@@ -462,6 +486,7 @@ function tryPickFood(sim: Sim, i: number, c: Colony) {
   }
   a.task[i] = TASK.RETURN;
   a.why[i] = WHY.RETURN_FOOD_TRAIL;
+  brainReward(sim, i, (0.2 + 0.2 * q) * Math.min(1, 0.1 + 1.5 * c.stim.forage));
   a.pushMem(i, a.x[i], a.y[i]);
   a.saveFoodRoute(i);
   a.frTrips[i] = Math.min(255, a.frTrips[i] + 1);
@@ -492,6 +517,8 @@ function deliver(sim: Sim, i: number, c: Colony) {
     const food = MATERIALS[a.carry[i]].name.toLowerCase();
     a.carry[i] = 0;
     sim.recordDelivery(c, a.carryQ[i]);
+    // food is worth what the colony needs: a full larder makes more foraging pointless, and the brain learns that
+    brainReward(sim, i, (0.6 + 0.6 * a.carryQ[i]) * Math.min(1, 0.1 + 1.5 * c.stim.forage));
     // contact information: nearby nestmates register a returning successful forager
     sim.idx.query(a, a.x[i], a.y[i], 3, (j) => {
       if (j !== i && a.colony[j] === a.colony[i] && a.caste[j] === CASTE.WORKER) a.contacts[j] = Math.min(6, a.contacts[j] + 1);
@@ -555,7 +582,9 @@ function decide(sim: Sim, i: number) {
   const x = a.x[i], y = a.y[i];
   const ci = y * w.W + x;
   a.contacts[i] *= sp.communication.returnRateRegulation ? 0.93 : 0.97;
-  // --- overrides: survival first ---
+  // boredom drive: builds while idle, is relieved by doing something
+  a.bored[i] = a.task[i] === TASK.IDLE ? Math.min(1, a.bored[i] + 0.0015) : Math.max(0, a.bored[i] - 0.008);
+  // --- overrides: survival first (brainstem reflexes the brain cannot veto) ---
   if (IS_LIQUID[w.mat[ci]]) {
     a.task[i] = a.carryBrood[i] >= 0 ? TASK.CARRY_BROOD : TASK.ESCAPE;
     a.why[i] = WHY.SUBMERGED; a.nav[i] = NAV.UP; a.timer[i] = 0;
@@ -587,16 +616,23 @@ function decide(sim: Sim, i: number) {
   // minors answer weak alarm; majors ignore it but respond en masse to strong, sustained alarm
   // (quantitative differences in recruitment: Detrain & Pasteels 1992)
   const major = a.major[i] === 1;
-  if (alarm > (major ? 0.6 : 0.3) && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i])) {
+  if (a.task[i] === TASK.DEFEND && alarm > (major ? 0.6 : 0.3)) a.timer[i] = Math.max(a.timer[i], major ? 80 : 40); // still under attack: keep defending
+  else if (alarm > (major ? 0.6 : 0.3) && a.task[i] !== TASK.FLEE && a.task[i] !== TASK.DEFEND && a.task[i] !== TASK.CARRY_BROOD && !a.carry[i] && !isWarTask(a.task[i]) && sim.rng.chance(0.35)) {
+    // the brain weighs answering the alarm against carrying on; species aggression, culture, personality
+    // and caste add an innate bias to its learnt values
     const thr = 0.6 * a.thrL[i * 4 + 3] / (0.5 + sp.aggression * cultureAggression(c)) * (major ? 0.4 : 1) / persona(a.id[i], 'brave');
-    if (sim.rng.chance(stimulus(alarm, thr))) {
+    const sx = senses(sim, i, c);
+    const cur = a.brainA[i] !== NO_ACT && a.brainA[i] !== ACT.DEFEND ? a.brainA[i] : ACT.REST;
+    if (prefers(sim, c, i, sx, ACT.DEFEND, cur, 4 * (stimulus(alarm, thr) - 0.5))) {
+      think(sim, c, i, sx, ALL_ACTS, ACT.DEFEND);
       a.task[i] = TASK.DEFEND; a.why[i] = major ? WHY.MAJOR_RECRUITED : WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = major ? 80 : 40;
       a.thrL[i * 4 + 3] = Math.max(0.5, a.thrL[i * 4 + 3] * 0.98);
       return;
     }
   }
-  // hunger: workers inside the nest feed from stores whatever they are doing
-  if (own && a.energy[i] < 0.3 && sim.feedAdult(c, i)) a.why[i] = WHY.ENERGY;
+  // hunger reflex: workers inside the nest feed from stores whatever they are doing once close to starving
+  // (above this the brain decides when to eat)
+  if (own && a.energy[i] < 0.22 && sim.feedAdult(c, i)) a.why[i] = WHY.ENERGY;
   // thirst
   if (a.hydration[i] < 0.3 && !a.carry[i] && a.task[i] !== TASK.DRINK && a.carryBrood[i] < 0) {
     a.task[i] = TASK.DRINK; a.why[i] = WHY.THIRST; a.nav[i] = own ? NAV.NEST_WANDER : NAV.EXPLORE; a.timer[i] = 300;
@@ -652,17 +688,22 @@ function decide(sim: Sim, i: number) {
     if (a.carry[i] && !FOOD_OF[a.carry[i]]) { a.task[i] = TASK.HAUL; }
     return;
   }
-  if (a.energy[i] < 0.45) {
+  if (a.energy[i] < 0.3) {
     if (sim.feedAdult(c, i)) { a.why[i] = WHY.ENERGY; return; }
   }
-  if (a.hydration[i] < 0.6) tryDrink(sim, i);
+  if (a.hydration[i] < 0.45) tryDrink(sim, i);
   // resting workers sample task stimuli only occasionally (roughly every 2 game-minutes)
   if (a.task[i] === TASK.IDLE && a.why[i] !== WHY.NONE && !sim.rng.chance(0.12)) return;
   chooseTask(sim, i, c);
 }
 
-function chooseTask(sim: Sim, i: number, c: Colony) {
-  const a = sim.a, rng = sim.rng;
+/**
+ * Task cues as perceived by this worker: colony stimuli seen through its inherited response thresholds,
+ * personality, age and recent contacts. Written into the brain's sensory neurons. Returns the reason
+ * foraging is impossible right now (WHY code) or 0.
+ */
+function taskCues(sim: Sim, i: number, c: Colony, out: Float32Array): number {
+  const a = sim.a;
   const sp = sim.speciesOf(c);
   const o = i * 29;
   const ageFrac = a.age[i] / sp.workers.lifespanDays;
@@ -684,34 +725,70 @@ function chooseTask(sim: Sim, i: number, c: Colony) {
   forageS *= forageFactor(c) * persona(a.id[i], 'forage');
   const nurseS = s.nurse * (young ? 2 : 1) * persona(a.id[i], 'nurse');
   const digS = Math.max(s.dig, s.exit * 2, planDigStimulus(c)) * persona(a.id[i], 'dig');
-  const wasteS = s.waste;
-  const p = [
-    stimulus(forageS, thr(0, a.pheno[o + P.THR_FORAGE])),
-    stimulus(nurseS, thr(1, a.pheno[o + P.THR_NURSE])),
-    stimulus(digS, thr(2, a.pheno[o + P.THR_DIG])),
-    stimulus(wasteS, 0.4),
-  ];
-  // evaluate in a random order so no task is structurally favoured
-  const start = rng.int(4);
-  let chosen = -1;
-  for (let k = 0; k < 4; k++) {
-    const t = (start + k) & 3;
-    if (rng.next() < p[t] * 0.5) { chosen = t; break; }
-  }
-  // threshold reinforcement (behavioural, within lifetime; Theraulaz et al. 1998)
+  out[S.FORAGE_CUE] = stimulus(forageS, thr(0, a.pheno[o + P.THR_FORAGE]));
+  out[S.NURSE_CUE] = stimulus(nurseS, thr(1, a.pheno[o + P.THR_NURSE]));
+  out[S.DIG_CUE] = stimulus(digS, thr(2, a.pheno[o + P.THR_DIG]));
+  out[S.WASTE_CUE] = stimulus(s.waste, 0.4);
+  return blocked;
+}
+
+const SENSE = new Float32Array(NI);
+let sensedBlocked = 0;
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+/** Fill the brain's sensory neurons for worker i (drives first, then local cues). */
+export function senses(sim: Sim, i: number, c: Colony, out: Float32Array = SENSE): Float32Array {
+  const a = sim.a, w = sim.w, x = a.x[i], y = a.y[i];
+  sensedBlocked = taskCues(sim, i, c, out);
+  out[S.HUNGER] = 1 - clamp01(a.energy[i]);
+  out[S.THIRST] = 1 - clamp01(a.hydration[i]);
+  out[S.PAIN] = 1 - clamp01(a.health[i]);
+  out[S.FEAR] = Math.min(1, c.alarm.get(x, y) * 1.5);
+  out[S.BOREDOM] = a.bored[i];
+  out[S.STORES] = Math.min(1, (c.store.sugar + c.store.protein + c.store.seed) / (2 + c.adults * 1.5));
+  out[S.RIVALS] = sim.idx.hasForeign(x, y, 4, a.colony[i]) ? 1 : 0;
+  out[S.CONTACTS] = Math.min(1, a.contacts[i] / 3);
+  out[S.DAYLIGHT] = sim.daytime ? 1 : 0;
+  out[S.YOUNG] = a.age[i] < 3 ? 1 : 0;
+  out[S.ROUTE] = a.frLen[i] > 1 ? 1 : 0;
+  out[S.IN_NEST] = w.owner[y * w.W + x] === c.slot + 1 ? 1 : 0;
+  out[S.CARRYING] = a.carry[i] || a.carryBrood[i] >= 0 ? 1 : 0;
+  return out;
+}
+const ALL_ACTS = (1 << NA) - 1;
+
+/** An idle worker in the nest asks its brain what to do next; the chosen verb runs an existing motor program. */
+function chooseTask(sim: Sim, i: number, c: Colony) {
+  const a = sim.a, rng = sim.rng;
+  const s = c.stim;
+  const x = senses(sim, i, c);
+  const blocked = sensedBlocked;
+  let mask = actMask(ACT.REST, ACT.NURSE, ACT.DIG, ACT.CLEAN, ACT.DRINK);
+  if (!blocked && c.hasExit) mask |= 1 << ACT.FORAGE;
+  // eating is offered only when hungry enough to benefit (no grazing on the stores out of boredom)
+  if (c.store.sugar + c.store.protein + c.store.seed > 0 && a.energy[i] < 0.65) mask |= 1 << ACT.EAT;
+  if (x[S.FEAR] > 0.05) mask |= 1 << ACT.DEFEND;
+  const chosen = think(sim, c, i, x, mask);
+  // response-threshold reinforcement still tunes how strongly each cue is felt (Theraulaz et al. 1998)
+  const k0 = chosen === ACT.FORAGE ? 0 : chosen === ACT.NURSE ? 1 : chosen === ACT.DIG ? 2 : -1;
   for (let k = 0; k < 3; k++) {
     const idx = i * 4 + k;
-    a.thrL[idx] = k === chosen ? Math.max(0.5, a.thrL[idx] * 0.97) : Math.min(2, a.thrL[idx] * 1.002);
+    a.thrL[idx] = k === k0 ? Math.max(0.5, a.thrL[idx] * 0.97) : Math.min(2, a.thrL[idx] * 1.002);
   }
   switch (chosen) {
-    case 0: startForage(sim, i, c); break;
-    case 1: a.task[i] = TASK.NURSE; a.why[i] = WHY.NURSE_HUNGRY; a.timer[i] = 0; a.fightTarget[i] = -1; a.nav[i] = NAV.NEST_CUE; break;
-    case 2:
+    case ACT.FORAGE: startForage(sim, i, c); break;
+    case ACT.NURSE: a.task[i] = TASK.NURSE; a.why[i] = WHY.NURSE_HUNGRY; a.timer[i] = 0; a.fightTarget[i] = -1; a.nav[i] = NAV.NEST_CUE; break;
+    case ACT.DIG:
       a.task[i] = TASK.DIG; a.why[i] = s.exit > 0 ? WHY.DIG_EXIT : WHY.DIG_CROWD; a.nav[i] = s.exit > 0 ? NAV.EXIT : NAV.DIG_WANDER; a.timer[i] = 0;
       a.tx[i] = 0; break;
-    case 3: a.task[i] = TASK.WASTE; a.why[i] = WHY.WASTE; a.nav[i] = NAV.NEST_WANDER; a.timer[i] = 400; break;
+    case ACT.CLEAN: a.task[i] = TASK.WASTE; a.why[i] = WHY.WASTE; a.nav[i] = NAV.NEST_WANDER; a.timer[i] = 400; break;
+    case ACT.EAT:
+      a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER;
+      a.why[i] = sim.feedAdult(c, i) ? WHY.BRAIN_EAT : WHY.IDLE_LOW_STIM;
+      break;
+    case ACT.DRINK: a.task[i] = TASK.DRINK; a.why[i] = WHY.THIRST; a.nav[i] = NAV.NEST_WANDER; a.timer[i] = 300; break;
+    case ACT.DEFEND: a.task[i] = TASK.DEFEND; a.why[i] = WHY.DEFEND_ALARM; a.nav[i] = NAV.ALARM; a.timer[i] = 40; break;
     default:
-      a.task[i] = TASK.IDLE; a.why[i] = blocked && s.forage > 0.3 ? blocked : WHY.IDLE_LOW_STIM;
+      a.task[i] = TASK.IDLE; a.why[i] = blocked && s.forage > 0.3 ? blocked : WHY.BRAIN_REST;
       a.nav[i] = rng.chance(0.3) ? NAV.NEST_CUE : NAV.NEST_WANDER;
       // majors wait near the brood and queen: an in-nest reserve that is cheap to keep idle
       if (a.major[i]) { a.why[i] = WHY.MAJOR_STANDBY; a.nav[i] = rng.chance(0.7) ? NAV.NEST_CUE : NAV.STAY; a.timer[i] = 0; }
@@ -745,7 +822,9 @@ function decideForage(sim: Sim, i: number, c: Colony, own: boolean) {
   const nav = a.nav[i];
   if (nav === NAV.EXIT || nav === NAV.GOAL && a.stepCount[i] < 2) {
     a.pushMem(i, a.x[i], a.y[i]);
-    if (a.frLen[i] > 1) {
+    // when the brood lacks protein, some foragers leave their (usually sugar) route and scout for prey instead
+    const proteinShort = c.store.protein < 2 + c.brood.length * 0.5 && c.brood.length > 0;
+    if (a.frLen[i] > 1 && !(proteinShort && rng.chance(0.4))) {
       // private route memory dominates over trail information (Grueter et al. 2011)
       a.nav[i] = NAV.ROUTE_OUT; a.frIdx[i] = 0; a.tx[i] = a.frX[i * MEM]; a.ty[i] = a.frY[i * MEM]; a.why[i] = WHY.MEMORY_OUT; a.stuck[i] = 0;
       return;
@@ -847,7 +926,8 @@ function digScore(sim: Sim, c: Colony, x: number, y: number, dy: number, exitMod
       s *= 8 * (1 + 3 * c.digCue.get(x, y - dy));
       return dy < 0 && pk === 1 ? s * 0.6 : s;
     }
-    if (c.plan) s *= 0.2;
+    // with a template, workers only dig what it calls for: narrow tunnels and distinct chambers, not a cave
+    if (c.plan) return 0;
     // keep the entrance shaft narrow: no widening in the top rows below the surface
     if (depthBelow < 5 || y <= w.surface[x] + 3) return 0;
     const deeper = c.nestDepth < sp.nest.targetDepth;
@@ -886,12 +966,12 @@ function decideDig(sim: Sim, i: number, c: Colony, own: boolean) {
     a.tx[i] = tx; a.ty[i] = ty; a.timer[i] = work; a.nav[i] = NAV.STAY;
     return;
   }
-  if (!exitMode && a.nav[i] === NAV.GOAL && a.why[i] === WHY.PLAN_DIG && a.stuck[i] < 40 && dist2(x, y, a.tx[i], a.ty[i]) > 2) return;
+  if (!exitMode && a.nav[i] === NAV.TUNNEL && a.why[i] === WHY.PLAN_DIG && a.stuck[i] < 40 && sim.frontierField(c)[y * w.W + x] > 1) return;
   a.nav[i] = exitMode ? NAV.EXIT : NAV.DIG_WANDER;
-  // nothing worth digging here: walk to an unfinished part of the nest template
-  if (!exitMode && (a.fails[i] & 3) === 0) {
-    const f = frontierTarget(sim, c);
-    if (f) { a.nav[i] = NAV.GOAL; a.tx[i] = f.x; a.ty[i] = f.y; a.why[i] = WHY.PLAN_DIG; }
+  // nothing worth digging here: walk through the tunnels to the nearest unfinished part of the template
+  if (!exitMode && (a.fails[i] & 3) === 0 && c.plan?.frontier.length) {
+    if (sim.frontierField(c)[y * w.W + x] > 1) { a.nav[i] = NAV.TUNNEL; a.tx[i] = -1; a.ty[i] = -1; a.why[i] = WHY.PLAN_DIG; }
+    else { const f = frontierTarget(sim, c); if (f) { a.nav[i] = NAV.GOAL; a.tx[i] = f.x; a.ty[i] = f.y; a.why[i] = WHY.PLAN_DIG; } }
   }
   if (++a.fails[i] > 40) { a.fails[i] = 0; a.task[i] = TASK.IDLE; }
 }
@@ -989,8 +1069,12 @@ function finishWork(sim: Sim, i: number) {
     c.digCue.add(tx, ty, 0.6);
     a.energy[i] -= 0.002;
     a.fails[i] = 0;
+    brainReward(sim, i, 0.12);
     if (task === TASK.FOUND_DIG) { a.nav[i] = NAV.STAY; return; }
     if (m === M.CLAY) c.store.mineral += 0.5;
+    // far from any exit (deep highways), spoil is packed into the tunnel walls instead of carried out
+    // (game abstraction: the volume of the map-spanning tunnel network is not conserved as surface soil)
+    if (sim.nestDist[a.y[i] * w.W + a.x[i]] > 16) { a.nav[i] = NAV.DIG_WANDER; a.timer[i] = 0; sim.thrUse(i, 2); return; }
     a.carry[i] = M.LOOSE;
     a.task[i] = TASK.HAUL; a.why[i] = WHY.HAUL; a.nav[i] = NAV.EXIT; a.timer[i] = 0;
     a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.stepCount[i] = 0; a.memLen[i] = 0;
@@ -1019,7 +1103,7 @@ function decideHaul(sim: Sim, i: number, c: Colony, own: boolean) {
       if (a.why[i] === WHY.MOUND) {
         const tx = a.tx[i];
         if (Math.abs(x - tx) <= 1 && Math.abs(y - (w.surface[tx] - 1)) <= 2) {
-          if (depositHeap(sim, tx)) { a.carry[i] = 0; a.task[i] = TASK.IDLE; startRetrace(sim, i, c); a.stepCount[i] = 0; return; }
+          if (depositHeap(sim, tx)) { brainReward(sim, i, 0.1); a.carry[i] = 0; a.task[i] = TASK.IDLE; startRetrace(sim, i, c); a.stepCount[i] = 0; return; }
           a.why[i] = WHY.HAUL;
         } else if (a.stuck[i] < 60) { a.nav[i] = NAV.GOAL; a.ty[i] = w.surface[tx] - 1; return; }
         else a.why[i] = WHY.HAUL;
@@ -1093,6 +1177,7 @@ function dropCarried(sim: Sim, i: number, inside: boolean): boolean {
     sim.setCell(best, m, 1, 'dropped');
   } else sim.setCell(best, m, m === M.CORPSE ? 0 : 0, 'dropped');
   if (m === M.CORPSE || m === M.WASTE) w.owner[best] = 0;
+  if (!inside) brainReward(sim, i, m === M.CORPSE || m === M.WASTE ? 0.35 : FOOD_OF[m] ? 0 : 0.08);
   a.carry[i] = 0;
   a.task[i] = TASK.IDLE;
   startRetrace(sim, i, sim.colonies[a.colony[i]]!);
@@ -1144,7 +1229,7 @@ function decideNurse(sim: Sim, i: number, c: Colony, own: boolean) {
     return;
   }
   if (dist2(x, y, b.x, b.y) <= 4) {
-    if (sim.feedLarva(c, b, i)) { a.nav[i] = NAV.STAY; a.timer[i] = 12; a.why[i] = WHY.NURSE_HUNGRY; sim.thrUse(i, 1); }
+    if (sim.feedLarva(c, b, i)) { a.nav[i] = NAV.STAY; a.timer[i] = 12; a.why[i] = WHY.NURSE_HUNGRY; sim.thrUse(i, 1); brainReward(sim, i, 0.35); }
     else { a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER; } // stores empty
     return;
   }
@@ -1180,7 +1265,7 @@ function decideCarryBrood(sim: Sim, i: number, c: Colony) {
   const done = dist2(x, y, a.tx[i], a.ty[i]) <= 2 || --a.timer[i] <= 0 || a.stuck[i] > 60;
   if (done) {
     const b = sim.broodById(c.slot, cb);
-    if (b) { b.carried = false; b.x = x; b.y = y; if (b.drown > 0) sim.journalRescue(c); }
+    if (b) { b.carried = false; b.x = x; b.y = y; if (b.drown > 0) sim.journalRescue(c); brainReward(sim, i, b.drown > 0 ? 0.5 : 0.15); }
     a.carryBrood[i] = -1; a.task[i] = TASK.IDLE; a.nav[i] = NAV.NEST_WANDER; a.stuck[i] = 0;
   }
 }
@@ -1199,6 +1284,7 @@ function decideWaste(sim: Sim, i: number, c: Colony, own: boolean) {
       a.carry[i] = m;
       a.task[i] = TASK.HAUL; a.why[i] = WHY.WASTE; a.nav[i] = NAV.EXIT; a.stepCount[i] = 0;
       c.corpsesInside = Math.max(0, c.corpsesInside - 1);
+      brainReward(sim, i, 0.1);
       return;
     }
   }
@@ -1471,9 +1557,23 @@ export function contactPhase(sim: Sim) {
     const pinned = holders[i] >= 2;
     // a raider carrying stolen brood keeps running rather than fighting
     if (a.carryBrood[i] >= 0 && a.task[i] === TASK.RAID) continue;
-    if ((injured || outnumbered) && !pinned && a.caste[i] === CASTE.WORKER) {
+    // fight or flight: soldiers on colony orders follow the rule of thumb; other workers ask their brain
+    // (with the rule of thumb as an innate bias). Near death, fleeing is a reflex.
+    let flee = injured || outnumbered, brainFlee = false;
+    const sx = SENSE;
+    if (!pinned && !soldier && a.caste[i] === CASTE.WORKER && a.task[i] !== TASK.FLEE && a.health[i] >= 0.12 && rng.chance(a.fightTarget[i] < 0 ? 0.5 : 0.1)) {
+      senses(sim, i, c, sx);
+      sx[S.FEAR] = Math.min(1, foes / (friends + 1) / 3); sx[S.RIVALS] = 1;
+      flee = prefers(sim, c, i, sx, ACT.FLEE, ACT.DEFEND, (flee ? 1.5 : -1.5) - bold * 0.3 - (major ? 1 : 0));
+      if (flee) { think(sim, c, i, sx, ALL_ACTS, ACT.FLEE); brainFlee = true; }
+    } else if (a.task[i] === TASK.FLEE) flee = true;
+    else if (!pinned && !soldier && a.caste[i] === CASTE.WORKER && a.health[i] >= 0.12) {
+      if (a.fightTarget[i] < 0) continue; // still sizing up the rival
+      flee = false; // already decided to fight: keep at it
+    }
+    if (flee && !pinned && a.caste[i] === CASTE.WORKER) {
       if (a.task[i] !== TASK.FLEE) {
-        a.task[i] = TASK.FLEE; a.why[i] = WHY.FLEE_OUTNUMBERED; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.timer[i] = 60;
+        a.task[i] = TASK.FLEE; a.why[i] = brainFlee ? WHY.BRAIN_FLEE : WHY.FLEE_OUTNUMBERED; a.nav[i] = NAV.HOME; a.tx[i] = c.entrance.x; a.ty[i] = c.entrance.y; a.timer[i] = 60;
         a.fightTarget[i] = -1;
         if (a.carry[i] && FOOD_OF[a.carry[i]]) dropCarried(sim, i, false);
         // a retreating worker calls for help: alarm marks the spot it fled from
@@ -1488,6 +1588,9 @@ export function contactPhase(sim: Sim) {
     if (a.task[i] !== TASK.DEFEND && !soldier && a.caste[i] === CASTE.WORKER) {
       if (a.carry[i]) dropCarried(sim, i, false);
       a.task[i] = TASK.DEFEND; a.timer[i] = 30; a.nav[i] = NAV.STAY;
+      senses(sim, i, c, sx); sx[S.FEAR] = Math.min(1, foes / (friends + 1) / 3); sx[S.RIVALS] = 1;
+      think(sim, c, i, sx, ALL_ACTS, ACT.DEFEND);
+      a.why[i] = WHY.BRAIN_FIGHT;
     }
     c.alarm.add(x, y, sp.communication.alarmStrength);
     const o = i * 29, fo = foe * 29;
@@ -1519,6 +1622,7 @@ export function contactPhase(sim: Sim) {
       if (fc && fc !== c) { noteKill(sim, c, fc); onKill(sim, c, i, fc); if (a.carryBrood[foe] >= 0) recaptureBrood(sim, i, c, foe, fc); }
       if (hasTrait(tr, tf, TR.acid_blood)) a.health[i] -= 0.25;
       sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1;
+      brainReward(sim, i, 1);
     }
     if (a.health[i] <= 0) { if (fc && fc !== c) { noteKill(sim, fc, c); onKill(sim, fc, foe, c); } sim.killAnt(i, 'combat'); }
   }

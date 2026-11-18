@@ -1,0 +1,56 @@
+d1 T=14 ants=1 cols=1 ant #1:f w0 b1 q1 s0/0/0
+d2 T=15 ants=1 cols=1 ant #1:f w0 b3 q1 s0/0/0
+d3 T=16 ants=1 cols=1 ant #1:f w0 b4 q1 s0/0/0
+d4 T=17 ants=1 cols=1 ant #1:f w0 b8 q1 s0/0/0
+d5 T=18 ants=1 cols=1 ant #1:f w0 b9 q1 s0/0/0
+d6 T=18 ants=1 cols=1 ant #1:f w0 b10 q1 s0/0/0
+d7 T=19 ants=1 cols=1 ant #1:f w0 b10 q1 s0/0/0
+d8 T=19 ants=1 cols=1 ant #1:f w0 b10 q1 s0/0/0
+d9 T=19 ants=1 cols=1 ant #1:f w0 b10 q1 s0/0/0
+d10 T=19 ants=1 cols=1 ant #1:f w0 b10 q1 s0/0/0
+d11 T=19 ants=2 cols=1 ant #1:g w1 b9 q1 s0/0/0
+d12 T=19 ants=6 cols=1 ant #1:g w5 b6 q1 s2/0/6
+d13 T=19 ants=10 cols=1 ant #1:g w9 b4 q1 s18/0/9
+d14 T=18 ants=11 cols=1 ant #1:g w10 b8 q1 s20/0/8
+d15 T=18 ants=11 cols=1 ant #1:g w10 b10 q1 s36/0/1
+d16 T=17 ants=11 cols=1 ant #1:g w10 b11 q1 s84/0/0
+d17 T=16 ants=11 cols=1 ant #1:g w10 b11 q1 s94/0/0
+d18 T=15 ants=11 cols=1 ant #1:g w10 b11 q1 s84/0/0
+d19 T=14 ants=11 cols=1 ant #1:g w10 b11 q1 s67/0/0
+d20 T=13 ants=11 cols=1 ant #1:g w10 b12 q1 s59/0/0
+d21 T=12 ants=12 cols=1 ant #1:g w11 b12 q1 s59/0/0
+d22 T=11 ants=13 cols=1 ant #1:g w12 b11 q1 s57/0/0
+d23 T=11 ants=13 cols=1 ant #1:g w12 b12 q1 s52/0/0
+d24 T=10 ants=14 cols=1 ant #1:g w13 b11 q1 s49/0/0
+d25 T=9 ants=14 cols=1 ant #1:g w13 b12 q1 s53/0/0
+d26 T=8 ants=15 cols=1 ant #1:g w14 b11 q1 s41/0/0
+d27 T=8 ants=16 cols=1 ant #1:g w15 b10 q1 s31/0/0
+d28 T=8 ants=16 cols=1 ant #1:g w15 b10 q1 s23/0/0
+d29 T=7 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d30 T=7 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d31 T=7 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d32 T=8 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d33 T=8 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d34 T=8 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d35 T=9 ants=17 cols=1 ant #1:g w16 b9 q1 s5/0/1
+d36 T=10 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d37 T=11 ants=17 cols=1 ant #1:g w16 b9 q1 s5/0/0
+d38 T=11 ants=17 cols=1 ant #1:g w16 b9 q1 s3/0/0
+d39 T=12 ants=17 cols=1 ant #1:g w16 b9 q1 s4/0/0
+d40 T=13 ants=18 cols=1 ant #1:g w17 b8 q1 s4/0/2
+deaths per colony (lineage):
+  ant #1 alive=true peak=17 eclosed=17 adult={} brood={}
+events tail:
+  [23.2] A hunting spider entered the area.
+  [23.8] A hunting spider entered the area.
+  [24.6] Journal: Route memory went stale
+  [25.2] A spider left the area.
+  [25.8] A hunting spider entered the area.
+  [25.8] A spider left the area.
+  [26.8] A hunting spider entered the area.
+  [28.8] A hunting spider entered the area.
+  [30.8] A hunting spider entered the area.
+  [30.8] A spider left the area.
+  [32.2] A hunting spider entered the area.
+  [35.1] Journal: Soil collapse
+138 s

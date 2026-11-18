@@ -2,6 +2,7 @@
 import { CASTE, CASTE_NAMES, MEM, NAV, TASK, TASK_NAMES, WHY_TEXT } from './ants.ts';
 import type { AntInfo, CellInfo } from '../protocol.ts';
 import { DESTINY_NAMES, STAGE, STAGE_NAMES } from './colony.ts';
+import type { Colony } from './colony.ts';
 import { FANTASY_LOCI, LOCI, MODES, NL, NP, P, PHENO_NAMES, gval } from './genetics.ts';
 import { FOOD_OF, IS_SOLID, M, MATERIALS, MOIST_CAP } from './materials.ts';
 import { DAY_TICKS } from './physics.ts';
@@ -10,7 +11,55 @@ import { thermalRate } from './sim.ts';
 import { wildlifeById } from './wildlife-defs.ts';
 import { NT, TRAITS, has, maskList } from './traits.ts';
 import { FLAG_APHID, FLAG_PLUG } from './world.ts';
-import { PERSONALITIES, antName, clanName, moodOf, personalityOf, society, societySummary } from './society.ts';
+import { territorySummary } from './architecture.ts';
+import { PERSONALITIES, antName, clanName, ensureRuler, moodOf, personalityOf, societySummary } from './society.ts';
+import { ACT_NAMES, NA, ND, NH, NI, NO_ACT, NW, SENSE_NAMES, associations, forward, temperature } from './brain.ts';
+import { senses } from './behavior.ts';
+import { learnRate } from './traits.ts';
+
+const assocText = (l: { sense: number; act: number; v: number }[]) => l.filter((e) => e.v > 0.05).map((e) => `${SENSE_NAMES[e.sense]} → ${ACT_NAMES[e.act]} (+${e.v.toFixed(2)})`);
+
+/** The selected worker's brain for the inspector: senses, action values, learning statistics and weights. */
+function brainInfo(sim: Sim, i: number): AntInfo['brain'] {
+  const a = sim.a, c = sim.colonies[a.colony[i]];
+  if (!c || a.caste[i] !== CASTE.WORKER || !a.brainOk[i]) return undefined;
+  const x = senses(sim, i, c, new Float32Array(NI));
+  const q = forward(a.brainW, i * NW, x, 0, new Float32Array(NH), new Float32Array(NA));
+  const m = c.mind, o = i * NW;
+  // what this ant learnt itself: how its sense->action associations differ from the template it was born with
+  const own = associations(a.brainW, o, NI), tmpl = m ? associations(m.w, 0, NI) : [];
+  const learnt = own.map((e) => ({ ...e, v: e.v - (tmpl.find((t) => t.sense === e.sense && t.act === e.act)?.v ?? 0) })).sort((p, r) => Math.abs(r.v) - Math.abs(p.v)).slice(0, 6)
+    .filter((e) => Math.abs(e.v) > 0.02).map((e) => `${SENSE_NAMES[e.sense]} → ${ACT_NAMES[e.act]} ${e.v > 0 ? 'more' : 'less'} (${e.v > 0 ? '+' : ''}${e.v.toFixed(2)})`);
+  const n = a.brainN[i];
+  return {
+    senses: SENSE_NAMES.map((name, k) => ({ name, v: x[k], drive: k < ND })),
+    q: ACT_NAMES.map((name, k) => ({ name, v: q[k] })),
+    current: a.brainA[i] === NO_ACT ? '' : ACT_NAMES[a.brainA[i]],
+    decisions: n, lifetime: a.brainLife[i], avg: n ? a.brainLife[i] / n : 0, last: a.brainLast[i], pending: a.brainR[i], surprise: a.brainErr[i],
+    temperature: temperature(sim, i), learnRate: 0.02 * learnRate(a.traits, i * 2),
+    instincts: assocText(associations(a.brainW, o, 6)), learnt,
+    weights: Array.from(a.brainW.subarray(o, o + NW), (v) => Math.round(v * 100) / 100),
+    template: m ? { gen: m.gen, source: m.source, accepted: m.accepted, lifetimes: m.lifetimes, meanFit: m.meanFit } : null,
+  };
+}
+
+/** Colony mind summary: the template newborn workers inherit and what the workers are currently choosing. */
+function mindSummary(sim: Sim, c: Colony) {
+  if (!c.mind) return null;
+  const a = sim.a, acts = new Array(NA).fill(0);
+  let n = 0, life = 0, dec = 0;
+  for (let i = 0; i < a.n; i++) {
+    if (!a.alive[i] || a.colony[i] !== c.slot || a.caste[i] !== CASTE.WORKER || !a.brainOk[i]) continue;
+    n++; life += a.brainLife[i]; dec += a.brainN[i];
+    if (a.brainA[i] !== NO_ACT) acts[a.brainA[i]]++;
+  }
+  const m = c.mind;
+  return {
+    gen: m.gen, source: m.source, accepted: m.accepted, lifetimes: m.lifetimes, meanFit: m.meanFit, brains: n,
+    avgReward: dec ? life / dec : 0, decisions: dec, choosing: ACT_NAMES.map((name, k) => ({ name, n: acts[k] })).filter((e) => e.n),
+    assoc: assocText(associations(m.w, 0, 8)),
+  };
+}
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -116,15 +165,23 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
   for (const p of [P.SPEED, P.METCOST, P.DESICC, P.DIGRATE, P.ATTACK, P.DEFENSE]) traits.push({ name: PHENO_NAMES[p] + ' (derived)', value: a.pheno[o + p].toFixed(2), kind: 'developmental' });
   let why = WHY_TEXT[a.why[i]] || TASK_NAMES[a.task[i]];
   if (a.task[i] === TASK.FORAGE && a.nav[i] === NAV.EXPLORE && a.why[i] === 0) why = WHY_TEXT[3];
-  const soc = society(sim, c), pers = personalityOf(a.id[i]).map((p) => PERSONALITIES[p]);
+  const soc = ensureRuler(sim, c), pers = personalityOf(a.id[i]).map((p) => PERSONALITIES[p]);
   const kills = soc.kills[a.id[i]] ?? 0;
   const ruler = soc.ruler === a.id[i];
   return {
     name: `${ruler ? 'Queen ' : ''}${antName(a.id[i])}`, mood: moodOf(sim, i), clan: caste === CASTE.QUEEN ? `ruler of ${soc.kingdom}` : `${clanName(a.father[i])} of ${soc.kingdom}`,
     persona: `${pers.map((p) => p.name).join(' & ')}: ${pers.map((p) => p.text).join('; ')}.${kills ? ` ${kills} foe${kills === 1 ? '' : 's'} slain.` : ''}`,
     story: soc.bios[a.id[i]] ?? [],
+    sheet: {
+      health: a.health[i], energy: a.energy[i], hydration: a.hydration[i], age: a.age[i],
+      life: caste === CASTE.QUEEN ? sp.queen.lifespanDays : caste === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6,
+      kills, x: a.x[i], y: a.y[i], marking: c.marking, kingdom: soc.kingdom, ruler, generation: a.generation[i],
+      size: a.pheno[o + P.SIZE] / sp.traits.size, attack: a.pheno[o + P.ATTACK], defense: a.pheno[o + P.DEFENSE], speed: a.pheno[o + P.SPEED],
+      carrying: a.carry[i] ? MATERIALS[a.carry[i]].name : a.carryBrood[i] >= 0 ? 'brood' : '',
+      underground: !sim.w.skyExposed(a.x[i], a.y[i]),
+    },
     id: a.id[i], colony: c.name, colonyId: c.id, species: `${sp.name} (${sp.commonName})`, caste: caste === CASTE.WORKER && a.major[i] ? 'major worker (soldier)' : CASTE_NAMES[caste], task: TASK_NAMES[a.task[i]], why,
-    lines, traits, named: maskList(a.traits, i * 2),
+    lines, traits, named: maskList(a.traits, i * 2), brain: brainInfo(sim, i),
     namedOrigin: a.mother[i]
       ? `Inherited from mother #${a.mother[i]}${a.father[i] ? ` and father #${a.father[i]}` : caste === CASTE.MALE ? ' only (haploid male)' : ' and an off-map father'}. Each parent's trait passes on with its own chance; rare new traits appear at birth.`
       : 'Founder: traits drawn at random (no recorded parents).',
@@ -182,7 +239,15 @@ export function colonySummaries(sim: Sim) {
       brood: stages, reproBrood, store: { ...col.store, mineral: Math.round(col.store.mineral) }, stim: col.stim, nestVolume: col.nestVolume, nestDepth: col.nestDepth,
       hasExit: col.hasExit, tasks, stats: col.stats, entrance: col.entrance, notes, ageDays: (sim.tick - col.foundedTick) / DAY_TICKS,
       playerEdited: col.playerEdited, mother: col.motherColony, exposure: col.exposure.slice(-30),
+      // god-game statistics: [day, workers, brood, births, deaths, nest cells] per day, and crowding
+      history: col.exposure.slice(-160).map((e) => [e.day, e.workers, e.brood, e.births ?? 0, e.deaths ?? 0, e.cells ?? 0]),
+      today: { births: col.acc.births ?? 0, deaths: col.acc.deaths ?? 0 },
+      density: col.nestVolume ? Math.round((100 * col.adults) / col.nestVolume) : 0,
+      generationDynasty: col.generation,
       society: col.alive ? societySummary(sim, col) : null,
+      territory: territorySummary(sim, col),
+      mind: mindSummary(sim, col),
+      war: col.war ? { strategy: col.war.strategy, reason: col.war.reason, raids: col.war.raids, raidsWon: col.war.raidsWon, absorbed: col.war.absorbed, broodStolen: col.war.broodStolen, infiltrating: !!(col.war.raid.active && col.war.raid.tunnel), reports: col.war.reports.slice(-8).reverse().map((r) => `Day ${Math.floor(r.tick / DAY_TICKS) + 1}: ${r.text}`) } : null,
       broodList: col.brood.slice(0, 40).map((b) => `${STAGE_NAMES[b.stage]}${b.stage ? ' ' + (b.major ? 'major worker' : DESTINY_NAMES[b.destiny]) : ''} ${Math.round(b.prog * 100)}%${b.stage === STAGE.LARVA ? ` fed ${Math.round((b.fed / b.need) * 100)}%` : ''}`),
     };
   });

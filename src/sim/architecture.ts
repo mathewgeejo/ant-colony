@@ -32,7 +32,9 @@ export function ensurePlan(sim: Sim, c: Colony): NestPlan | null {
   for (const o of sim.colonies) if (o && o.alive && o !== c && Math.abs(o.entrance.x - ex) < nearest) { nearest = Math.abs(o.entrance.x - ex); side = o.entrance.x > ex ? -1 : 1; }
   c.plan = {
     baseY, ex, amp: A.shaftAmp, freq: 0.16 + rng.next() * 0.1, phase: rng.next() * Math.PI * 2,
-    depth: Math.min(sp.nest.targetDepth, w.H - baseY - 6),
+    // game scale: the nest may use the whole soil column (real nests are a few metres at most; this is the
+    // underground kingdom the game is about). Species depth only sets how fast it heads down.
+    depth: Math.max(Math.min(sp.nest.targetDepth, w.H - baseY - 8), w.H - baseY - 8),
     chambers: [{ x: c.chamber.x, y: c.chamber.y, rx: 4, ry: 1, kind: 'royal' }],
     shafts: [], mound: { kind: A.mound, r: 0, h: 0 }, midden: { x: Math.max(3, Math.min(w.W - 4, ex + side * 22)) },
     todo: 0, frontier: [], version: 1,
@@ -84,18 +86,21 @@ const heapHeight = (sim: Sim, p: NestPlan, x: number) => Math.max(0, (p.ground[x
 function growPlan(sim: Sim, c: Colony, p: NestPlan) {
   const A = archOf(sim, c), rng = sim.rng, W = sim.w.W;
   let changed = false;
-  const want = Math.max(1, Math.min(16, 1 + Math.floor((c.adults + c.brood.length * 0.5) / 9)));
+  // chambers hang off the main shaft all the way down; the nest deepens as the colony grows
+  // (one chamber per ~5 members; every chamber touches the shaft so the network stays connected)
+  const spacing = A.chamberSpacing + 2;
+  const want = Math.max(1, Math.min(40, 1 + Math.floor((c.adults + c.brood.length * 0.5) / 5)));
   let k = p.chambers.filter((ch) => ch.kind === 'brood' || ch.kind === 'granary').length;
   while (k + 1 < want) {
     k++;
-    const y = p.baseY + 4 + Math.round(A.chamberSpacing * k ** 1.18);
+    const y = p.baseY + 6 + spacing * k;
     if (y > p.baseY + p.depth) break;
-    // chambers shrink with depth
-    const rx = Math.max(2, Math.round(6.5 - k * 0.35 + rng.next() * 2));
+    // chambers shrink slowly with depth
+    const rx = Math.max(3, Math.round(7 - k * 0.15 + rng.next() * 2));
     const side = (k & 1) ? 1 : -1;
     const sx = shaftX(p, y);
     const x = Math.max(rx + 2, Math.min(W - rx - 3, side > 0 ? sx + rx : sx + 1 - rx));
-    p.chambers.push({ x, y, rx, ry: 1, kind: A.granaries && k <= 2 ? 'granary' : 'brood' });
+    p.chambers.push({ x, y, rx, ry: k % 3 === 1 ? 2 : 1, kind: A.granaries && k % 4 === 2 ? 'granary' : 'brood' });
     changed = true;
   }
   // large colonies open extra shafts from shallow chambers to the surface
@@ -116,20 +121,37 @@ function growPlan(sim: Sim, c: Colony, p: NestPlan) {
   for (const o of sim.colonies) if (o && o.alive && o !== c) reach = Math.min(reach, Math.floor(Math.abs(o.entrance.x - p.ex) / 2) - 4);
   const main = p.chambers.filter((ch) => ch.kind === 'brood' || ch.kind === 'granary');
   const ends = p.chambers.filter((ch) => ch.kind === 'store');
-  const wantGal = Math.min(main.length, Math.floor(c.workers / 22));
-  if (reach >= 10 && ends.length < wantGal) {
+  const wantGal = Math.min(main.length, Math.floor(c.workers / 8));
+  for (let g = 0; g < 2 && reach >= 10 && ends.length < wantGal; g++) {
     const ch = main[ends.length], dir = ch.x >= shaftX(p, ch.y) ? 1 : -1;
-    const x1 = Math.max(5, Math.min(W - 6, ch.x + dir * (ch.rx + Math.min(reach - ch.rx - Math.abs(ch.x - p.ex), 8 + rng.int(10)))));
-    const y1 = Math.min(p.baseY + p.depth, ch.y + rng.int(3) - 1);
+    // galleries wander a little: they drop or climb a few cells on their way out
+    const x1 = Math.max(5, Math.min(W - 6, ch.x + dir * (ch.rx + Math.min(reach - ch.rx - Math.abs(ch.x - p.ex), 10 + rng.int(14)))));
+    const y1 = Math.min(p.baseY + p.depth, ch.y + rng.int(7) - 2);
     if (Math.abs(x1 - ch.x) > ch.rx + 3) {
       tunnels.push({ x0: ch.x + dir * ch.rx, y0: ch.y, x1, y1 });
-      p.chambers.push({ x: Math.max(4, Math.min(W - 5, x1 + dir * 2)), y: y1, rx: 3, ry: 1, kind: 'store' });
-      // cross-link to the previous satellite chamber on the same side
+      p.chambers.push({ x: Math.max(4, Math.min(W - 5, x1 + dir * 3)), y: y1, rx: 3 + rng.int(2), ry: 1, kind: 'store' });
+      // satellites on the same side are joined by a sloping side shaft, so the nest becomes a branching network
       const prev = ends.filter((e) => Math.sign(e.x - p.ex) === dir).pop();
-      if (prev) tunnels.push({ x0: prev.x, y0: prev.y + 1, x1: x1 + dir * 2, y1: y1 - 1 });
+      if (prev) tunnels.push({ x0: prev.x, y0: prev.y + 1, x1: x1 + dir * 3, y1: y1 - 1 });
+      ends.push(p.chambers[p.chambers.length - 1]);
       changed = true;
-    }
+    } else break;
   }
+  // the royal court moves down: once a deeper brood chamber is dug out, the queen relocates there (eggs, nurses
+  // and brood follow her), so the colony's heart is deep underground
+  const w = sim.w, own = c.slot + 1;
+  const open = (x: number, y: number) => w.inb(x, y) && w.owner[y * W + x] === own && !IS_SOLID[w.mat[y * W + x]];
+  let court: { x: number; y: number } | null = null;
+  for (const ch of p.chambers) {
+    if (ch.kind !== 'brood' || ch.y <= c.chamber.y + 8 || ch.y > p.baseY + p.depth * 0.6) continue;
+    const hx = ch.rx >> 1;
+    if (open(ch.x, ch.y + ch.ry) && open(ch.x - hx, ch.y + ch.ry) && open(ch.x + hx, ch.y + ch.ry) && (!court || ch.y > court.y)) court = { x: ch.x, y: ch.y + ch.ry };
+  }
+  if (court && c.chamber.x >= 0) {
+    c.chamber = court;
+    sim.event('nest', `${c.name}: the queen moved her court down to a new royal chamber ${court.y - p.baseY} cells below ground.`, c);
+  }
+  if (growRoads(sim, c, p)) changed = true;
   // the mound grows with the excavated volume
   if (p.mound.kind !== 'none') {
     const r = Math.min(24, Math.round(3 + Math.sqrt(Math.max(0, c.nestVolume)) * 0.55));
@@ -146,6 +168,113 @@ function growPlan(sim: Sim, c: Colony, p: NestPlan) {
   if (changed) p.version++;
 }
 
+/** Underground kingdom (game abstraction, far beyond real nest sizes): once a colony has a workforce it
+ *  drives long horizontal highways at one to three depths out from the main shaft, a segment at a time
+ *  whenever the current digging backlog is small. Highways sprout outpost chambers and, on the shallowest
+ *  level, shafts to the surface (distant entrances for foragers). A highway stops at the map edge or where
+ *  it meets another colony's claimed tunnels; that border is recorded as a contact and raises tension.
+ *  At war, a colony digs through the border (a breach) so its raiders can infiltrate underground. */
+/** highway levels as fractions of the soil column below the entrance (shallow to deep) */
+const ROAD_DEPTHS = [0.12, 0.35, 0.6, 0.85];
+function growRoads(sim: Sim, c: Colony, p: NestPlan): boolean {
+  const w = sim.w, W = w.W, H = w.H, rng = sim.rng, own = c.slot + 1;
+  if (c.workers < 10) return false;
+  const roads = (p.roads ??= []), contacts = (p.contacts ??= []), tunnels = (p.tunnels ??= []);
+  let changed = false;
+  const levels = c.workers >= 70 ? 4 : c.workers >= 45 ? 3 : c.workers >= 24 ? 2 : 1;
+  for (let l = 0; l < levels; l++) for (const dir of [-1, 1]) {
+    if (roads.some((r) => r.level === l && r.dir === dir)) continue;
+    const y = Math.min(p.baseY + Math.max(8, Math.round(ROAD_DEPTHS[l] * p.depth)), H - 8);
+    if (y <= p.baseY + 4) continue;
+    const sx = shaftX(p, y);
+    tunnels.push({ x0: sx, y0: p.baseY + 2, x1: sx, y1: y }); // the main shaft continues down to this level
+    roads.push({ level: l, dir, y, x: sx + (dir > 0 ? 2 : -1), len: 0, outposts: 0 });
+    changed = true;
+  }
+  // at war: break through the border toward the enemy's tunnels
+  const ws = c.war;
+  if (ws && (ws.strategy === 'war' || ws.strategy === 'raid') && ws.target) {
+    const ct = contacts.find((k) => k.colony === ws.target && !k.breached);
+    const o = sim.colonies.find((x) => x && x.alive && x.id === ws.target);
+    if (ct && o) {
+      let bx = ct.x;
+      for (let s = 0; s < 12; s++) { bx += ct.dir; if (w.owner[ct.y * W + bx] === o.slot + 1 || w.owner[(ct.y - 1) * W + bx] === o.slot + 1) break; }
+      tunnels.push({ x0: ct.x, y0: ct.y, x1: bx + ct.dir, y1: ct.y });
+      ct.breached = true; changed = true;
+      sim.event('tunnel', `${c.name} is tunnelling through the border into ${o.name}'s underground territory.`, c);
+    }
+  }
+  // a border reopens when the neighbour is gone
+  for (const r of roads) if (r.stop === 'border' && !sim.colonies.some((x) => x && x.alive && x.id === r.blockedBy)) { r.stop = undefined; r.blockedBy = 0; }
+  for (let k = contacts.length - 1; k >= 0; k--) if (!sim.colonies.some((x) => x && x.alive && x.id === contacts[k].colony)) contacts.splice(k, 1);
+  if (p.todo > 80 + c.workers * 1.5 && p.frontier.length > 4) return changed; // finish the current excavation first
+  // a straight run is passable when it crosses no rock and no water
+  const blocked = (xa: number, xb: number, y: number) => {
+    for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x++) for (let dy = -2; dy <= 1; dy++) {
+      const m = w.get(x, y + dy);
+      if (m === M.WATER || (dy >= -1 && dy <= 0 && IS_SOLID[m] && !DIG_RESIST[m])) return true;
+    }
+    return false;
+  };
+  const open = roads.filter((r) => !r.stop);
+  for (let n = 0; n < (c.workers >= 60 ? 2 : 1) && open.length; n++) {
+    const r = open.reduce((m, q) => (q.len < m.len ? q : m));
+    open.splice(open.indexOf(r), 1);
+    let x1 = r.x + r.dir * (14 + rng.int(10));
+    if (x1 < 4 || x1 > W - 5) { x1 = Math.max(4, Math.min(W - 5, x1)); r.stop = 'edge'; }
+    const want = Math.max(p.baseY + 5, Math.min(H - 6, r.y + rng.int(3) - 1));
+    const y1 = [0, -2, 2, -4, 4, -6, 6].map((d) => want + d).find((y) => y > p.baseY + 4 && y < H - 6 && !blocked(r.x, x1, y));
+    if (y1 === undefined) { r.stop = 'edge'; continue; }
+    // claimed ground: stop short of any other colony's excavations
+    outer: for (let x = r.x; x !== x1 + r.dir; x += r.dir) for (let dy = -3; dy <= 3; dy++) {
+      const yy = Math.max(0, Math.min(H - 1, (dy < 0 ? Math.min(r.y, y1) : Math.max(r.y, y1)) + dy));
+      const ow = w.owner[yy * W + x];
+      if (!ow || ow === own) continue;
+      const o = sim.colonies[ow - 1];
+      x1 = x - r.dir * 3; r.stop = 'border'; r.blockedBy = o?.id ?? 0;
+      if (o && o.alive && !contacts.some((k) => k.colony === o.id && k.dir === r.dir)) {
+        contacts.push({ x: x1, y: y1, dir: r.dir, colony: o.id, breached: false, since: sim.tick });
+        const rel = (c.war?.relations ?? []).find((q) => q.id === o.id);
+        if (rel) rel.hostility = Math.min(20, rel.hostility + 0.6);
+        sim.event('tunnel', `${c.name}'s tunnels reached the underground border of ${o.name}.`, c);
+      }
+      break outer;
+    }
+    if ((x1 - r.x) * r.dir < 3) continue;
+    // a level change becomes a short ramp at the start of the segment
+    if (y1 !== r.y) tunnels.push({ x0: r.x, y0: r.y, x1: r.x, y1 });
+    tunnels.push({ x0: r.x, y0: y1, x1, y1 });
+    r.len += Math.abs(x1 - r.x); r.x = x1; r.y = y1; changed = true;
+    if (r.len >= (r.outposts + 1) * 42) {
+      r.outposts++;
+      p.chambers.push({ x: Math.max(4, Math.min(W - 5, x1)), y: y1, rx: 3, ry: 1, kind: 'outpost' });
+      if (r.level === 0 && r.outposts % 2 === 1 && x1 > 3 && x1 < W - 4 && w.surface[x1] < y1 - 3) p.shafts.push({ x: x1, y0: w.surface[x1], y1 });
+    }
+  }
+  return changed;
+}
+
+/** Summary of a colony's underground kingdom for the UI. */
+export function territorySummary(sim: Sim, c: Colony) {
+  const p = c.plan, names = ['Upper', 'Middle', 'Deep'];
+  if (!p) return { roads: [], contacts: [], outposts: 0, shafts: 0, cells: c.nestVolume, todo: 0, span: 0 };
+  let minX = p.ex, maxX = p.ex;
+  for (const r of p.roads ?? []) { minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x); }
+  return {
+    roads: (p.roads ?? []).map((r) => {
+      const o = r.blockedBy ? sim.colonies.find((x) => x && x.id === r.blockedBy) : null;
+      return { name: `${names[r.level] ?? 'Lower'} ${r.dir < 0 ? 'west' : 'east'} highway`, len: r.len, outposts: r.outposts, status: r.stop === 'edge' ? 'reached the world edge' : r.stop === 'border' ? `border with ${o?.name ?? 'a lost colony'}` : 'expanding' };
+    }),
+    contacts: (p.contacts ?? []).map((k) => ({ colony: sim.colonies.find((x) => x && x.id === k.colony)?.name ?? 'a lost colony', breached: k.breached, x: k.x })),
+    outposts: p.chambers.filter((ch) => ch.kind === 'outpost').length, shafts: p.shafts.length + 1, cells: c.nestVolume, todo: p.todo,
+    span: Math.round(((maxX - minX) / sim.w.W) * 100),
+  };
+}
+
+/** Every frontier cell of a plan (not saved; refreshed by scanFrontier). */
+const allFront = new WeakMap<NestPlan, number[]>();
+export const frontierCells = (p: NestPlan) => allFront.get(p) ?? p.frontier;
+
 /** Count unexcavated planned cells and collect the frontier (planned solid cells touching the nest). */
 function scanFrontier(sim: Sim, c: Colony, p: NestPlan) {
   const w = sim.w, own = c.slot + 1, cells = planCells(p, w.W, w.H);
@@ -160,6 +289,7 @@ function scanFrontier(sim: Sim, c: Colony, p: NestPlan) {
     if (w.owner[k - 1] === own || w.owner[k + 1] === own || w.owner[k - w.W] === own || w.owner[k + w.W] === own) front.push(k);
   }
   p.todo = todo;
+  allFront.set(p, front);
   p.frontier = [];
   for (let n = 0; n < Math.min(24, front.length); n++) p.frontier.push(front[sim.rng.int(front.length)]);
 }
@@ -192,7 +322,7 @@ export function architectureStep(sim: Sim, c: Colony) {
 /** Extra excavation drive while the template is unfinished. */
 export function planDigStimulus(c: Colony) {
   const p = c.plan;
-  return p && p.frontier.length ? Math.min(0.55, p.todo / 160) : 0;
+  return p && p.frontier.length ? Math.min(p.roads?.length ? 0.7 : 0.55, p.todo / 160) : 0;
 }
 
 /** A frontier cell for a digger that has nothing useful next to it. */

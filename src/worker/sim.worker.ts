@@ -11,7 +11,8 @@ import { decodeJSON, encodeJSON, restore, snapshot } from '../sim/persist.ts';
 import { verifyDeterminism } from '../sim/replay.ts';
 import { validateSpecies, BUILTIN_SPECIES } from '../sim/species.ts';
 import type { SpeciesDef } from '../sim/species.ts';
-import { db } from './db.ts';
+import { brainDb, db } from './db.ts';
+import { NW as BRAIN_W, bankEntries, validBank, type BankEntry } from '../sim/brain.ts';
 import { JOURNAL_DEFS } from '../sim/journal.ts';
 import { CS } from '../sim/world.ts';
 
@@ -61,9 +62,43 @@ function post(msg: any, transfer: Transferable[] = []) {
   ctx.postMessage(msg, transfer);
 }
 
-function newWorld(opts: any) {
+// ---------------- brain bank: learnt templates per species, kept in IndexedDB across worlds
+let lastBrainSave = performance.now();
+let bankPaused = false; // after "forget", the running world no longer writes its templates back
+
+async function storedBrains(): Promise<BankEntry[]> {
+  try { return (await brainDb.all()).filter(validBank); } catch { return []; }
+}
+/** Store each species' most refined template from this world unless the bank already holds a better one. */
+async function persistBrains() {
+  if (!sim || bankPaused) return;
+  const have = new Map((await storedBrains()).map((e) => [e.speciesId, e.gen]));
+  const better = bankEntries(sim).filter((e) => e.gen > (have.get(e.speciesId) ?? -1)).map((e) => ({ ...e, savedAt: new Date().toISOString() }));
+  if (better.length) await brainDb.put(better);
+}
+async function brainsOp(op: 'export' | 'import' | 'reset', json?: string) {
+  if (op === 'reset') {
+    await brainDb.clear(); bankPaused = true;
+    post({ type: 'brainsResult', text: 'Learnt brains forgotten. New worlds start from instincts; this world keeps its current ants.' });
+  } else if (op === 'export') {
+    await persistBrains();
+    const entries = (await storedBrains()).map((e) => ({ ...e, w: Array.from(e.w) }));
+    post({ type: 'brainsExported', name: 'ant-brains.json', text: JSON.stringify({ format: 'ant-colony-brains', version: 1, savedAt: new Date().toISOString(), entries }) });
+  } else {
+    let raw: any;
+    try { raw = JSON.parse(json ?? ''); } catch { post({ type: 'error', text: 'That file is not valid JSON.' }); return; }
+    const entries = (raw?.format === 'ant-colony-brains' && Array.isArray(raw.entries) ? raw.entries : []).filter(validBank).map((e: BankEntry) => ({ ...e, w: Float32Array.from(e.w) }));
+    if (!entries.length) { post({ type: 'error', text: 'No valid brain templates found in that file.' }); return; }
+    await brainDb.put(entries); bankPaused = false;
+    post({ type: 'brainsResult', text: `Imported ${entries.length} brain template${entries.length === 1 ? '' : 's'}; they are used by colonies in new worlds.` });
+  }
+}
+
+async function newWorld(opts: any) {
   try {
-    sim = createSim({ ...opts, customSpecies });
+    const brains = await storedBrains();
+    bankPaused = false;
+    sim = createSim({ ...opts, customSpecies, brains });
     undo=[];redo=[];editOpen=false;
     fullTerrain = true;
     selectedId = -1; selectedCell = null;
@@ -138,6 +173,7 @@ function sendStats() {
     running,runRevision, speed, achievedSpeed: achievedTps / BASE_TPS, behind: running && speed < MAX_SPEED && achievedTps < BASE_TPS * speed * 0.9 && ticksThisSecond >= 0,
     droppedTicks,
     colonies: colonySummaries(s),
+    census: s.census.slice(-240),
     ants: s.a.count, critters: s.critters.list.length,
     events: s.events.slice(-80),
     journal: s.journal,
@@ -163,7 +199,7 @@ function estimateMB(s: Sim) {
   const world = s.w.N * 19 + s.w.TW * s.w.TH * 4 * 4 + s.w.N * 2 * 2; // cell layers (including mixture fields) + coarse fields + navigation/movement
   let sig = 0;
   for (const c of s.colonies) if (c) sig += (c.trail.live.length + c.alarm.live.length + c.nestOdor.live.length + c.digCue.live.length) * CS * CS * 4;
-  const ants = s.a.cap * (100 + 32 * 8 + 21 * 8 + 29 * 4);
+  const ants = s.a.cap * (100 + 32 * 8 + 21 * 8 + 29 * 4 + BRAIN_W * 4 + 64);
   return (world + sig + ants) / 1048576;
 }
 
@@ -196,6 +232,7 @@ function loop() {
   }
   if (sim && now - lastFrame >= 33) { sendFrame(); lastFrame = now; }
   if (sim && now - lastStats >= 250) { sendStats(); lastStats = now; }
+  if (sim && running && now - lastBrainSave > 20000) { lastBrainSave = now; persistBrains().catch(() => {}); }
   if (sim && wantDetail && now - lastDetail > 1000) {
     lastDetail = now;
     if (wantDetail.what === 'evolution') post({ type: 'evolution', data: evolutionDetail(sim) });
@@ -231,7 +268,8 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   try {
     switch (m.type) {
-      case 'new': newWorld(m.opts); break;
+      case 'new': await newWorld(m.opts); break;
+      case 'brains': await brainsOp(m.op, m.json); break;
       case 'beginEdit': checkpoint();break;
       case 'endEdit': if(sim)sim.flushCommands();editOpen=false;break;
       case 'undo': historyMove(undo,redo);break;
@@ -287,6 +325,7 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
         const t0 = performance.now();
         const snap = snapshot(sim, m.name);
         await db.put({ slot: m.slot, name: m.name, savedAt: snap.savedAt, summary: snap.summary }, snap);
+        await persistBrains().catch(() => {});
         post({ type: 'saved', slot: m.slot, ms: performance.now() - t0 });
         break;
       }

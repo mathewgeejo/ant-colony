@@ -2,7 +2,7 @@
 // ledgered terrain operations, colony lifecycle, reproduction and inheritance.
 import { AntStore, CASTE, NAV, SpatialIndex, TASK } from './ants.ts';
 import { contactPhase, canStand, inOwnNest, moveTo, updateAnt } from './behavior.ts';
-import type { Brood, Colony, LineageRecord, QueenData, Sperm } from './colony.ts';
+import type { Brood, CensusDay, Colony, LineageRecord, QueenData, Sperm } from './colony.ts';
 import { COLONY_MARKINGS, DESTINY, STAGE, makeColonyFields, newStats } from './colony.ts';
 import { Critters } from './critters.ts';
 import { lifeEcology } from './life-ecology.ts';
@@ -18,11 +18,15 @@ import { BUILTIN_SPECIES } from './species.ts';
 import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
 import { STRATEGY_EVERY, majorChance, underSiege, updateStrategy } from './warfare.ts';
-import { architectureStep } from './architecture.ts';
+import { architectureStep, frontierCells } from './architecture.ts';
 import { onBorn, onDeath, societyDaily } from './society.ts';
 import { NT, TRAITS, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
+import type { BankEntry } from './brain.ts';
+import { brainDeath, initBrain } from './brain.ts';
 
 export const SAVE_VERSION = 4;
+/** game pace for brood development (eggs hatch and workers emerge this many times faster than the species data) */
+export const BROOD_PACE = 1.6;
 const DX8 = [1, 1, 0, -1, -1, -1, 0, 1], DY8 = [0, 1, 1, 1, 0, -1, -1, -1];
 
 export interface Settings {
@@ -119,6 +123,10 @@ export class Sim {
   /** the options this world was created from (for deterministic replay verification) */
   createOpts: any = null;
   replayable = true;
+  /** learnt brain templates per species, carried in from earlier worlds and updated as colonies die (brain.ts) */
+  brainBank: Record<string, BankEntry> = {};
+  /** world census, one entry per day (population, births, deaths, kingdoms founded and fallen) */
+  census: CensusDay[] = [];
   /** scenario rules: commands applied automatically at given ticks (part of saved state) */
   scheduled: { tick: number; cmd: Command; note: string }[] = [];
   scenarioInfo:{id:string;title:string;goal:string;actions:{label:string;cmds:Command[]}[];notes?:{x:number;y:number;text:string}[]} = { id: 'sandbox', title: 'Free sandbox', goal: '', actions: [] };
@@ -603,6 +611,7 @@ export class Sim {
     if (caste === CASTE.WORKER) c.workers++;
     c.adults++;
     if (caste === CASTE.MALE || caste === CASTE.GYNE) { a.task[i] = TASK.ALATE; }
+    if (caste === CASTE.WORKER) initBrain(this, c, i);
     onBorn(this, c, i);
     return i;
   }
@@ -634,11 +643,12 @@ export class Sim {
     }
     const tc = w.tIdx(x, y);
     this.mortality[tc] += 1;
+    if (c && a.caste[i] === CASTE.WORKER) brainDeath(this, c, i, cause);
     a.kill(i);
     if (!c) return;
     if (a.caste[i] === CASTE.WORKER) c.workers--;
     c.adults--;
-    if (cause !== 'flew') { c.stats.adultDeaths[cause] = (c.stats.adultDeaths[cause] ?? 0) + 1; onDeath(this, c, i, cause); }
+    if (cause !== 'flew') { c.acc.deaths = (c.acc.deaths ?? 0) + 1; c.stats.adultDeaths[cause] = (c.stats.adultDeaths[cause] ?? 0) + 1; onDeath(this, c, i, cause); }
     if (a.caste[i] === CASTE.QUEEN) {
       const qid = a.id[i];
       c.queens = c.queens.filter((q) => q.antId !== qid);
@@ -780,7 +790,9 @@ export class Sim {
     const target = 4 + 0.6 * c.adults + 1.5 * larvae + (season0 === 'autumn' ? 2.5 : season0 === 'summer' ? 1.2 : 0) * c.adults;
     const hunger = Math.max(0, Math.min(1, (target - energyStore) / target));
     const proteinNeed = larvae > 0 ? Math.max(0, Math.min(1, (larvae * 1.2 - c.store.protein - c.store.seed * sp.nutrition.seed) / (larvae * 1.2))) : 0;
-    c.stim.forage = c.workers > 0 ? Math.min(1, 0.12 + 0.75 * hunger + 0.4 * proteinNeed) : 0;
+    // baseline scouting fades as stores fill: a well-stocked colony keeps most workers at home underground
+    const base = 0.03 + 0.09 * Math.max(0, Math.min(1, 2 - energyStore / target));
+    c.stim.forage = c.workers > 0 ? Math.min(1, base + 0.75 * hunger + 0.4 * proteinNeed) : 0;
     c.stim.nurse = larvae ? Math.min(1, hungry / Math.max(1, larvae) + 0.1) : eggs ? 0.05 : 0;
     const crowd = (c.adults + 0.3 * c.brood.length) / Math.max(1, c.nestVolume / 4);
     c.stim.dig = c.workers > 0 ? Math.max(0, Math.min(1, 0.8 * (crowd / sp.nest.crowdingTarget - 1))) + (c.nestVolume < 40 ? 0.3 : 0) : 0;
@@ -798,7 +810,7 @@ export class Sim {
       if (qi < 0) continue;
       if (a.task[qi] !== TASK.QUEEN_LAY) continue;
       const T = w.tempAt(a.x[qi], a.y[qi]);
-      const th = thermalRate(sp, T);
+      const th = nestRate(sp, T, w.owner[a.y[qi] * w.W + a.x[qi]] === c.slot + 1, season === 'winter');
       let rate = sp.queen.eggsPerDay * th * dt * fertility(a.traits, qi * 2);
       const claustralLimit = c.workers === 0 ? 12 : Infinity;
       if (q.eggsLaid >= claustralLimit && c.workers === 0) rate = 0;
@@ -808,7 +820,7 @@ export class Sim {
       // queens adjust laying to how well the brood can be fed: eggs laid into a protein shortage only starve
       if (c.workers > 0) {
         let larvae = 0; for (const b of c.brood) if (b.stage === STAGE.LARVA) larvae++;
-        const protein = c.store.protein + (sp.nutrition.seed > 0.3 ? c.store.seed * sp.nutrition.seed : 0);
+        const protein = c.store.protein + c.store.seed * Math.max(0.4, sp.nutrition.seed);
         if (protein < larvae * 0.8) rate *= protein < 1 ? 0.15 : 0.45;
       }
       if (rng.next() < rate) this.layEgg(c, q, qi, sp);
@@ -818,6 +830,7 @@ export class Sim {
         else if (c.store.protein > 0 && rng.chance(0.2)) { c.store.protein--; w.ledger.sink('protein', 'eaten by queen', 1); q.reserves += 3; }
       }
     }
+    if (!c.queens.length && c.workers >= 6) this.succession(c, sp);
     // queenless workers may produce males from unfertilised eggs (where supported)
     if (!c.queens.length && c.workers > 0 && sp.reproduction.workerMaleProduction && c.brood.length < 20 && rng.chance(dt * c.workers / 25)) {
       for (let i = 0; i < a.n; i++) {
@@ -848,6 +861,34 @@ export class Sim {
     // ---- death ----
     if (c.adults <= 0 && c.brood.length === 0) this.colonyDied(c, c.queens.length ? 'unknown' : 'no surviving members');
     else if (c.adults <= 0 && !c.queens.length && c.brood.every((b) => b.stage === STAGE.EGG)) this.colonyDied(c, 'no adults to rear brood');
+  }
+
+  /**
+   * Dynasties: a colony that loses its queen keeps going. A daughter queen still in the nest sheds her wings and
+   * takes over (secondary queen adoption, known from many species); failing that, workers raise one from a young
+   * female larva. GAME ABSTRACTION for every species (monogynous Lasius niger does not do this) so kingdoms can
+   * last for generations, like the cities of a god game.
+   */
+  private succession(c: Colony, sp: SpeciesDef) {
+    const a = this.a;
+    for (let i = 0; i < a.n; i++) {
+      if (!a.alive[i] || a.colony[i] !== c.slot || a.caste[i] !== CASTE.GYNE || !inOwnNest(this, i)) continue;
+      a.caste[i] = CASTE.QUEEN; a.task[i] = TASK.QUEEN_LAY; a.nav[i] = NAV.GOAL;
+      const dest = c.chamber.x >= 0 ? c.chamber : c.entrance;
+      a.tx[i] = dest.x; a.ty[i] = dest.y;
+      const sperm = this.sampleMates(sp, [], c.id);
+      c.queens.push({ antId: a.id[i], reserves: sp.founding.reserves * 0.6, sperm, mated: sperm.length > 0, eggsLaid: 0, natalColony: c.id, playerEdited: false });
+      c.stage = c.workers >= sp.reproduction.matureWorkers ? 'mature' : 'growing';
+      c.generation++;
+      this.event('succession', `${c.name}: a daughter queen shed her wings and took the throne (dynasty generation ${c.generation}).`, c);
+      return;
+    }
+    if (c.brood.some((b) => b.destiny === DESTINY.GYNE)) return;
+    const heir = c.brood.find((b) => b.stage === STAGE.LARVA && b.b && b.destiny === DESTINY.WORKER) ?? c.brood.find((b) => b.stage === STAGE.EGG && b.b);
+    if (!heir) return;
+    heir.destiny = DESTINY.GYNE; heir.major = false;
+    if (heir.stage === STAGE.LARVA) heir.need = broodCost(sp, this.mode, heir.a, heir.b, 1);
+    this.event('succession', `${c.name}: the queen is gone; workers are raising a new queen from a young larva.`, c);
   }
 
   private layEgg(c: Colony, q: QueenData, qi: number, sp: SpeciesDef) {
@@ -892,6 +933,7 @@ export class Sim {
     const w = this.w, rng = this.rng, a = this.a;
     const d = sp.development;
     const queenNear = c.queens.length > 0;
+    const winter = seasonName(this.tick) === 'winter';
     const q = c.queens[0];
     const qi = q ? a.findById(q.antId) : -1;
     for (let k = c.brood.length - 1; k >= 0; k--) {
@@ -925,7 +967,8 @@ export class Sim {
       else b.infection = Math.max(0, b.infection - dt * 0.2);
       if (b.infection > 0.3 && rng.chance(b.infection * dt * 0.8)) died = 'infection';
       if (!died) {
-        const rate = thermalRate(sp, T) * (1 + (gval(b.a, b.b, 14) - 0.5) * 2 * sp.traits.devrateSpread * MODES[this.mode].spread);
+        const tended = (c.workers > 0 || queenNear) && w.owner[bi] === c.slot + 1;
+        const rate = BROOD_PACE * nestRate(sp, T, tended, winter) * (1 + (gval(b.a, b.b, 14) - 0.5) * 2 * sp.traits.devrateSpread * MODES[this.mode].spread);
         if (b.stage === STAGE.EGG) {
           b.prog += rate * dt / d.eggDays;
           if (b.prog >= 1) {
@@ -986,6 +1029,7 @@ export class Sim {
     const dev = { nutrition: b.need > 0 ? b.fed / b.need : 1, meanTemp: b.tempN ? b.tempSum / b.tempN : 22, mineral: Math.min(1, c.store.mineral / 3), major };
     if (dev.mineral > 0 && this.mode === 'fantasy') c.store.mineral = Math.max(0, c.store.mineral - 0.5);
     const i = this.spawnAdult(c, caste, b.x, b.y, b.a, b.b, dev, b.mother, b.father, c.generation, b.tr);
+    c.acc.births = (c.acc.births ?? 0) + 1;
     if (caste === CASTE.WORKER) {
       if (major) {
         this.a.major[i] = 1;
@@ -1010,10 +1054,11 @@ export class Sim {
     const sp = this.speciesOf(c), w = this.w;
     let gain = 0;
     if (c.store.protein > 0) { c.store.protein--; w.ledger.sink('protein', 'fed to larvae', 1); gain = sp.nutrition.protein; }
-    else if (c.store.seed > 0 && sp.nutrition.seed > 0.3) { c.store.seed--; w.ledger.sink('seed', 'fed to larvae', 1); gain = 0.8 * sp.nutrition.seed; }
+    // non-granivores still feed larvae the lipid/protein-rich elaiosomes of collected seeds (myrmecochory), at a reduced value
+    else if (c.store.seed > 0) { c.store.seed--; w.ledger.sink('seed', 'fed to larvae', 1); gain = 0.8 * Math.max(0.4, sp.nutrition.seed); }
     // Sugar provides energy but cannot replace the protein required for larval growth.
-    // (adults keep a sugar reserve for themselves: larvae only get sugar beyond about half a unit per adult)
-    else if (c.store.sugar > c.adults * 0.5) { c.store.sugar--; w.ledger.sink('sugar', 'larval maintenance', 1); b.hunger = Math.max(0, b.hunger - 0.1); return true; }
+    // (adults keep a small sugar reserve for themselves before larvae get any)
+    else if (c.store.sugar > Math.min(4, c.adults * 0.5)) { c.store.sugar--; w.ledger.sink('sugar', 'larval maintenance', 1); b.hunger = Math.max(0, b.hunger - 0.1); return true; }
     else return false;
     b.fed += gain;
     b.hunger = 0;
@@ -1126,6 +1171,59 @@ export class Sim {
     }
   }
 
+  /** Walking-distance fields through tunnels (not saved; cached a few hundred ticks). */
+  private netFields = new Map<string, { tick: number; d: Uint16Array }>();
+  /** Distance (in cells) through colony c's excavations - and, when `other` is a colony slot+1, that
+   *  colony's too - to the cell (x,y). Used by underground raiders to find a breach and the way back. */
+  netDist(c: Colony, x: number, y: number, other = 0): Uint16Array {
+    const w = this.w, key = `${c.slot}:${x},${y}:${other}`;
+    let f = this.netFields.get(key);
+    if (f && this.tick - f.tick < 300) return f.d;
+    if (!f) {
+      if (this.netFields.size >= 8) this.netFields.delete(this.netFields.keys().next().value!);
+      f = { tick: this.tick, d: new Uint16Array(w.N) };
+      this.netFields.set(key, f);
+    }
+    f.tick = this.tick; f.d.fill(0);
+    const own = c.slot + 1, d = f.d;
+    const start = y * w.W + x;
+    if (!w.inb(x, y)) return d;
+    const q = [start]; d[start] = 1;
+    for (let h = 0; h < q.length && q.length < 60000; h++) {
+      const k = q[h], kx = k % w.W;
+      for (const nk of [k - 1, k + 1, k - w.W, k + w.W]) {
+        if (nk < 0 || nk >= w.N || d[nk] || Math.abs((nk % w.W) - kx) > 1) continue;
+        const o = w.owner[nk];
+        if ((o !== own && (!other || o !== other)) || IS_SOLID[w.mat[nk]]) continue;
+        d[nk] = Math.min(65535, d[k] + 1); q.push(nk);
+      }
+    }
+    return d;
+  }
+
+  private frontFields = new Map<number, { tick: number; d: Uint16Array }>();
+  /** Distance through colony c's tunnels to the nearest unfinished planned cell (diggers walk down it). */
+  frontierField(c: Colony): Uint16Array {
+    const w = this.w;
+    let f = this.frontFields.get(c.slot);
+    if (f && this.tick - f.tick < 240) return f.d;
+    if (!f) { f = { tick: this.tick, d: new Uint16Array(w.N) }; this.frontFields.set(c.slot, f); }
+    f.tick = this.tick; f.d.fill(0);
+    const own = c.slot + 1, d = f.d, q: number[] = [];
+    for (const k of c.plan ? frontierCells(c.plan) : []) for (const j of [k - 1, k + 1, k - w.W, k + w.W]) {
+      if (j < 0 || j >= w.N || d[j] || w.owner[j] !== own || IS_SOLID[w.mat[j]]) continue;
+      d[j] = 1; q.push(j);
+    }
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h], kx = k % w.W;
+      for (const nk of [k - 1, k + 1, k - w.W, k + w.W]) {
+        if (nk < 0 || nk >= w.N || d[nk] || Math.abs((nk % w.W) - kx) > 1 || w.owner[nk] !== own || IS_SOLID[w.mat[nk]]) continue;
+        d[nk] = Math.min(65535, d[k] + 1); q.push(nk);
+      }
+    }
+    return d;
+  }
+
   /** Distance home from (x,y) for colony slot, or 0 when unknown. */
   homeDist(slot: number, x: number, y: number) {
     const f = this.homeField.get(slot);
@@ -1150,13 +1248,13 @@ export class Sim {
     let bestExit = -1, bestExitD = 1e9;
     const out: number[] = [];
     const exits: number[] = [];
-    for (let h = 0; h < queue.length && vol < 6000; h++) {
+    for (let h = 0; h < queue.length && vol < 40000; h++) {
       const k = queue[h];
       const x = k % w.W, y = (k / w.W) | 0;
       const m = w.mat[k];
       if (IS_LIQUID[m]) flooded++;
       vol++;
-      if (out.length < 4096) out.push(k);
+      if (out.length < 40000) out.push(k);
       if (y > maxY) maxY = y;
       // an exit is an excavated cell bordering open, unexcavated, sky-exposed air (the surface)
       let isExit = false;
@@ -1183,7 +1281,7 @@ export class Sim {
     const wasExit = c.hasExit;
     c.hasExit = exit && !c.sealed ? true : exit;
     if (exit && c.sealed) c.sealed = false;
-    if (exit && bestExit >= 0 && bestExitD > 2) c.entrance = { x: bestExit % w.W, y: (bestExit / w.W) | 0 };
+    if (exit && bestExit >= 0 && (bestExitD > 2 || w.owner[c.entrance.y * w.W + c.entrance.x] !== own)) c.entrance = { x: bestExit % w.W, y: (bestExit / w.W) | 0 };
     if (!wasExit && exit && c.workers > 0) this.event('nest', `${c.name}: workers opened the nest to the surface.`, c);
     if (flooded > 4) {
       if (!c.acc.flooded) c.stats.floodEvents++;
@@ -1218,6 +1316,9 @@ export class Sim {
 
   private colonyDied(c: Colony, cause: string) {
     c.alive = false; c.stage = 'dead'; c.diedTick = this.tick;
+    // a colony's learnt template outlives it in the species brain bank when it is the most refined one
+    const m = c.mind, bank = this.brainBank[c.speciesId];
+    if (m && m.gen > 0 && (!bank || m.gen >= bank.gen)) this.brainBank[c.speciesId] = { speciesId: c.speciesId, w: m.w.slice(), gen: m.gen, meanFit: m.meanFit, lifetimes: m.lifetimes, source: c.name };
     const w = this.w;
     // stores rot in place (ledgered sink)
     if (c.store.sugar) w.ledger.sink('sugar', 'colony died', c.store.sugar);
@@ -1323,15 +1424,24 @@ export class Sim {
   private daily() {
     const day = Math.floor(this.tick / DAY_TICKS);
     societyDaily(this);
+    const census = { day, colonies: 0, ants: 0, brood: 0, births: 0, deaths: 0, founded: 0, fallen: 0, cells: 0 };
+    for (const r of this.lineage) {
+      if (r.foundedTick > this.tick - DAY_TICKS) census.founded++;
+      if (r.diedTick >= 0 && r.diedTick > this.tick - DAY_TICKS) census.fallen++;
+    }
     for (const c of this.colonies) {
       if (!c || !c.alive) continue;
       const n = Math.max(1, c.acc.n);
-      c.exposure.push({ day, temp: c.acc.temp / n, moisture: c.acc.moist / n, workers: c.workers, brood: c.brood.length, flooded: c.acc.flooded, starving: c.acc.starving });
+      const births = c.acc.births ?? 0, deaths = c.acc.deaths ?? 0;
+      c.exposure.push({ day, temp: c.acc.temp / n, moisture: c.acc.moist / n, workers: c.workers, brood: c.brood.length, flooded: c.acc.flooded, starving: c.acc.starving, births, deaths, cells: c.nestVolume });
       if (c.exposure.length > 200) c.exposure.shift();
-      c.acc = { temp: 0, moist: 0, n: 0, flooded: 0, starving: 0 };
+      c.acc = { temp: 0, moist: 0, n: 0, flooded: 0, starving: 0, births: 0, deaths: 0 };
+      census.colonies++; census.ants += c.adults; census.brood += c.brood.length; census.births += births; census.deaths += deaths; census.cells += c.nestVolume;
       const rec = this.lineage.find((r) => r.id === c.id);
       if (rec) rec.peakWorkers = c.stats.peakWorkers;
     }
+    this.census.push(census);
+    if (this.census.length > 1000) this.census.shift();
     const a = this.a;
     for (const sp of this.species) {
       const cols = this.aliveColonies().filter((c) => c.speciesId === sp.id && c.queens.length);
@@ -1461,6 +1571,17 @@ export class Sim {
 
 export function foodKey(f: number) {
   return f === 1 ? 'sugar' : f === 2 ? 'protein' : 'seed';
+}
+
+/**
+ * Development rate of brood (and laying rate) inside a tended nest. Workers carry brood between warmer and
+ * cooler chambers and cluster over it, so outside winter it never falls below 60% of the optimum while the
+ * nest is above freezing (game abstraction of nest thermoregulation: without it eggs in cool soil take a
+ * month to become workers and colonies barely grow).
+ */
+export function nestRate(sp: SpeciesDef, T: number, tended: boolean, winter: boolean) {
+  const r = thermalRate(sp, T);
+  return tended && !winter && T > 2 && T < sp.development.tMax ? Math.max(r, 0.6) : r;
 }
 
 /** Linear thermal reaction norm for development (degree-day style; Kipyatkov & Lopatina). */
