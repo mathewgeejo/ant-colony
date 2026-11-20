@@ -5,6 +5,7 @@ import { AgentRaster } from './agents.ts';
 import type { RGB } from './sprites.ts';
 
 const GROUND = Uint8Array.from(MATERIALS, m => m.state === 'solid' && m.category === 'terrain' ? 1 : 0);
+const backdropSolid = Uint8Array.from(MATERIALS, m => m.id !== M.WOOD && (IS_SOLID[m.id] || GROUND[m.id]) ? 1 : 0);
 const marks: RGB[] = [[239, 181, 86], [116, 190, 211], [215, 128, 152], [165, 192, 109], [190, 160, 219]];
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -68,7 +69,7 @@ export class Renderer {
     this.field.width = W; this.field.height = H;
     this.agents=new AgentRaster(W,H);this.agentImage=new ImageData(this.agents.data,W*3,H*3);
     this.agentCanvas.width=W*3;this.agentCanvas.height=H*3;this.lastAgentFrame=-1;
-    this.frame = null; this.route = []; this.surface = new Int16Array(W); this.ground = new Int16Array(W).fill(H);
+    this.overlayData = null; this.overlay = 'none'; this.frame = null; this.route = []; this.surface = new Int16Array(W); this.ground = new Int16Array(W).fill(H);
     this.anchored = new Uint8Array(W * H); this.fillQueue = new Int32Array(W * H); this.fit();
   }
   /**
@@ -80,14 +81,14 @@ export class Renderer {
     const { W, H, map } = this, seen = this.anchored, q = this.fillQueue;
     seen.fill(0); out.fill(H);
     let n = 0;
-    for (let x = 0, k = (H - 1) * W; x < W; x++, k++) if (IS_SOLID[map[k]] || GROUND[map[k]]) { seen[k] = 1; q[n++] = k; }
+    for (let x = 0, k = (H - 1) * W; x < W; x++, k++) if (backdropSolid[map[k]]) { seen[k] = 1; q[n++] = k; }
     for (let h = 0; h < n; h++) {
       const k = q[h], x = k % W, y = (k - x) / W;
       if (y < out[x]) out[x] = y;
-      if (x > 0 && !seen[k - 1] && (IS_SOLID[map[k - 1]] || GROUND[map[k - 1]])) { seen[k - 1] = 1; q[n++] = k - 1; }
-      if (x < W - 1 && !seen[k + 1] && (IS_SOLID[map[k + 1]] || GROUND[map[k + 1]])) { seen[k + 1] = 1; q[n++] = k + 1; }
-      if (y > 0 && !seen[k - W] && (IS_SOLID[map[k - W]] || GROUND[map[k - W]])) { seen[k - W] = 1; q[n++] = k - W; }
-      if (y < H - 1 && !seen[k + W] && (IS_SOLID[map[k + W]] || GROUND[map[k + W]])) { seen[k + W] = 1; q[n++] = k + W; }
+      if (x > 0 && !seen[k - 1] && (backdropSolid[map[k - 1]])) { seen[k - 1] = 1; q[n++] = k - 1; }
+      if (x < W - 1 && !seen[k + 1] && (backdropSolid[map[k + 1]])) { seen[k + 1] = 1; q[n++] = k + 1; }
+      if (y > 0 && !seen[k - W] && (backdropSolid[map[k - W]])) { seen[k - W] = 1; q[n++] = k - W; }
+      if (y < H - 1 && !seen[k + W] && (backdropSolid[map[k + W]])) { seen[k + W] = 1; q[n++] = k + W; }
     }
   }
   fit() {
@@ -150,7 +151,7 @@ export class Renderer {
           const m = bytes[o++] | bytes[o++] << 8, q = bytes[o++], x = cx + dx, y = cy + dy;
           if (x >= this.W || y >= this.H) continue;
           const prev = this.map[y * this.W + x];
-          if (prev !== m && (IS_SOLID[prev] || GROUND[prev]) !== (IS_SOLID[m] || GROUND[m])) solidity = true;
+          if (prev !== m && backdropSolid[prev] !== backdropSolid[m]) solidity = true;
           this.map[y * this.W + x] = m;
           this.cellDetails[y*this.W+x]=q;
           cells.push(x, y);
@@ -167,22 +168,27 @@ export class Renderer {
     }
     if(f.tints)for(let o=0;o<f.tints.length;o+=2){const k=f.tints[o];draw(k%this.W,(k/this.W)|0);}
     if(maxX>=0)this.terrainCtx.putImageData(this.terrainImage!,0,0,minX*TILE,minY*TILE,(maxX-minX+1)*TILE,(maxY-minY+1)*TILE);
-    if (f.overlayKind !== this.overlay) { this.overlay = f.overlayKind; this.fieldCtx.clearRect(0, 0, this.W, this.H); }
+    if (f.overlayKind !== this.overlay) { this.overlayData = null; this.overlay = f.overlayKind; this.fieldCtx.clearRect(0, 0, this.W, this.H); }
     if (f.overlay) {
       this.overlayData = f.overlay;
       const img = this.fieldCtx.createImageData(this.W, this.H);
+      const colonyColors: RGB[] = [];
+      for (const col of this.colonies) colonyColors[col.slot] = col.marking;
       for (let k = 0; k < f.overlay.length; k++) {
         const v = f.overlay[k]; if (!v) continue;
         let rgb = [85, 203, 221];
         if (this.overlay === 'temperature') rgb = [Math.min(255, v * 2), 160 - v / 3, Math.max(35, 255 - v)];
+        else if (this.overlay === 'brood') rgb = v < 100 ? [255,248,214] : v < 180 ? [255,162,104] : [203,175,255];
+        else if (this.overlay === 'tunnels') rgb = [115,215,176];
+        else if (this.overlay === 'trait') rgb = [180,150,246];
         else if (this.overlay === 'trail') rgb = [213, 186, 255];
         else if(this.overlay==='charge')rgb=[255,223,98];
         else if(this.overlay==='dose')rgb=[194,230,103];
         else if (this.overlay === 'alarm' || this.overlay === 'mortality' || this.overlay === 'toxin') rgb = [255, 110, 114];
         else if (this.overlay === 'food') rgb = v < 120 ? [255, 209, 94] : v < 180 ? [245, 137, 114] : [191, 214, 121];
-        else if (this.overlay === 'territory') rgb = marks[(v - 1) % marks.length];
+        else if (this.overlay === 'territory') rgb = colonyColors[v - 1] ?? marks[(v - 1) % marks.length];
         const z = k * 4; img.data[z] = rgb[0]; img.data[z + 1] = rgb[1]; img.data[z + 2] = rgb[2];
-        img.data[z + 3] = this.overlay === 'territory' || this.overlay === 'food' ? 140 : 30 + v * .65;
+        img.data[z + 3] = this.overlay === 'territory' || this.overlay === 'food' || this.overlay === 'brood' ? 175 : 30 + v * .65;
       }
       this.fieldCtx.putImageData(img, 0, 0);
     }
@@ -200,11 +206,15 @@ export class Renderer {
     const sx = Math.round(this.ox), sy = Math.round(this.oy), sw = Math.round(this.W * this.zoom), sh = Math.round(this.H * this.zoom);
     c.fillStyle = '#0b0806'; c.fillRect(sx - 4, sy - 4, sw + 8, sh + 8);
     c.fillStyle = '#5a4630'; c.fillRect(sx - 2, sy - 2, sw + 4, sh + 4);
-    c.fillStyle = '#b8c9be'; c.fillRect(sx, sy, sw, sh);
+    const light = this.cutaway ? (1 - Math.cos(2 * Math.PI * (this.frame?.dayPhase ?? .5))) / 2 : 1;
+    const sky = c.createLinearGradient(0, sy, 0, sy + sh * .45);
+    sky.addColorStop(0, `rgb(${52 + 110 * light},${71 + 132 * light},${91 + 123 * light})`);
+    sky.addColorStop(1, `rgb(${109 + 110 * light},${130 + 94 * light},${141 + 49 * light})`);
+    c.fillStyle = sky; c.fillRect(sx, sy, sw, sh);
     c.save(); c.beginPath(); c.rect(sx, sy, sw, sh); c.clip();
     c.translate(sx, sy); c.scale(this.zoom, this.zoom);
     // Pixel clouds are scenery. All plants, water, ants and underground material come from the simulation.
-    c.fillStyle = '#d4ded0';
+    c.fillStyle = `rgba(228,233,219,${.25 + light * .5})`;
     for (let k = 0; k < 8; k++) { const x = k * 73 + 9, y = 8 + hash(k, 1) * 20; c.fillRect(x, y, 20, 3); c.fillRect(x + 4, y - 3, 12, 3); }
     c.fillStyle = '#a1b99d';
     if(this.cutaway)for (let k = 0; k < 24; k++) { const x = k * 24; const sy = this.surface[Math.min(this.W - 1, x)] || 60; c.fillRect(x, sy - 2 - hash(k, 3) * 6, 25, 8); }
@@ -214,17 +224,37 @@ export class Renderer {
       const y = this.surface[x], m = this.map[y * this.W + x];
       if (m === M.TOPSOIL || m === M.SOIL) { c.fillStyle = hash(x, 4) > .5 ? '#7e9954' : '#647f43'; c.fillRect(x, y, 1, 1); if (hash(x, 6) > .76) c.fillRect(x, y - 2, .5, 2); }
     }
+    for (const col of this.colonies) {
+      if (!col.alive) continue;
+      for (const pile of col.storagePiles ?? []) {
+        if (this.map[pile.y * this.W + pile.x] !== M.AIR) continue;
+        const colors = pile.kind === 'sugar' ? ['#b47727','#ffdf76'] : pile.kind === 'protein' ? ['#9b4d42','#f4a186'] : ['#80733d','#dfcc88'];
+        const count = Math.min(9, Math.ceil(Math.log2(1 + pile.units)));
+        for (let n = 0; n < count; n++) {
+          const x = pile.x + (n % 3) * .29, y = pile.y + .78 - Math.floor(n / 3) * .22;
+          c.fillStyle = colors[n % 2]; c.fillRect(x, y, .32, .24);
+        }
+      }
+    }
     if (this.overlay !== 'none') c.drawImage(this.field, 0, 0);
     if (this.patterns && this.overlay !== 'none') {
       c.fillStyle = '#fff8'; const f = this.overlayData;
-      if (f) for (let y = 0; y < this.H; y += 4) for (let x = 0; x < this.W; x += 4) if (f[y * this.W + x] > 80) c.fillRect(x, y, 1, 1);
+      if (f) for (let y = 0; y < this.H; y += 4) for (let x = 0; x < this.W; x += 4) if (f[y * this.W + x] > 0) c.fillRect(x, y, 1, 1);
     }
     const f = this.frame;
     if (f) {
       for (let k = 0; k < f.broodCount; k++) {
         const o = k * 4, x = f.brood[o], y = f.brood[o + 1], stage = f.brood[o + 2] & 3;
-        c.fillStyle = stage === 0 ? '#f4ead0' : stage === 1 ? '#e5d39e' : '#c9af78';
-        c.fillRect(x - .35, y - .25, stage === 0 ? .65 : 1, .5); if (stage === 1) c.fillRect(x, y - .5, .4, .3);
+        const bx = x + (k % 3) * .16, by = y + (k % 2) * .18;
+        if (stage === 0) {
+          c.fillStyle = '#fff4d9'; c.fillRect(bx, by, .55, .38);
+        } else if (stage === 1) {
+          c.fillStyle = '#eacb9b'; c.fillRect(bx - .3, by, .95, .45);
+          c.fillStyle = '#fff1cc'; c.fillRect(bx - .4, by - .24, .38, .43); c.fillRect(bx + .18, by, .16, .35);
+        } else {
+          c.fillStyle = f.brood[o + 2] & 16 ? '#c49868' : '#d9b4a1'; c.fillRect(bx - .45, by - .14, 1.25, .55);
+          c.fillStyle = '#f3d9aa'; c.fillRect(bx - .26, by - .26, .85, .19);
+        }
       }
       if(this.lastAgentFrame!==f.id||this.lastLowDetail!==this.lowDetail){
         const old=this.agents!.bounds,x=old.x,y=old.y,w=old.w,h=old.h;

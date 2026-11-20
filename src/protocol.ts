@@ -14,7 +14,7 @@ export interface NewWorldOptions {
   world?: { colonies?: number };
 }
 
-export type OverlayKind = 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge' | 'dose';
+export type OverlayKind = 'tunnels' | 'brood' | 'none' | 'moisture' | 'temperature' | 'humidity' | 'trail' | 'alarm' | 'nest' | 'food' | 'territory' | 'mortality' | 'toxin' | 'trait' | 'charge' | 'dose';
 
 export type ToWorker =
   | { type: 'new'; opts: NewWorldOptions }

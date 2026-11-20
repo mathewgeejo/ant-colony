@@ -4,7 +4,7 @@ import type { Sim } from '../src/sim/sim.ts';
 import { Rng } from '../src/sim/rng.ts';
 import { NP, P } from '../src/sim/genetics.ts';
 import { CASTE, TASK } from '../src/sim/ants.ts';
-import { TRAITS, TR, NT, has, inheritTraits, founderTraits, maskList } from '../src/sim/traits.ts';
+import { TRAITS, TR, NT, birthStory, has, inheritTraits, founderTraits, maskList } from '../src/sim/traits.ts';
 import { snapshot, restore } from '../src/sim/persist.ts';
 import { PHEIDOLE_PALLIDULA, validateSpecies } from '../src/sim/species.ts';
 import { broodCost, founderGenome } from '../src/sim/genetics.ts';
@@ -22,7 +22,7 @@ describe('named traits: inheritance', () => {
       if (has(inheritTraits(rng, 'naturalistic', one, 0, none), 0, TR.strong)) o++;
       if (has(inheritTraits(rng, 'naturalistic', none, 0, none), 0, TR.strong)) n++;
     }
-    expect(b).toBeGreaterThan(o * 1.4);
+    expect(b / 4000).toBeCloseTo(1 - (1 - TRAITS[TR.strong].inherit) ** 2, 1);
     expect(o).toBeGreaterThan(n * 10);
     expect(o / 4000).toBeCloseTo(TRAITS[TR.strong].inherit, 1);
   });
@@ -38,6 +38,11 @@ describe('named traits: inheritance', () => {
       const f = founderTraits(rng, 'naturalistic');
       for (const t of maskList(f)) expect(TRAITS[t].fantasy).toBeFalsy();
     }
+  });
+  it('records parental carriers and spontaneous traits across both mask words', () => {
+    expect(birthStory(mask('fast', 'shield_wall', 'ambusher', 'treaty_weaver'),
+      mask('fast', 'shield_wall'), 0, mask('fast', 'treaty_weaver'))).toBe(
+      'Fast (both parents carried it), Shield wall (from mother), Ambusher (new at birth), Treaty weaver (from father)');
   });
   it('queen traits are passed to the brood she lays', () => {
     const s = small(), c = s.colonies[0]!;
@@ -59,7 +64,7 @@ describe('named traits: effects and management', () => {
     const i = s.a.alive.findIndex((v, k) => v > 0 && s.a.caste[k] === CASTE.WORKER && !has(s.a.traits, k * 2, TR.fast) && !has(s.a.traits, k * 2, TR.slow));
     const before = s.a.pheno.slice(i * NP, i * NP + NP);
     s.applyNow({ t: 'editTraits', antId: s.a.id[i], trait: TR.fast, on: true });
-    expect(s.a.pheno[i * NP + P.SPEED]).toBeCloseTo(before[P.SPEED] * 1.2, 5);
+    expect(s.a.pheno[i * NP + P.SPEED]).toBeCloseTo(before[P.SPEED] * 1.3, 5);
     s.applyNow({ t: 'editTraits', antId: s.a.id[i], trait: TR.slow, on: true });
     expect(has(s.a.traits, i * 2, TR.fast)).toBe(false);
     expect(has(s.a.traits, i * 2, TR.slow)).toBe(true);

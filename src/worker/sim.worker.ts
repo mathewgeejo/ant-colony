@@ -132,7 +132,7 @@ function sendFrame(full = false) {
   }
   const now = performance.now();
   let ov: Uint8Array | null = null;
-  if (overlay.kind !== 'none' && now - lastOverlay > 300) { ov = rasterOverlay(s, overlay.kind, overlay.colony, overlay.trait); lastOverlay = now; }
+  if (overlay.kind !== 'none' && (full || now - lastOverlay > 300)) { ov = rasterOverlay(s, overlay.kind, overlay.colony, overlay.trait); lastOverlay = now; }
   let temp: Float32Array | null = null;
   if (now - lastTempSent > 1000) { temp = s.w.temp.slice(); lastTempSent = now; }
   const surface = count ? s.w.surface.slice() : null;
@@ -310,7 +310,7 @@ ctx.onmessage = async (e: MessageEvent<ToWorker>) => {
       }
       case 'selectAntId': selectedId = m.id; if (sim) sendStats(); break;
       case 'clearSelection': selectedId = -1; selectedCell = null; break;
-      case 'overlay': overlay = { kind: m.kind, colony: m.colony, trait: m.trait }; lastOverlay = 0; break;
+      case 'overlay': overlay = { kind: m.kind, colony: m.colony, trait: m.trait }; lastOverlay = -Infinity; sendFrame(); break;
       case 'scenarioAction': {
         if (!sim) break;
         const act = sim.scenarioInfo.actions[m.index];

@@ -6,7 +6,7 @@ import type { Brood, CensusDay, Colony, LineageRecord, QueenData, Sperm } from '
 import { COLONY_MARKINGS, DESTINY, STAGE, makeColonyFields, newStats } from './colony.ts';
 import { Critters } from './critters.ts';
 import { lifeEcology } from './life-ecology.ts';
-import { ecologyStep } from './ecology.ts';
+import { canopyFall, ecologyStep } from './ecology.ts';
 import type { DevConditions, Mode, MutationRecord } from './genetics.ts';
 import { LOCI, MODES, NL, NP, P, broodCost, founderGenome, gval, makeEgg, phenotype } from './genetics.ts';
 import { FOOD_OF, IS_SOLID, IS_WATER, IS_LIQUID, M, MATERIALS, MOIST_CAP, WATER_UNITS,FANTASY_MATERIALS } from './materials.ts';
@@ -19,8 +19,8 @@ import { CS, FLAG_NEST, FLAG_PLAYER, FLAG_PLUG, TS, World } from './world.ts';
 import { checkJournal, JOURNAL_DEFS } from './journal.ts';
 import { STRATEGY_EVERY, majorChance, underSiege, updateStrategy } from './warfare.ts';
 import { architectureStep, frontierCells } from './architecture.ts';
-import { onBorn, onDeath, societyDaily } from './society.ts';
-import { NT, TRAITS, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
+import { society, onBorn, onDeath, societyDaily } from './society.ts';
+import { NT, TRAITS, birthStory, applyTraitPheno, fertility, founderTraits, has, inheritTraits, learnRate, maskList } from './traits.ts';
 import type { BankEntry } from './brain.ts';
 import { brainDeath, initBrain } from './brain.ts';
 
@@ -561,6 +561,8 @@ export class Sim {
       const wi = this.spawnAdult(c, CASTE.WORKER, ex + (k % 10) - 4, ey + depth + 1, eggA, sperm ? sperm.genome.slice() : eggA.slice(),
         { nutrition: 1, meanTemp: 24, mineral: 1, major }, c.queens[0].antId, sperm?.maleId ?? 0, 0,
         inheritTraits(this.rng, this.mode, this.a.traits, qi * 2, sperm?.tr ?? null));
+      const inherited = birthStory(this.a.traits.subarray(wi * 2, wi * 2 + 2), this.a.traits, qi * 2, sperm?.tr);
+      if (inherited) (society(this, c).birthTraits ??= {})[this.a.id[wi]] = inherited;
       if (major) this.a.major[wi] = 1;
       this.a.age[wi] = this.rng.range(0, sp.workers.lifespanDays * 0.5);
     }
@@ -913,16 +915,18 @@ export class Sim {
       ftr = s.tr ?? [0, 0];
     }
     this.addBrood(c, egg, pb, q.antId, father, a.x[qi], a.y[qi], male ? DESTINY.MALE : DESTINY.UNDECIDED, c.workers === 0,
-      inheritTraits(rng, this.mode, a.traits, qi * 2, ftr));
+      inheritTraits(rng, this.mode, a.traits, qi * 2, ftr), ftr);
     q.eggsLaid++;
     c.stats.eggsLaid++;
   }
 
-  addBrood(c: Colony, ga: Float32Array, gb: Float32Array | null, mother: number, father: number, x: number, y: number, destiny: number, queenFed: boolean, tr?: number[]) {
+  addBrood(c: Colony, ga: Float32Array, gb: Float32Array | null, mother: number, father: number, x: number, y: number, destiny: number, queenFed: boolean, tr?: number[], fatherTraits?: number[] | null) {
     const b: Brood = {
       id: this.broodNextId++, stage: STAGE.EGG, prog: 0, destiny, a: ga, b: gb, mother, father, x, y,
       fed: 0, need: 1, hunger: 0, drown: 0, dry: 0, infection: 0, tempSum: 0, tempN: 0, queenFed, carried: false, warmBoost: 0, tr,
     };
+    const mi = this.a.findById(mother);
+    if (tr && mi >= 0) b.birthTraits = birthStory(tr, this.a.traits, mi * 2, fatherTraits);
     c.brood.push(b);
   }
 
@@ -1032,6 +1036,7 @@ export class Sim {
     const dev = { nutrition: b.need > 0 ? b.fed / b.need : 1, meanTemp: b.tempN ? b.tempSum / b.tempN : 22, mineral: Math.min(1, c.store.mineral / 3), major };
     if (dev.mineral > 0 && this.mode === 'fantasy') c.store.mineral = Math.max(0, c.store.mineral - 0.5);
     const i = this.spawnAdult(c, caste, b.x, b.y, b.a, b.b, dev, b.mother, b.father, c.generation, b.tr);
+    if (b.birthTraits) (society(this, c).birthTraits ??= {})[this.a.id[i]] = b.birthTraits;
     c.acc.births = (c.acc.births ?? 0) + 1;
     if (caste === CASTE.WORKER) {
       if (major) {
@@ -1427,6 +1432,7 @@ export class Sim {
   private daily() {
     const day = Math.floor(this.tick / DAY_TICKS);
     societyDaily(this);
+    canopyFall(this);
     const census = { day, colonies: 0, ants: 0, brood: 0, births: 0, deaths: 0, founded: 0, fallen: 0, cells: 0 };
     for (const r of this.lineage) {
       if (r.foundedTick > this.tick - DAY_TICKS) census.founded++;

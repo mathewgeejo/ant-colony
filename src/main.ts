@@ -36,7 +36,7 @@ const icon = (name: string) => {
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${paths[name] ?? paths.settings}</svg>`;
 };
-const OVERLAYS: [string, string][] = [['none','No overlay'],['trail','Foraging trails'],['alarm','Alarm signals'],['nest','Nest odour'],['moisture','Soil moisture'],['humidity','Air humidity'],['temperature','Temperature'],['food','Food resources'],['territory','Colony activity'],['mortality','Recent mortality'],['toxin','Contamination'],['trait','Water-balance trait'],['charge','Electrical charge'],['dose','Radiation exposure · game units']];
+const OVERLAYS: [string, string][] = [['none','No overlay'],['trail','Foraging trails'],['alarm','Alarm signals'],['nest','Nest odour'],['tunnels','Excavated tunnels'],['brood','Nurseries'],['moisture','Soil moisture'],['humidity','Air humidity'],['temperature','Temperature'],['food','Food resources'],['territory','Colony activity'],['mortality','Recent mortality'],['toxin','Contamination'],['trait','Water-balance trait'],['charge','Electrical charge'],['dose','Radiation exposure · game units']];
 const CATS: [string, string][] = [['tools','Tools'],['terrain','Land'],['food','Food'],['life','Life'],['climate','Environment'],['powders','Powders'],['liquids','Liquids'],['gases','Gases'],['solids','Solids'],['energy','Energy']];
 
 $('#app').innerHTML = `
@@ -158,13 +158,14 @@ function antSheet(a: any): string {
       + bar('Health', s.health, '#e0675c') + bar('Energy', s.energy, '#e7bd69') + bar('Water', s.hydration, '#7fd8f0') + bar('Age', s.age / s.life, '#a9b473', `${s.age.toFixed(1)} / ${Math.round(s.life)} d`)
       + kv('Mood', a.mood ?? '-') + kv('Clan', a.clan ?? '-') + kv('Where', `${s.underground ? 'underground' : 'surface'} · ${s.x}, ${s.y}`)
       + (s.carrying ? kv('Carrying', s.carrying) : '') + kv('Foes slain', s.kills) + kv('Generation', s.generation)
+      + sec('Named traits') + traitEffects(a.named ?? [])
       + sec('Personality') + `<p class="muted">${esc(a.persona ?? '')}</p>`
       + sec('Body') + kv('Size', `${s.size.toFixed(2)}×`) + kv('Attack', s.attack.toFixed(2)) + kv('Defence', s.defense.toFixed(2)) + kv('Speed', s.speed.toFixed(2));
   } else if (t === 'brain') {
     body = brainTab(a.brain);
   } else if (t === 'story') {
     body = (a.story?.length ? a.story.map((l: string) => `<p>${esc(l)}</p>`).join('') : '<p class="muted">Nothing notable has happened to this ant yet. Rulers, soldiers, princesses and fighters get life stories.</p>')
-      + sec('Named traits') + traitChips(a.named ?? []) + `<p class="muted">${esc(a.namedOrigin ?? '')}</p>`;
+      + sec('Named traits') + traitEffects(a.named ?? []) + `<p class="muted">${esc(a.namedOrigin ?? '')}</p>`;
   } else {
     body = a.lines.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') + a.traits.map((tr: any) => `<div class="sh-kv"><span>${esc(tr.name)} <small>${esc(tr.kind)}</small></span><b>${esc(tr.value)}</b></div>`).join('');
   }
@@ -245,7 +246,7 @@ function colonySheet(c: any): string {
       + sec('Heroes') + (k?.heroes.map((h: any) => kv(h.name, `${h.kills} slain`)).join('') || '<p class="muted">None yet.</p>')
       + sec('Chronicle') + (k?.chronicle.map((l: string) => `<p><small>${esc(l)}</small></p>`).join('') || '');
   }
-  const actions = `<button data-sheet-act="focus">Focus nest</button>${c.queenId ? '<button data-sheet-act="queen-traits">Queen traits…</button>' : ''}<button data-sheet-act="overlay">Show tunnels</button>`;
+  const actions = `<button data-sheet-act="focus">Focus nest</button>${c.queenId ? '<button data-sheet-act="queen-traits">Queen traits…</button>' : ''}<button data-sheet-act="overlay">Show tunnels</button>${c.storagePiles?.length ? '<button data-sheet-act="pantry">Visit food stores</button>' : ''}${c.brood.some((n: number) => n > 0) ? '<button data-sheet-act="nursery">Find brood</button>' : ''}`;
   return sheetFrame('colony', k?.kingdom ?? c.name, `${c.name} · ${c.species}`, rgb(c.marking), [['overview', 'Overview'], ['activity', 'Activity'], ['mind', 'Mind'], ['territory', 'Territory'], ['war', 'War'], ['kingdom', 'Kingdom']], t, body, t === 'mind' ? brainActions : actions);
 }
 
@@ -353,7 +354,23 @@ $('#sheets').addEventListener('click', (e) => {
       case 'traits': if (a) traitManager(a.id, `${a.name ?? a.caste} (${a.colony})`, a.named ?? []); break;
       case 'focus': if (c) renderer.focus(c.entrance.x, c.entrance.y + 12); break;
       case 'queen-traits': if (c?.queenId) traitManager(c.queenId, `queen of ${c.name}`, c.queenTraits ?? []); break;
-      case 'overlay': { const sel = document.querySelector<HTMLSelectElement>('#overlay'); if (sel && c) { sel.value = 'nest'; sel.dispatchEvent(new Event('change')); } if (c) renderer.focus(c.entrance.x, c.entrance.y + 20); break; }
+      case 'overlay': case 'pantry': case 'nursery': {
+        if (!c) break;
+        selectedColony = c.id;
+        $<HTMLSelectElement>('#colony-select').value = String(c.id);
+        const pantry = act.dataset.sheetAct === 'pantry', nursery = act.dataset.sheetAct === 'nursery';
+        $<HTMLSelectElement>('#overlay').value = pantry ? 'food' : nursery ? 'brood' : 'tunnels';
+        updateOverlay();
+        let site = pantry ? c.storagePiles?.[0] : null;
+        const f = renderer.frame;
+        if (nursery && f) for (let i = 0; i < f.broodCount; i++) {
+          const o = i * 4;
+          if (f.brood[o + 3] === c.slot) { site = { x: f.brood[o], y: f.brood[o + 1] }; break; }
+        }
+        if (site) renderer.zoom = Math.max(renderer.zoom, 12);
+        renderer.focus(site?.x ?? c.entrance.x, site?.y ?? c.entrance.y + 20);
+        break;
+      }
     }
   }
   if (stats) renderSheets(stats);
@@ -479,6 +496,13 @@ function settings() {
 
 // ---- named traits (WorldBox-style) ----
 const traitChip = (t: number, extra = '') => { const d = TRAITS[t]; return d ? `<span class="trait-chip ${d.fantasy ? 'fantasy' : d.tone}" title="${esc(d.description)}"${extra}>${esc(d.name)}</span>` : ''; };
+function traitEffects(list: number[]) {
+  if (!list.length) return '<p class="muted">No named traits.</p>';
+  return list.map(t => {
+    const d = TRAITS[t];
+    return `<div class="trait-effect">${traitChip(t)}<p>${esc(d.description)}</p><small>${Math.round(100 * d.inherit)}% inheritance roll per carrier parent</small></div>`;
+  }).join('');
+}
 const traitChips = (list: number[]) => list.length ? `<div class="trait-chips">${list.map((t) => traitChip(t)).join('')}</div>` : '<p class="muted">No named traits.</p>';
 const TRAIT_GROUPS: [string, string][] = [['body', 'Body'], ['survival', 'Survival'], ['mind', 'Mind'], ['combat', 'Combat'], ['work', 'Work'], ['fantasy', 'Fantasy (fictional)']];
 /** Trait manager: toggle any named trait on one ant (sandbox override). A queen passes edits on to later offspring. */
@@ -542,7 +566,11 @@ function updateStats(s: any) {
   const select=$<HTMLSelectElement>('#colony-select');
   const options=s.colonies.map((c:any)=>`<option value="${c.id}">${esc(c.name)} · G${c.generation}</option>`).join('');
   if(select.innerHTML!==options){select.innerHTML=options; if(s.colonies.some((c:any)=>c.id===selectedColony))select.value=String(selectedColony);}
-  if(selectedColony<0&&s.colonies.length)selectedColony=s.colonies[0].id;
+  if (s.colonies.length && !s.colonies.some((col: any) => col.id === selectedColony)) {
+    selectedColony = s.colonies[0].id;
+    select.value = String(selectedColony);
+    updateOverlay();
+  }
   const c=s.colonies.find((c:any)=>c.id===selectedColony)??s.colonies[0];
   $('#colony-peek').textContent=c?`${c.workers} workers · ${c.brood.reduce((a:number,b:number)=>a+b,0)} brood`:'Introduce a queen';
   const a=s.selectedAnt, cell=s.selectedCell;
@@ -621,7 +649,7 @@ $('#toggle-gui').onclick=toggleGUI;$('#restore-ui').onclick=toggleGUI;
 $('#collapse').onclick=()=>document.body.classList.add('panel-hidden');$('#sidebar-toggle').onclick=()=>{document.body.classList.toggle('panel-hidden');if(stats)updateStats(stats);};
 $('#colony-select').onchange=()=>{selectedColony=Number($<HTMLSelectElement>('#colony-select').value);updateOverlay();};
 $('#overlay').onchange=updateOverlay;
-function updateOverlay(){const kind=$<HTMLSelectElement>('#overlay').value as OverlayKind,c=stats?.colonies.find((c:any)=>c.id===selectedColony);send({type:'overlay',kind,colony:c?.slot??-1,trait:6});const el=$('#overlay-legend');el.hidden=kind==='none';el.textContent=kind==='trail'?'Foraging trail · stronger marks = more signal':kind==='temperature'?'Temperature · blue cool → red hot':kind==='territory'?'Recent visits · colony markings':`${$<HTMLSelectElement>('#overlay').selectedOptions[0].text} · faint → strong`;}
+function updateOverlay(){const kind=$<HTMLSelectElement>('#overlay').value as OverlayKind,c=stats?.colonies.find((c:any)=>c.id===selectedColony);send({type:'overlay',kind,colony:c?.slot??-1,trait:6});const el=$('#overlay-legend');el.hidden=kind==='none';el.textContent=kind==='food'?'Gold = sugar ? coral = protein ? olive = seeds, including nest stores':kind==='brood'?'Ivory = eggs ? orange = larvae ? violet = pupae':kind==='tunnels'?'Excavated passages of the selected colony':kind==='trait'?'Worker water balance ? brighter = higher colony average':kind==='trail'?'Foraging trail · stronger marks = more signal':kind==='temperature'?'Temperature · blue cool → red hot':kind==='territory'?'Recent visits · colony markings':`${$<HTMLSelectElement>('#overlay').selectedOptions[0].text} · faint → strong`;}
 $('#brush').oninput=()=>{renderer.brush=Number($<HTMLInputElement>('#brush').value);$('#brush-value').textContent=String(renderer.brush*2+1);};
 document.addEventListener('click',e=>{const b=(e.target as HTMLElement).closest<HTMLElement>('[data-tool]');if(b){setTool(b.dataset.tool!,b.dataset.mat?Number(b.dataset.mat):undefined);beep();}const tab=(e.target as HTMLElement).closest<HTMLElement>('[data-cat]');if(tab){cat=tab.dataset.cat!;palette();}});
 async function importFile(input: HTMLInputElement, sp=false){const file=input.files?.[0];if(!file)return;try{if(file.size>100*1024*1024)throw new Error('File exceeds the 100 MB import limit.');if(sp)send({type:'importSpecies',json:await file.text()});else{send({type:'import',data:await file.arrayBuffer()});closeModal();}}catch(e){toast((e as Error).message,true);}input.value='';}

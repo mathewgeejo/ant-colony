@@ -12,6 +12,8 @@
 //   incipient colonies, Tschinkel 1992). Applying them to Lasius and Pogonomyrmex is a game extrapolation.
 // - Entrance plugging under threat is known from many ground-nesting species.
 // Numeric thresholds, quotas and decay rates are authored game rules.
+import { courage } from './traits.ts';
+import { treatyBetween } from './society.ts';
 import { CASTE, NAV, TASK, WHY } from './ants.ts';
 import type { Colony, Relation, WarState } from './colony.ts';
 import { STAGE } from './colony.ts';
@@ -80,7 +82,7 @@ export function underSiege(sim: Sim, c: Colony) { return !!c.war && c.war.siegeU
 /** Perceived competition 0..1 from the colony's own encounter memory. */
 function competition(sim: Sim, c: Colony) {
   let t = 0;
-  for (const r of c.war?.relations ?? []) if (byId(sim, r.id)) t = Math.max(t, Math.min(1, r.hostility / 2 + (sim.tick - r.lastSeen < 3600 ? 0.3 : 0)));
+  for (const r of c.war?.relations ?? []) if (byId(sim, r.id) && !treatyBetween(c, r.id, sim.tick)) t = Math.max(t, Math.min(1, r.hostility / 2 + (sim.tick - r.lastSeen < 3600 ? 0.3 : 0)));
   return t;
 }
 
@@ -173,7 +175,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
   }
   // ---- choose a strategy ----
   const prev = w.strategy;
-  const alive = w.relations.filter((r) => byId(sim, r.id));
+  const alive = w.relations.filter((r) => byId(sim, r.id) && !treatyBetween(c, r.id, tick));
   const threat = alive.filter((r) => tick - r.nearNest < 900).sort((p, q) => q.hostility - p.hostility)[0];
   const enemy = alive.slice().sort((p, q) => q.hostility - p.hostility)[0];
   const winRate = (r: Relation) => (r.totalKills + 1) / (r.totalKills + r.totalLosses + 2);
@@ -200,7 +202,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
   }
   w.strategy = s; w.target = target; w.reason = reason;
   // ---- staff the strategy: majors (soldiers) first, then the oldest healthy minors ----
-  recruits.sort((p, q) => a.major[q] - a.major[p] || a.age[q] - a.age[p]);
+  recruits.sort((p, q) => a.major[q] - a.major[p] || courage(a.traits, q * 2) - courage(a.traits, p * 2) || a.age[q] - a.age[p]);
   const W = c.workers;
   const quota = [
     s === 'defend' || s === 'fortify' ? 2 + Math.round(W * 0.08) : s === 'war' || s === 'raid' ? 1 + Math.round(W * 0.04) : W > 40 ? 1 : 0,
@@ -299,6 +301,10 @@ export function absorb(sim: Sim, lo: Colony, wi: Colony) {
     a.colony[i] = wi.slot; adults++; wi.adults++;
     if (a.caste[i] === CASTE.WORKER) { wi.workers++; a.task[i] = TASK.IDLE; a.why[i] = WHY.ABSORBED; a.nav[i] = NAV.NEST_WANDER; a.fightTarget[i] = -1; }
   }
+  if (wi.society && lo.society?.birthTraits) {
+    Object.assign(wi.society.birthTraits ??= {}, lo.society.birthTraits);
+    delete lo.society.birthTraits;
+  }
   const brood = lo.brood.length;
   wi.brood.push(...lo.brood); lo.brood = [];
   wi.store.sugar += lo.store.sugar; wi.store.protein += lo.store.protein; wi.store.seed += lo.store.seed; wi.store.mineral += lo.store.mineral;
@@ -357,7 +363,7 @@ function decideGuard(sim: Sim, i: number, c: Colony) {
 function decideFront(sim: Sim, i: number, c: Colony, own: boolean) {
   const a = sim.a, w = c.war;
   const r = w && w.target ? w.relations.find((r) => r.id === w.target) : null;
-  if (!r || r.frontX < 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
+  if (!r || treatyBetween(c, r.id, sim.tick) || r.frontX < 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
   if (muster(sim, i, own)) return;
   if (--a.timer[i] <= 0) return goHome(sim, i, c, WHY.RETURN_EMPTY);
   const fx = Math.round(r.frontX), fy = Math.round(r.frontY);
@@ -388,7 +394,7 @@ function decideRaid(sim: Sim, i: number, c: Colony, own: boolean) {
     if (inForeign && a.stuck[i] > 40) { a.nav[i] = NAV.UP; a.stuck[i] = 0; }
     return;
   }
-  if (!o) return goHome(sim, i, c, WHY.RAID_HOME);
+  if (!o || treatyBetween(c, o.id, sim.tick)) return goHome(sim, i, c, WHY.RAID_HOME);
   const tun = ws.raid.tunnel;
   if (!tun && muster(sim, i, own)) return;
   if (--a.timer[i] <= 0) return goHome(sim, i, c, WHY.RAID_HOME);

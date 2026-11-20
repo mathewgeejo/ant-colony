@@ -1,3 +1,4 @@
+import { updateStrategy, relation } from '../src/sim/warfare.ts';
 import { describe, it, expect } from 'vitest';
 import { createSim } from '../src/sim/scenarios.ts';
 import { planWorld, BIOMES } from '../src/sim/worldgen.ts';
@@ -6,7 +7,22 @@ import { DAY_TICKS } from '../src/sim/physics.ts';
 import { M } from '../src/sim/materials.ts';
 import { snapshot, restore } from '../src/sim/persist.ts';
 
+import { storagePiles, rasterOverlay } from '../src/sim/view.ts';
+import { inspectCell } from '../src/sim/inspect.ts';
+
 describe('generated worlds', () => {
+  it('draws pantry stock only on excavated floors and clears depleted food', () => {
+    const sim = createSim({ scenario: 'living-world', seed: 42 });
+    const col = sim.aliveColonies()[0];
+    const pile = storagePiles(sim, col).find(p => p.kind === 'sugar')!;
+    const k = pile.y * sim.w.W + pile.x;
+    expect(sim.w.mat[k]).toBe(M.AIR);
+    expect(sim.w.owner[k]).toBe(col.slot + 1);
+    expect(inspectCell(sim, pile.x, pile.y)?.lines.some(line => line.includes('sugar here'))).toBe(true);
+    expect(rasterOverlay(sim, 'food', col.slot, 6)?.[k]).toBe(100);
+    col.store.sugar = 0;
+    expect(storagePiles(sim, col).some(p => p.kind === 'sugar')).toBe(false);
+  });
   it('plans a deterministic, gap-free strip of biomes', () => {
     const a = planWorld(7, 768), b = planWorld(7, 768);
     expect(a.regions).toEqual(b.regions);
@@ -60,6 +76,21 @@ describe('society', () => {
     }
     const r = restore(snapshot(s));
     expect(r.aliveColonies()[0].society?.kingdom).toBe(s.aliveColonies()[0].society?.kingdom);
+  });
+  it('honours an active alliance even with a hostile rival near the nest', () => {
+    const s = createSim({ scenario: 'competing-colonies', seed: 2, size: [256, 128] });
+    const [a, b] = s.aliveColonies();
+    a.stage = 'mature';
+    a.workers = 40;
+    const rival = relation(a, b.id);
+    rival.hostility = 10;
+    rival.nearNest = s.tick;
+    society(s, a).treaties[b.id] = { kind: 'alliance', since: s.tick, until: s.tick + DAY_TICKS };
+    updateStrategy(s, a);
+    expect(a.war?.target).toBe(0);
+    s.tick += DAY_TICKS;
+    updateStrategy(s, a);
+    expect(a.war?.target).toBe(b.id);
   });
   it('treaty partners are recognised as at peace', () => {
     const s = createSim({ scenario: 'competing-colonies', seed: 2, size: [256, 128] });

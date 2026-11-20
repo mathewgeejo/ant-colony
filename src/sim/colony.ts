@@ -32,6 +32,7 @@ export interface Brood {
   /** worker larva on the major (soldier) developmental pathway; absent in older saves */
   major?: boolean;
   /** named traits inherited at conception (see traits.ts); absent in older saves */
+  birthTraits?: string;
   tr?: number[];
 }
 

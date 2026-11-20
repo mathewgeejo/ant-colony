@@ -1,3 +1,4 @@
+import { storagePiles } from './view.ts';
 // Plain-language inspectors for cells and ants, plus colony / evolution summaries for the UI.
 import { CASTE, CASTE_NAMES, MEM, NAV, TASK, TASK_NAMES, WHY_TEXT } from './ants.ts';
 import type { AntInfo, CellInfo } from '../protocol.ts';
@@ -15,7 +16,7 @@ import { territorySummary } from './architecture.ts';
 import { PERSONALITIES, antName, clanName, ensureRuler, moodOf, personalityOf, societySummary } from './society.ts';
 import { ACT_NAMES, NA, ND, NH, NI, NO_ACT, NW, SENSE_NAMES, associations, forward, temperature } from './brain.ts';
 import { senses } from './behavior.ts';
-import { learnRate } from './traits.ts';
+import { learnRate, lifeFactor } from './traits.ts';
 
 const assocText = (l: { sense: number; act: number; v: number }[]) => l.filter((e) => e.v > 0.05).map((e) => `${SENSE_NAMES[e.sense]} → ${ACT_NAMES[e.act]} (+${e.v.toFixed(2)})`);
 
@@ -100,6 +101,12 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   const own = w.owner[k];
   const col = own ? sim.colonies[own - 1] : null;
   if (col && col.alive) {
+    for (const pile of storagePiles(sim, col)) if (pile.x === x && pile.y === y) {
+      lines.push(`${col.name} stores ${pile.units.toFixed(1)} units of ${pile.kind} here.`);
+    }
+    const stages = [0, 0, 0];
+    for (const b of col.brood) if (b.x === x && b.y === y) stages[b.stage]++;
+    if (stages.some(Boolean)) lines.push(`Brood here: ${stages[0]} eggs, ${stages[1]} larvae, ${stages[2]} pupae.`);
     lines.push(`Part of the nest of ${col.name}.`);
     if (m === M.WATER) lines.push('Water has entered this part of the nest.');
     else if (m === M.AIR) {
@@ -171,10 +178,10 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
   return {
     name: `${ruler ? 'Queen ' : ''}${antName(a.id[i])}`, mood: moodOf(sim, i), clan: caste === CASTE.QUEEN ? `ruler of ${soc.kingdom}` : `${clanName(a.father[i])} of ${soc.kingdom}`,
     persona: `${pers.map((p) => p.name).join(' & ')}: ${pers.map((p) => p.text).join('; ')}.${kills ? ` ${kills} foe${kills === 1 ? '' : 's'} slain.` : ''}`,
-    story: soc.bios[a.id[i]] ?? [],
+    story: [...(soc.birthTraits?.[a.id[i]] ? [`Birth traits: ${soc.birthTraits[a.id[i]]}.`] : []), ...(soc.bios[a.id[i]] ?? [])],
     sheet: {
       health: a.health[i], energy: a.energy[i], hydration: a.hydration[i], age: a.age[i],
-      life: caste === CASTE.QUEEN ? sp.queen.lifespanDays : caste === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6,
+      life: (caste === CASTE.QUEEN ? sp.queen.lifespanDays : caste === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6) * lifeFactor(a.traits, i * 2),
       kills, x: a.x[i], y: a.y[i], marking: c.marking, kingdom: soc.kingdom, ruler, generation: a.generation[i],
       size: a.pheno[o + P.SIZE] / sp.traits.size, attack: a.pheno[o + P.ATTACK], defense: a.pheno[o + P.DEFENSE], speed: a.pheno[o + P.SPEED],
       carrying: a.carry[i] ? MATERIALS[a.carry[i]].name : a.carryBrood[i] >= 0 ? 'brood' : '',
@@ -184,7 +191,7 @@ export function inspectAnt(sim: Sim, i: number): AntInfo | null {
     lines, traits, named: maskList(a.traits, i * 2), brain: brainInfo(sim, i),
     namedOrigin: a.mother[i]
       ? `Inherited from mother #${a.mother[i]}${a.father[i] ? ` and father #${a.father[i]}` : caste === CASTE.MALE ? ' only (haploid male)' : ' and an off-map father'}. Each parent's trait passes on with its own chance; rare new traits appear at birth.`
-      : 'Founder: traits drawn at random (no recorded parents).',
+      : c.motherColony && caste === CASTE.QUEEN ? 'This founding queen carried her natal traits into the daughter colony.' : 'Founder with no recorded parents.',
   };
 }
 
@@ -236,7 +243,7 @@ export function colonySummaries(sim: Sim) {
       id: col.id, slot: col.slot, name: col.name, alive: col.alive, species: sp.name, speciesId: sp.id, stage: col.stage, generation: col.generation,
       marking: col.marking, workers: col.workers, majors, topTraits, queenTraits, queenId: qi >= 0 ? a.id[qi] : 0, adults: col.adults, alates, queens: col.queens.length,
       reserves: col.queens[0]?.reserves ?? 0,
-      brood: stages, reproBrood, store: { ...col.store, mineral: Math.round(col.store.mineral) }, stim: col.stim, nestVolume: col.nestVolume, nestDepth: col.nestDepth,
+      storagePiles: storagePiles(sim, col), brood: stages, reproBrood, store: { ...col.store, mineral: Math.round(col.store.mineral) }, stim: col.stim, nestVolume: col.nestVolume, nestDepth: col.nestDepth,
       hasExit: col.hasExit, tasks, stats: col.stats, entrance: col.entrance, notes, ageDays: (sim.tick - col.foundedTick) / DAY_TICKS,
       playerEdited: col.playerEdited, mother: col.motherColony, exposure: col.exposure.slice(-30),
       // god-game statistics: [day, workers, brood, births, deaths, nest cells] per day, and crowding

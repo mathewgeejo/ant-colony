@@ -9,6 +9,7 @@ import { CASTE } from './ants.ts';
 import type { Colony } from './colony.ts';
 import { DAY_TICKS } from './physics.ts';
 import type { Sim } from './sim.ts';
+import { has, TR } from './traits.ts';
 import { relation } from './warfare.ts';
 
 // ------------------------------------------------------------------ names
@@ -99,6 +100,7 @@ export interface Society {
   morale: number;
   chronicle: { tick: number; text: string }[];
   /** short life stories for notable living ants (ant id -> events) */
+  birthTraits?: Record<number, string>;
   bios: Record<number, string[]>;
   /** combat kills per living ant (heroes) */
   kills: Record<number, number>;
@@ -175,6 +177,7 @@ export function onDeath(sim: Sim, c: Colony, i: number, cause: string) {
   const id = sim.a.id[i];
   const kills = s.kills[id] ?? 0;
   if (kills >= 10) chronicle(sim, c, `The hero ${antName(id)} died (${cause}) after slaying ${kills} foes.`);
+  if (s.birthTraits) delete s.birthTraits[id];
   delete s.kills[id]; delete s.bios[id];
   if (sim.a.caste[i] === CASTE.WORKER) s.grief += 1;
 }
@@ -185,21 +188,19 @@ export function onFoodFound(sim: Sim, c: Colony, i: number, what: string) {
 
 // ------------------------------------------------------------------ queries used by behaviour
 
-const peaceCache = { tick: -1, pairs: new Set<number>() };
-/** True when two colony slots are bound by a peace treaty or alliance (their workers do not start fights). */
-export function atPeace(sim: Sim, slotA: number, slotB: number): boolean {
-  if (peaceCache.tick !== sim.tick) {
-    peaceCache.tick = sim.tick; peaceCache.pairs.clear();
-    for (const c of sim.colonies) {
-      if (!c || !c.alive || !c.society) continue;
-      for (const [id, t] of Object.entries(c.society.treaties)) {
-        if (t.until <= sim.tick) continue;
-        const o = sim.colonies.find((x) => x && x.alive && x.id === Number(id));
-        if (o) { peaceCache.pairs.add(c.slot * 256 + o.slot); peaceCache.pairs.add(o.slot * 256 + c.slot); }
-      }
-    }
-  }
-  return peaceCache.pairs.has(slotA * 256 + slotB);
+export function treatyBetween(c: Colony, otherId: number, tick: number) {
+  const treaty = c.society?.treaties[otherId];
+  return treaty && treaty.until > tick ? treaty : undefined;
+}
+
+export function atPeace(sim: Sim, slotA: number, slotB: number) {
+  const a = sim.colonies[slotA], b = sim.colonies[slotB];
+  return !!(a && b && (treatyBetween(a, b.id, sim.tick) || treatyBetween(b, a.id, sim.tick)));
+}
+
+function treatyWeaver(sim: Sim, s: Society) {
+  const queen = sim.a.findById(s.ruler);
+  return queen >= 0 && has(sim.a.traits, queen * 2, TR.treaty_weaver);
 }
 
 export function cultureAggression(c: Colony) {
@@ -270,9 +271,10 @@ export function societyDaily(sim: Sim) {
     const back = relation(o, c.id);
     const hostile = Math.max(r.hostility, back.hostility);
     const losses = r.totalLosses + back.totalLosses;
+    const diplomatic = treatyWeaver(sim, sc) || treatyWeaver(sim, so);
     const weary = losses >= 12 && (sc.morale < 0.55 || so.morale < 0.55);
     const wantsPeace = (k: Society) => k.culture === 'peaceful' ? 1 : k.culture === 'warlike' ? 0.15 : 0.5;
-    if (hostile > 0.8 && weary && sim.rng.chance(0.5 * wantsPeace(sc) * wantsPeace(so) + 0.05)) {
+    if (hostile > 0.8 && weary && sim.rng.chance((0.5 * wantsPeace(sc) * wantsPeace(so) + 0.05) * (diplomatic ? 2 : 1))) {
       sign(sim, c, o, 'peace', 8 + sim.rng.int(8));
       continue;
     }
@@ -280,7 +282,7 @@ export function societyDaily(sim: Sim) {
     if (hostile < 0.4 && r.encounters > 0.5) {
       const common = (c.war?.relations ?? []).find((e) => e.id !== o.id && e.hostility > 1.5 && byId(sim, e.id) && (o.war?.relations ?? []).some((f) => f.id === e.id && f.hostility > 1.5));
       const willing = sc.culture !== 'warlike' || so.culture !== 'warlike';
-      if (common && willing && sim.rng.chance(0.3)) sign(sim, c, o, 'alliance', 12 + sim.rng.int(10), byId(sim, common.id));
+      if (common && willing && sim.rng.chance(diplomatic ? 0.6 : 0.3)) sign(sim, c, o, 'alliance', 12 + sim.rng.int(10), byId(sim, common.id));
     }
   }
 }
@@ -294,7 +296,10 @@ function sign(sim: Sim, c: Colony, o: Colony, kind: 'peace' | 'alliance', days: 
   const text = kind === 'peace'
     ? `Queen ${sc.rulerName || '(none)'} of ${sc.kingdom} and Queen ${so.rulerName || '(none)'} of ${so.kingdom} made peace for ${days} days.`
     : `${sc.kingdom} and ${so.kingdom} allied for ${days} days${against ? ` against ${society(sim, against).kingdom}` : ''}.`;
-  chronicle(sim, c, text); chronicle(sim, o, text);
+  for (const [colony, court] of [[c, sc], [o, so]] as const) {
+    chronicle(sim, colony, text);
+    if (treatyWeaver(sim, court)) bio(sim, colony, court.ruler, `Used Treaty weaver to negotiate ${kind} with ${colony === c ? so.kingdom : sc.kingdom}.`);
+  }
   sim.event('diplomacy', text, c);
 }
 

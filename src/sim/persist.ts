@@ -1,5 +1,7 @@
 // Complete-state serialisation. The snapshot is structured-clone friendly (for IndexedDB)
 // and can be encoded to JSON with typed-array tagging for portable file export.
+import { maskList, TRAITS } from './traits.ts';
+import { P, NP } from './genetics.ts';
 import { AntStore } from './ants.ts';
 import type { Colony } from './colony.ts';
 import { makeColonyFields } from './colony.ts';
@@ -46,6 +48,7 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
       ledger: { sources: structuredClone(w.ledger.sources), sinks: structuredClone(w.ledger.sinks), initial: { ...w.ledger.initial } },
     },
     phys: { stamp: sim.phys.stamp, moistureCursor: sim.phys.moistureCursor, raining: sim.phys.raining, rainLocal: sim.phys.rainLocal.map((r) => ({ ...r })), slumps: sim.phys.slumps,topologyChanged:sim.phys.sandbox.topologyChanged },
+    traitBalance: 2,
     ants: sim.a.serialize(),
     colonies: cols,
     nextColonyId: sim.nextColonyId, broodNextId: sim.broodNextId,
@@ -154,6 +157,21 @@ export function restore(file: SaveFile): Sim {
   Object.assign(sim.phys, { stamp: s.phys.stamp, moistureCursor: s.phys.moistureCursor, raining: s.phys.raining, rainLocal: s.phys.rainLocal.map((r: any) => ({ ...r })), slumps: s.phys.slumps });
   sim.phys.sandbox.topologyChanged=s.phys.topologyChanged??false;
   sim.a = AntStore.restore(s.ants);
+  // Older saves baked the original trait modifiers into each adult's phenotype.
+  if (!s.traitBalance) {
+    for (let i = 0; i < sim.a.n; i++) {
+      if (!sim.a.alive[i]) continue;
+      for (const t of maskList(sim.a.traits, i * 2)) {
+        for (const [key, value] of Object.entries(TRAITS[t].mul ?? {})) {
+          sim.a.pheno[i * NP + P[key as keyof typeof P]] *= value / (1 + (value - 1) / 1.5);
+        }
+        for (const [key, value] of Object.entries(TRAITS[t].add ?? {})) {
+          const index = i * NP + P[key as keyof typeof P];
+          sim.a.pheno[index] = Math.max(0, sim.a.pheno[index] + value / 3);
+        }
+      }
+    }
+  }
   sim.colonies = s.colonies.map((o: any) => {
     if (!o) return null;
     const sp = sim.speciesById(o.speciesId);

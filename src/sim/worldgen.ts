@@ -147,3 +147,44 @@ export function colonySites(sim: Sim, plan: WorldPlan, n: number): { x: number; 
   }
   return sites.sort((a, b) => a.x - b.x);
 }
+
+/** Introduce mature trees after colony sites and scenario fixtures have been placed. */
+export function plantTrees(sim: Sim, density?: Float32Array) {
+  const w = sim.w, rng = new Rng(sim.cfg.seed ^ 0x3b12f);
+  const colonies = sim.aliveColonies();
+  for (let start = 8; start < w.W - 10;) {
+    const lush = density?.[start] ?? 1;
+    const end = Math.min(w.W - 8, start + Math.round(36 / lush) + rng.int(18));
+    for (let x = start; x < end; x++) {
+      const floor = w.surface[x], soil = w.get(x, floor);
+      if (floor < 15 || ![M.TOPSOIL, M.SOIL, M.ORGANIC].some(m => m === soil)) continue;
+      if (colonies.some(c => Math.abs(c.entrance.x - x) < 11)) continue;
+      if (w.get(x, floor - 1) !== M.AIR) continue;
+      const height = Math.min(floor - 6, 8 + Math.round(lush * 4) + rng.int(7));
+      let clear = true;
+      for (let y = floor - height; y < floor; y++) if (w.get(x, y) !== M.AIR) clear = false;
+      if (!clear) continue;
+      const crown = floor - height, radius = 4 + rng.int(4);
+      for (let y = floor - 1; y >= crown; y--) w.mat[y * w.W + x] = M.WOOD;
+      for (const dir of [-1, 1]) {
+        for (let d = 1; d <= radius - 1; d++) {
+          const y = crown + 4 - Math.floor(d / 2), xx = x + dir * d;
+          if (w.get(xx, y) === M.AIR) w.mat[y * w.W + xx] = M.WOOD;
+        }
+      }
+      for (let dy = -4; dy <= 3; dy++) for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx / (radius * radius) + dy * dy / 16 > 0.85 + rng.next() * 0.35) continue;
+        const xx = x + dx, yy = crown + dy, k = yy * w.W + xx;
+        if (w.get(xx, yy) !== M.AIR) continue;
+        w.mat[k] = M.PLANT; w.amt[k] = 15;
+        w.setTint(k, dy < -1 ? 0xff99ad59 : dy > 1 ? 0xff426747 : 0xff69894c);
+      }
+      for (let d = 0; d < 4 && floor + d < w.H; d++) {
+        const k = (floor + d) * w.W + x;
+        if (w.mat[k] === M.SOIL || w.mat[k] === M.TOPSOIL) w.mat[k] = M.ROOT;
+      }
+      break;
+    }
+    start = end + 4;
+  }
+}

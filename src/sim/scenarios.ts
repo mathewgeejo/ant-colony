@@ -9,7 +9,7 @@ import type { Command, Settings } from './sim.ts';
 import { DEFAULT_SETTINGS, Sim } from './sim.ts';
 import type { SpeciesDef } from './species.ts';
 import { FLAG_APHID } from './world.ts';
-import { BIOMES, colonySites, decorateWorld, planWorld, type WorldOptions } from './worldgen.ts';
+import { BIOMES, colonySites, decorateWorld, plantTrees, planWorld, type WorldOptions } from './worldgen.ts';
 import { validBank, type BankEntry } from './brain.ts';
 
 export interface ScenarioDef {
@@ -481,6 +481,10 @@ export function createSim(opt: CreateOptions): Sim {
   }
   void NL;
   sim.w.recomputeAllSurface();
+  if (!['empty', 'physics-lab', 'liquid-lab', 'powder-lab'].includes(def.id)) {
+    plantTrees(sim, gen.plantMul);
+    sim.w.recomputeAllSurface();
+  }
   spinUp(sim);
   sim.w.rebuildReactive();
   setInitialLedger(sim);

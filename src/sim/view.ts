@@ -5,6 +5,8 @@ import { NP, P } from './genetics.ts';
 import { FOOD_OF, M, MATERIALS, MOIST_CAP,CONDUCTIVITY } from './materials.ts';
 import type { OverlayKind } from '../protocol.ts';
 import { CARRY_KIND } from '../protocol.ts';
+import type { Colony } from './colony.ts';
+import { IS_SOLID } from './materials.ts';
 import type { Sim } from './sim.ts';
 import { CS, FLAG_APHID, FLAG_PLUG, TS } from './world.ts';
 
@@ -107,6 +109,28 @@ export function packCritters(sim: Sim): { buf: Int16Array; count: number } {
   return { buf, count: l.length };
 }
 
+/** One display pile per resource, placed only on dry excavated floors.
+ * Colony stores remain the inventory of record. Drawing a pile never creates food. */
+export function storagePiles(sim: Sim, c: Colony) {
+  const w = sim.w, sites: number[] = [];
+  const rooms = (c.plan?.chambers ?? []).filter(ch => ch.kind === 'granary' || ch.kind === 'store');
+  for (const room of [...rooms, { ...c.chamber, rx: 5, ry: 3 }]) {
+    for (let dy = room.ry; dy >= -room.ry && sites.length < 3; dy--) {
+      for (let dx = -room.rx; dx <= room.rx && sites.length < 3; dx++) {
+        const x = room.x + dx, y = room.y + dy, k = y * w.W + x;
+        if (!w.inb(x, y + 1) || y < c.entrance.y + 1 || w.owner[k] !== c.slot + 1 || w.mat[k] !== M.AIR || !IS_SOLID[w.mat[k + w.W]]) continue;
+        if (!sites.includes(k)) sites.push(k);
+      }
+    }
+    if (sites.length === 3) break;
+  }
+  if (!sites.length) return [];
+  return (['sugar', 'protein', 'seed'] as const).flatMap((kind, i) => {
+    const k = sites[i % sites.length];
+    return c.store[kind] > 0 ? [{ x: k % w.W, y: Math.floor(k / w.W), kind, units: c.store[kind] }] : [];
+  });
+}
+
 /** Rasterise an overlay field to bytes (0 = nothing). Categorical overlays store slot+1. */
 export function rasterOverlay(sim: Sim, kind: OverlayKind, colonySlot: number, trait: number): Uint8Array | null {
   const w = sim.w;
@@ -152,8 +176,15 @@ export function rasterOverlay(sim: Sim, kind: OverlayKind, colonySlot: number, t
       }
       break;
     }
+    case 'tunnels':
+      for (let k = 0; k < w.N; k++) if (w.owner[k] && (colonySlot < 0 || w.owner[k] === colonySlot + 1) && w.mat[k] === M.AIR) out[k] = 190;
+      break;
+    case 'brood':
+      for (const c of cols) for (const b of c!.brood) if (w.inb(b.x, b.y)) out[b.y * W + b.x] = 60 + b.stage * 70;
+      break;
     case 'food':
       for (let k = 0; k < w.N; k++) { const f = FOOD_OF[w.mat[k]]; if (f) out[k] = f * 60 + Math.min(40, w.amt[k] * 5); }
+      for (const c of sim.aliveColonies()) for (const p of storagePiles(sim, c)) out[p.y * W + p.x] = p.kind === 'sugar' ? 100 : p.kind === 'protein' ? 160 : 220;
       break;
     case 'toxin':
       for (let k = 0; k < w.N; k++) if (w.toxin[k]) out[k] = Math.max(1, w.toxin[k]);
@@ -179,7 +210,7 @@ export function rasterOverlay(sim: Sim, kind: OverlayKind, colonySlot: number, t
         else if (kind === 'mortality') { if (sim.mortality[t] > 0.05) v = 1 + Math.min(254, Math.round(sim.mortality[t] * 40)); }
         else {
           const own = sim.activityOwner[t];
-          if (own && sim.activity[t] > 2 && means.has(own - 1)) v = 1 + Math.round(((means.get(own - 1)! - lo) / Math.max(1e-6, hi - lo)) * 254);
+          if (own && sim.activity[t] > 2 && means.has(own - 1)) v = hi === lo ? 128 : 1 + Math.round(((means.get(own - 1)! - lo) / Math.max(1e-6, hi - lo)) * 254);
         }
         if (!v) continue;
         for (let dy = 0; dy < TS; dy++) for (let dx = 0; dx < TS; dx++) {

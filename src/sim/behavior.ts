@@ -13,7 +13,7 @@ import { FLAG_PLUG } from './world.ts';
 import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill, underSiege, warState } from './warfare.ts';
 import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
 import { TR, aggressionTrait, coldBonus, courage, has as hasTrait, heatBonus, lifeFactor } from './traits.ts';
-import { atPeace, cultureAggression, onFoodFound, onKill, persona, workPriority } from './society.ts';
+import { bio, treatyBetween, cultureAggression, onFoodFound, onKill, persona, workPriority } from './society.ts';
 import { ACT, NA, NI, NO_ACT, S, actMask, prefers, reward as brainReward, think } from './brain.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -1485,7 +1485,7 @@ export function physiology(sim: Sim, i: number) {
     a.health[i] -= dmg;
     if (a.health[i] <= 0) { sim.killAnt(i, cause); return; }
   } else if (a.energy[i] > 0.4 && a.hydration[i] > 0.4 && a.health[i] < 1) {
-    a.health[i] = Math.min(1, a.health[i] + 0.002 * (hasTrait(tr, to, TR.regeneration) ? 4 : 1));
+    a.health[i] = Math.min(1, a.health[i] + ((w.toxin[k] && hasTrait(tr, to, TR.immune)) || (T > heatMax && hasTrait(tr, to, TR.fire_proof)) ? 0.006 : 0.002) * (hasTrait(tr, to, TR.regeneration) ? 6 : 1));
   }
   // senescence (Gompertz-like hazard beyond expected lifespan)
   const life = (isQueen ? sp.queen.lifespanDays : a.caste[i] === CASTE.WORKER ? sp.workers.lifespanDays : sp.workers.lifespanDays * 0.6) * lifeFactor(tr, to);
@@ -1526,8 +1526,12 @@ export function contactPhase(sim: Sim) {
     sim.idx.query(a, x, y, 3, (j) => {
       if (j === i) return;
       if (a.colony[j] === a.colony[i]) { friends++; return; }
-      // treaty partners pass each other peacefully, except intruders inside this colony's own nest
-      if (atPeace(sim, a.colony[i], a.colony[j]) && w.owner[a.y[j] * w.W + a.x[j]] !== a.colony[i] + 1) return;
+      const partner = sim.colonies[a.colony[j]];
+      const treaty = partner && treatyBetween(c, partner.id, sim.tick);
+      if (treaty) {
+        if (treaty.kind === 'alliance') friends++;
+        return;
+      }
       foes++;
       const d = Math.max(Math.abs(a.x[j] - x), Math.abs(a.y[j] - y));
       if (d > reach || !contactOpen(sim, x, y, a.x[j], a.y[j])) return;
@@ -1609,20 +1613,33 @@ export function contactPhase(sim: Sim) {
     }
     // named traits: misses, dodges, venom, bad luck and spines
     const tr = a.traits, ti = i * 2, tf = foe * 2;
-    if ((hasTrait(tr, ti, TR.clumsy) && rng.chance(0.15)) || (hasTrait(tr, tf, TR.agile) && rng.chance(0.15))) dmg = 0;
-    if (hasTrait(tr, ti, TR.venomous)) dmg *= 1.3;
-    if (hasTrait(tr, tf, TR.unlucky)) dmg *= 1.2;
-    if (dmg > 0 && hasTrait(tr, tf, TR.thorns)) a.health[i] -= 0.02;
+    if (hasTrait(tr, ti, TR.ambusher) && friends === 0) dmg *= 1.6;
+    if (hasTrait(tr, tf, TR.shield_wall)) {
+      let support = 0;
+      sim.idx.query(a, a.x[foe], a.y[foe], 3, j => {
+        if (j === foe) return;
+        const other = sim.colonies[a.colony[j]];
+        if (a.colony[j] === a.colony[foe] || (fc && other && treatyBetween(fc, other.id, sim.tick)?.kind === 'alliance')) support++;
+      });
+      if (support >= 2) dmg *= 0.6;
+    }
+    if ((hasTrait(tr, ti, TR.clumsy) && rng.chance(0.225)) || (hasTrait(tr, tf, TR.agile) && rng.chance(0.225))) dmg = 0;
+    if (hasTrait(tr, ti, TR.venomous)) dmg *= 1.45;
+    if (hasTrait(tr, tf, TR.unlucky)) dmg *= 1.3;
+    if (dmg > 0 && hasTrait(tr, tf, TR.thorns)) a.health[i] -= 0.035;
     a.health[foe] -= dmg;
     // a lucky ant sometimes survives a blow that should have killed it
-    if (a.health[foe] <= 0 && hasTrait(tr, tf, TR.lucky) && rng.chance(0.25)) a.health[foe] = 0.1;
+    if (a.health[foe] <= 0 && hasTrait(tr, tf, TR.lucky) && rng.chance(0.4)) {
+      a.health[foe] = 0.1;
+      if (fc) bio(sim, fc, a.id[foe], 'Lucky turned a lethal blow into a wound.');
+    }
     a.energy[i] -= 0.002;
     if (fc) { fc.alarm.add(a.x[foe], a.y[foe], sim.speciesOf(fc).communication.alarmStrength * 0.6); }
     c.stats.fights++;
     sim.noteFight(c, fc);
     if (a.health[foe] <= 0) {
       if (fc && fc !== c) { noteKill(sim, c, fc); onKill(sim, c, i, fc); if (a.carryBrood[foe] >= 0) recaptureBrood(sim, i, c, foe, fc); }
-      if (hasTrait(tr, tf, TR.acid_blood)) a.health[i] -= 0.25;
+      if (hasTrait(tr, tf, TR.acid_blood)) a.health[i] -= 0.4;
       sim.killAnt(foe, 'combat'); a.fightTarget[i] = -1;
       brainReward(sim, i, 1);
     }

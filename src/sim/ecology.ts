@@ -147,3 +147,24 @@ export function ecologyStep(sim: Sim) {
   }
   sim.critters.preyContact(sim);
 }
+
+/** A local food pulse beneath existing vegetation, once per eligible weather day. */
+export function canopyFall(sim: Sim) {
+  if (!sim.settings.weather || !sim.rng.chance(0.45)) return;
+  const w = sim.w, season = seasonName(sim.tick);
+  if (season === 'winter') return;
+  const food = season === 'autumn' ? M.SEED : M.PROTEIN;
+  const start = sim.rng.int(w.W);
+  for (let n = 0; n < w.W; n++) {
+    const x = (start + n) % w.W, y = w.surface[x] - 1;
+    if (y < 5 || y >= w.H - 1 || w.get(x, y) !== M.AIR || w.owner[y * w.W + x]) continue;
+    if (![M.SOIL, M.TOPSOIL, M.ORGANIC].some(m => m === w.get(x, y + 1))) continue;
+    let leafy = false;
+    for (let h = 1; h <= Math.min(y, 24); h++) if (w.get(x, y - h) === M.PLANT) { leafy = true; break; }
+    if (!leafy) continue;
+    const units = 3 + sim.rng.int(5);
+    sim.setCell(y * w.W + x, food, units, 'canopy fall');
+    sim.event('ecology', food === M.SEED ? `A seed cluster fell beneath the canopy at x=${x}.` : `Insects fell from the canopy at x=${x}, leaving food for scavengers.`);
+    return;
+  }
+}
