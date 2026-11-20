@@ -13,7 +13,7 @@ import { FLAG_PLUG } from './world.ts';
 import { aggressionFactor, decideWarTask, forageFactor, isWarTask, noteEncounter, noteKill, underSiege, warState } from './warfare.ts';
 import { depositHeap, frontierTarget, moundSpot, planDigStimulus, planKind } from './architecture.ts';
 import { TR, aggressionTrait, coldBonus, courage, has as hasTrait, heatBonus, lifeFactor } from './traits.ts';
-import { atPeace, cultureAggression, onFoodFound, onKill, persona } from './society.ts';
+import { atPeace, cultureAggression, onFoodFound, onKill, persona, workPriority } from './society.ts';
 import { ACT, NA, NI, NO_ACT, S, actMask, prefers, reward as brainReward, think } from './brain.ts';
 
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -722,9 +722,11 @@ function taskCues(sim: Sim, i: number, c: Colony, out: Float32Array): number {
   else if (sp.activity.diurnal && !sim.daytime) blocked = WHY.NIGHT;
   if (blocked) forageS = 0;
   if (!c.hasExit) forageS = 0;
+  const priority = c.society?.priority ?? workPriority(c);
+  if (priority === 'forage') forageS *= 1.3;
   forageS *= forageFactor(c) * persona(a.id[i], 'forage');
-  const nurseS = s.nurse * (young ? 2 : 1) * persona(a.id[i], 'nurse');
-  const digS = Math.max(s.dig, s.exit * 2, planDigStimulus(c)) * persona(a.id[i], 'dig');
+  const nurseS = (priority === 'nurse' ? 1.3 : 1) * s.nurse * (young ? 2 : 1) * persona(a.id[i], 'nurse');
+  const digS = (priority === 'dig' ? 1.3 : 1) * Math.max(s.dig, s.exit * 2, planDigStimulus(c)) * persona(a.id[i], 'dig');
   out[S.FORAGE_CUE] = stimulus(forageS, thr(0, a.pheno[o + P.THR_FORAGE]));
   out[S.NURSE_CUE] = stimulus(nurseS, thr(1, a.pheno[o + P.THR_NURSE]));
   out[S.DIG_CUE] = stimulus(digS, thr(2, a.pheno[o + P.THR_DIG]));

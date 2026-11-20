@@ -253,7 +253,7 @@ export class Renderer {
       const x = Math.round(this.ox + col.entrance.x * this.zoom), y = Math.round(this.oy + col.entrance.y * this.zoom);
       c.fillStyle = '#0b0806'; c.fillRect(x - 1, y - 24, 4, 20); c.fillRect(x + 1, y - 24, 10, 8);
       c.fillStyle = `rgb(${col.marking})`; c.fillRect(x, y - 23, 2, 18); c.fillRect(x + 2, y - 23, 8, 6);
-      tag(`${col.name} · ${col.workers}`, x, y - 32);
+      tag(`${col.society?.kingdom?.replace(/^Kingdom of /, '') ?? col.name} · ${col.workers}`, x, y - 32);
     }
     // Brush cursor in screen space: a dark and a light ring stay visible on sky, soil and water alike.
     if (this.hover && this.editing) {

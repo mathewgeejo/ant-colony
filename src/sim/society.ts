@@ -70,8 +70,27 @@ export const CULTURES: Record<Culture, string> = {
 };
 const CULTURE_KEYS = Object.keys(CULTURES) as Culture[];
 
+const PRIORITIES = {
+  founding: ['Founding', 'The queen is establishing her first workforce.'],
+  forage: ['Stock the granary', 'Low food reserves draw more workers to forage.'],
+  nurse: ['Tend the nursery', 'A large brood draws more workers to nursing.'],
+  dig: ['Extend the galleries', 'Workers favour excavation to open more nest space.'],
+  steady: ['Maintain the nest', 'Workers follow local needs across the nest.'],
+} as const;
+type Priority = keyof typeof PRIORITIES;
+
+export function workPriority(c: Colony): Priority {
+  if (!c.workers) return 'founding';
+  if (!c.hasExit) return 'dig';
+  if (c.store.sugar + c.store.seed * 0.5 < c.adults * 0.6) return 'forage';
+  if (c.brood.length >= Math.max(3, c.workers * 0.7)) return 'nurse';
+  if (c.nestVolume < c.adults * 2) return 'dig';
+  return 'steady';
+}
+
 export interface Treaty { kind: 'peace' | 'alliance'; since: number; until: number }
 export interface Society {
+  priority?: Priority;
   kingdom: string;
   culture: Culture;
   ruler: number;
@@ -215,6 +234,11 @@ export function societyDaily(sim: Sim) {
       if (o && s.treaties[Number(id)].until <= tick) chronicle(sim, c, `The ${s.treaties[Number(id)].kind} with ${society(sim, o).kingdom} ended.`);
       delete s.treaties[Number(id)];
     }
+    const priority = workPriority(c);
+    if (s.priority !== priority) {
+      s.priority = priority;
+      chronicle(sim, c, PRIORITIES[priority][1]);
+    }
     // morale: food security, growth and losses
     const food = Math.min(1, (c.store.sugar + c.store.protein + c.store.seed * 0.5) / Math.max(5, c.adults * 2));
     const target = Math.max(0, Math.min(1, 0.35 + 0.45 * food + (c.queens.length ? 0.15 : -0.3) - Math.min(0.4, s.grief / Math.max(5, c.workers))));
@@ -301,6 +325,7 @@ export function societySummary(sim: Sim, c: Colony) {
     return { id: o.id, kingdom: society(sim, o).kingdom, colony: o.name, status, hostility: Math.round(r.hostility * 10) / 10, days: t ? Math.max(0, Math.round((t.until - sim.tick) / DAY_TICKS)) : 0 };
   }).filter(Boolean);
   return {
+    priority: PRIORITIES[s.priority ?? workPriority(c)][0], priorityText: PRIORITIES[s.priority ?? workPriority(c)][1],
     kingdom: s.kingdom, culture: s.culture, cultureText: CULTURES[s.culture], ruler: s.rulerName, reign: s.reign, morale: Math.round(s.morale * 100),
     clans: [...clans.entries()].sort((p, q) => q[1] - p[1]).slice(0, 6).map(([f, n]) => ({ name: clanName(f), members: n })),
     heroes: heroes.slice(0, 5), relations, chronicle: s.chronicle.slice(-12).reverse().map((e) => `Day ${Math.floor(e.tick / DAY_TICKS) + 1}: ${e.text}`),

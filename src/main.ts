@@ -136,7 +136,7 @@ function kingdomHtml(k: any): string {
 // Floating, draggable sheets that appear only when asked for: an ant sheet when an ant is clicked, a kingdom
 // sheet per colony, and a Kingdoms & alliances window. Each re-renders only when its content changes.
 type SheetKind = 'ant' | 'colony' | 'list';
-const sheet = { ant: { open: false, tab: 'overview', id: 0, follow: false }, colony: { open: false, tab: 'overview', id: 0 }, list: { open: false, tab: 'world' } };
+const sheet = { ant: { open: false, tab: 'overview', id: 0, follow: false }, colony: { open: false, tab: 'overview', id: 0 }, list: { open: false, tab: 'kingdoms' } };
 const sheetHtml: Record<SheetKind, string> = { ant: '', colony: '', list: '' };
 let lastPickedAnt = 0;
 const rgb = (m: number[] | undefined) => m ? `rgb(${m[0]},${m[1]},${m[2]})` : '#888';
@@ -219,7 +219,7 @@ function colonySheet(c: any): string {
   let body = '';
   if (t === 'overview') {
     const brood = c.brood.reduce((x: number, y: number) => x + y, 0);
-    body = (k ? kv('Ruler', k.ruler ? `Queen ${k.ruler}${k.reign > 1 ? ` (#${k.reign})` : ''}` : 'none') + kv('Culture', k.culture) + bar('Morale', k.morale / 100, '#8fd18a') : '')
+    body = (k ? `<section class="nest-mandate" style="--mark:${rgb(c.marking)}"><small>Colony priority</small><strong>${esc(k.priority)}</strong><p>${esc(k.priorityText)}</p></section>` + kv('Ruler', k.ruler ? `Queen ${k.ruler}${k.reign > 1 ? ` (#${k.reign})` : ''}` : 'none') + kv('Culture', k.culture) + bar('Morale', k.morale / 100, '#8fd18a') : '')
       + kv('Species', c.species) + kv('Stage', c.stage) + kv('Age', `${c.ageDays.toFixed(1)} days · generation ${c.generation}`)
       + sec('Population') + popChart(c) + kv('Born / died today', `${c.today?.births ?? 0} / ${c.today?.deaths ?? 0}`) + kv('Crowding', `${c.density} ants per 100 nest cells`) + kv('Nest', `${c.nestVolume} cells dug · ${c.nestDepth} deep`) + kv('Workers', `${c.workers}${c.majors ? ` (${c.majors} soldiers)` : ''}`) + kv('Queens', c.queens) + kv('Winged', c.alates) + kv('Brood', `${brood} (${c.brood[0]} eggs · ${c.brood[1]} larvae · ${c.brood[2]} pupae)`)
       + sec('Stores') + kv('Sugar', Math.round(c.store.sugar)) + kv('Protein', Math.round(c.store.protein)) + kv('Seeds', Math.round(c.store.seed))
@@ -287,7 +287,7 @@ function listSheet(cols: any[]): string {
   if (t === 'world') {
     body = worldTab(cols, stats?.census ?? []);
   } else if (t === 'kingdoms') {
-    body = alive.length ? alive.map((c) => `<button class="sh-row" data-open-colony="${c.id}"><i class="sh-swatch" style="background:${rgb(c.marking)}"></i><span><strong>${esc(c.society?.kingdom ?? c.name)}</strong><small>${esc(c.species)} · ${c.society?.ruler ? `Queen ${esc(c.society.ruler)}` : 'no ruler'} · ${c.ageDays.toFixed(0)} d</small></span><b>${c.workers}<small>${esc(STRAT_TEXT[c.war?.strategy ?? 'grow'] ?? '')}</small></b></button>`).join('') : '<p class="muted">No living kingdoms.</p>';
+    body = alive.length ? alive.map((c) => `<button class="realm-entry" style="--mark:${rgb(c.marking)}" data-open-colony="${c.id}"><i aria-hidden="true"></i><span><strong>${esc(c.society?.kingdom ?? c.name)}</strong><small>${esc(c.species)} &middot; ${c.society?.ruler ? `Queen ${esc(c.society.ruler)}` : 'No ruler'}</small><em>${esc(c.society?.priority ?? c.stage)}</em></span><b>${c.workers}<small>workers</small></b></button>`).join('') : '<p class="muted">No living kingdoms.</p>';
   } else {
     const seen = new Set<string>(), pacts: string[] = [], wars: string[] = [];
     for (const c of alive) for (const r of c.society?.relations ?? []) {

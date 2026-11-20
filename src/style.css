@@ -367,3 +367,15 @@ body.gui-hidden #restore-ui{display:inline-flex}
   .lead{font-size:13px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+
+.realm-entry,.nest-mandate{background:linear-gradient(105deg,#324036,#202a25);color:#fff4da;border:1px solid #57604e;border-left:4px solid var(--mark);border-radius:5px}
+.realm-entry{width:100%;display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:10px;text-align:left;padding:12px;margin:4px 0;cursor:pointer}
+.realm-entry:hover,.realm-entry:focus-visible{background:#394c40;outline:2px solid #d5bd85;outline-offset:-2px}
+.realm-entry i{width:18px;height:23px;background:var(--mark);clip-path:polygon(0 0,100% 0,100% 72%,50% 100%,0 72%)}
+.realm-entry strong,.nest-mandate strong{display:block;font-size:17px;line-height:1.15}
+.realm-entry small,.nest-mandate small{display:block;color:#d5d8c5;font-size:12px}
+.realm-entry b{text-align:right;font-size:20px;font-variant-numeric:tabular-nums}
+.realm-entry em{display:block;color:#f0cf86;font-size:12px;font-style:normal;margin-top:4px}
+.nest-mandate{padding:12px 14px;margin-bottom:10px}
+.nest-mandate strong{margin:4px 0}
+.nest-mandate p{margin:0;color:#e2e5d6}
