@@ -62,6 +62,8 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
     scheduled: structuredClone(sim.scheduled), scenarioInfo: structuredClone(sim.scenarioInfo),
     nestCells: [...sim.nestCells.entries()].map(([k, v]) => [k, v.slice()]), nestDist: sim.nestDist.slice(), occ: sim.occ.slice(),
     createOpts: structuredClone(sim.createOpts), replayable: sim.replayable, brainBank: structuredClone(sim.brainBank), census: structuredClone(sim.census),
+    // derived navigation fields, saved so a loaded world continues exactly as the live one would
+    navCache: { home: structuredClone([...sim.homeField]), net: structuredClone([...sim.netFields]), front: structuredClone([...sim.frontFields]) },
     pending: structuredClone(sim.pending), navDirty: sim.navDirty, airT: sim.airT, daytime: sim.daytime,
   };
   return {
@@ -181,6 +183,12 @@ export function restore(file: SaveFile): Sim {
   sim.createOpts = structuredClone(s.createOpts ?? null); sim.replayable = s.replayable ?? false;
   sim.brainBank = Object.fromEntries(Object.entries(s.brainBank ?? {}).filter(([, e]) => validBank(e)).map(([k, e]: [string, any]) => [k, { ...e, w: Float32Array.from(e.w) }]));
   sim.census = Array.isArray(s.census) ? structuredClone(s.census) : [];
+  const nav = s.navCache, fix = (v: any) => ({ ...v, d: Uint16Array.from(v.d) });
+  if (nav) {
+    sim.homeField = new Map(nav.home.map(([k, v]: [number, any]) => [k, fix(v)]));
+    sim.netFields = new Map(nav.net.map(([k, v]: [string, any]) => [k, fix(v)]));
+    sim.frontFields = new Map(nav.front.map(([k, v]: [number, any]) => [k, fix(v)]));
+  }
   sim.pending = structuredClone(s.pending ?? []); sim.navDirty = s.navDirty ?? false;
   sim.airT = s.airT ?? sim.climate.meanTemp; sim.daytime = s.daytime ?? true;
   return sim;

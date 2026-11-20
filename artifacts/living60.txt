@@ -4,3 +4,45 @@ d6 T=22 ants=102 cols=3 ant #1:g w33 b23 q1 s33/10/21 | ant #2:g w31 b18 q1 s14/
 d8 T=23 ants=132 cols=3 ant #1:g w44 b22 q1 s62/1/22 | ant #2:g w41 b10 q1 s42/7/21 | ant #3:g w44 b29 q1 s73/0/26
 d10 T=23 ants=154 cols=3 ant #1:g w52 b24 q1 s119/1/18 | ant #2:g w43 b16 q1 s48/5/24 | ant #3:g w56 b21 q1 s39/0/0
 d12 T=23 ants=185 cols=3 ant #1:g w63 b18 q1 s87/0/0 | ant #2:g w49 b13 q1 s91/0/1 | ant #3:m w70 b9 q1 s54/5/3
+d14 T=22 ants=206 cols=3 ant #1:m w74 b8 q1 s0/0/0 | ant #2:g w53 b10 q1 s102/1/0 | ant #3:m w76 b12 q1 s94/0/11
+d16 T=21 ants=215 cols=3 ant #1:m w77 b3 q1 s0/0/0 | ant #2:g w60 b8 q1 s99/0/2 | ant #3:m w75 b18 q1 s71/0/0
+d18 T=19 ants=221 cols=3 ant #1:m w73 b4 q1 s23/2/3 | ant #2:g w62 b7 q1 s34/0/1 | ant #3:m w79 b12 q1 s0/0/0
+d20 T=17 ants=226 cols=3 ant #1:m w72 b6 q1 s4/0/1 | ant #2:g w64 b5 q1 s3/0/0 | ant #3:m w82 b8 q1 s0/0/0
+d22 T=15 ants=227 cols=3 ant #1:m w74 b5 q1 s0/0/0 | ant #2:g w63 b6 q1 s5/0/0 | ant #3:m w82 b8 q1 s16/1/6
+d24 T=14 ants=224 cols=3 ant #1:m w73 b5 q1 s0/0/0 | ant #2:g w64 b7 q1 s63/0/0 | ant #3:m w82 b8 q1 s15/2/1
+d26 T=12 ants=222 cols=3 ant #1:m w72 b5 q1 s0/0/0 | ant #2:g w64 b7 q1 s110/0/0 | ant #3:m w81 b11 q1 s30/0/5
+d28 T=12 ants=211 cols=3 ant #1:m w63 b1 q1 s0/0/0 | ant #2:g w64 b6 q1 s76/0/0 | ant #3:m w79 b13 q1 s9/1/0
+d30 T=11 ants=196 cols=3 ant #1:m w50 b6 q1 s0/0/0 | ant #2:g w63 b7 q1 s71/0/0 | ant #3:m w78 b13 q1 s0/0/0
+d32 T=12 ants=161 cols=3 ant #1:m w24 b6 q1 s0/0/0 | ant #2:g w63 b5 q1 s31/0/0 | ant #3:m w69 b4 q1 s0/0/0
+d34 T=12 ants=118 cols=3 ant #1:m w6 b3 q1 s0/0/0 | ant #2:g w64 b2 q1 s10/0/0 | ant #3:m w43 b3 q1 s0/0/0
+d36 T=14 ants=87 cols=3 ant #1:m w2 b6 q1 s0/0/2 | ant #2:g w62 b3 q1 s0/0/0 | ant #3:m w19 b5 q1 s0/0/0
+d38 T=15 ants=86 cols=3 ant #1:m w2 b11 q1 s0/0/2 | ant #2:g w63 b2 q1 s0/0/0 | ant #3:m w17 b7 q1 s0/0/0
+d40 T=17 ants=78 cols=3 ant #1:m w1 b9 q1 s0/0/0 | ant #2:g w56 b3 q1 s0/0/0 | ant #3:m w17 b8 q1 s7/0/0
+d42 T=19 ants=68 cols=3 ant #1:m w1 b5 q1 s0/0/0 | ant #2:g w47 b1 q1 s0/0/0 | ant #3:m w16 b5 q1 s0/0/0
+d44 T=21 ants=49 cols=3 ant #1:m w0 b3 q1 s0/0/0 | ant #2:g w31 b2 q1 s1/0/0 | ant #3:m w14 b4 q1 s0/0/0
+d46 T=22 ants=48 cols=3 ant #1:m w0 b3 q1 s0/0/0 | ant #2:g w30 b7 q1 s8/0/0 | ant #3:m w14 b9 q1 s12/2/2
+d48 T=23 ants=50 cols=3 ant #1:m w3 b4 q1 s0/0/0 | ant #2:g w29 b8 q1 s0/1/0 | ant #3:m w14 b9 q1 s14/3/3
+d50 T=23 ants=50 cols=3 ant #1:m w3 b7 q1 s0/0/0 | ant #2:g w29 b7 q1 s0/0/0 | ant #3:m w14 b11 q1 s6/0/4
+d52 T=23 ants=45 cols=3 ant #1:m w3 b3 q1 s0/0/0 | ant #2:g w27 b5 q1 s0/0/0 | ant #3:m w12 b11 q1 s0/0/0
+d54 T=22 ants=36 cols=3 ant #1:m w3 b2 q1 s0/0/0 | ant #2:g w26 b4 q1 s8/4/0 | ant #3:m w4 b3 q1 s0/0/0
+d56 T=21 ants=29 cols=3 ant #1:m w0 b6 q1 s0/0/0 | ant #2:g w26 b14 q1 s82/9/2 | ant #3:m w0 b2 q1 s0/0/0
+d58 T=19 ants=26 cols=3 ant #1:m w0 b0 q1 s0/0/0 | ant #2:g w23 b19 q1 s102/1/1 | ant #3:m w0 b0 q1 s0/0/0
+d60 T=17 ants=28 cols=3 ant #1:m w0 b0 q1 s0/0/0 | ant #2:g w25 b20 q1 s10/0/0 | ant #3:m w0 b0 q1 s0/0/0
+deaths per colony (lineage):
+  ant #1 alive=true peak=77 eclosed=54 adult={"old age":8,"starvation":77} brood={"starved":30,"infection":18}
+  ant #2 alive=true peak=65 eclosed=46 adult={"old age":18,"starvation":33} brood={"starved":13,"infection":7}
+  ant #3 alive=true peak=82 eclosed=57 adult={"old age":22,"starvation":69} brood={"starved":37,"infection":34}
+events tail:
+  [59.0] ant #1: water is entering the nest (5 flooded cells).
+  [59.1] ant #1: water is entering the nest (6 flooded cells).
+  [59.2] ant #1: water is entering the nest (5 flooded cells).
+  [59.3] ant #1: water is entering the nest (5 flooded cells).
+  [59.3] ant #1: water is entering the nest (5 flooded cells).
+  [59.4] ant #1: water is entering the nest (5 flooded cells).
+  [59.5] ant #1: water is entering the nest (5 flooded cells).
+  [59.6] ant #1: water is entering the nest (5 flooded cells).
+  [59.7] ant #1: water is entering the nest (5 flooded cells).
+  [59.8] ant #1: water is entering the nest (5 flooded cells).
+  [59.8] ant #1: water is entering the nest (5 flooded cells).
+  [59.9] ant #1: water is entering the nest (5 flooded cells).
+530 s

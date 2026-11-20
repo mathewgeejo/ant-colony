@@ -1,0 +1,61 @@
+d3 world food s/p/seed=470/202/0 workers=90 foraging=26 idle=17 eAvg=0.67
+   ant #1 in=7/7/0 store=32/46/20 brood=14 stim.forage=0.04 hasExit=true
+   ant #2 in=13/4/0 store=44/42/20 brood=11 stim.forage=0.03 hasExit=true
+   ant #3 in=1/9/0 store=28/43/20 brood=12 stim.forage=0.06 hasExit=true
+   src sugar{honeydew:506} protein{insect fall:303}
+   sink sugar{eaten by queen:31,spoiled:15,eaten by adults:66} protein{eaten by queen:16,egg production:21,decomposed:80,fed to larvae:32,eaten by carrier:1}
+d6 world food s/p/seed=1196/280/29 workers=99 foraging=55 idle=13 eAvg=0.61
+   ant #1 in=20/13/0 store=19/15/20 brood=17 stim.forage=0.58 hasExit=true
+   ant #2 in=14/4/0 store=15/21/20 brood=15 stim.forage=0.56 hasExit=true
+   ant #3 in=1/11/0 store=0/9/20 brood=12 stim.forage=0.79 hasExit=true
+   src sugar{honeydew:1300} protein{insect fall:555}
+   sink sugar{eaten by queen:36,spoiled:68,eaten by adults:145,eaten by ants outside:1} protein{eaten by queen:17,egg production:32,decomposed:242,fed to larvae:106,eaten by carrier:1,eaten by ants outside:3,eaten by adults:8}
+d9 world food s/p/seed=1988/270/81 workers=138 foraging=91 idle=20 eAvg=0.56
+   ant #1 in=53/36/7 store=13/25/27 brood=9 stim.forage=0.63 hasExit=true
+   ant #2 in=49/7/1 store=25/2/21 brood=6 stim.forage=0.61 hasExit=true
+   ant #3 in=68/34/6 store=29/22/26 brood=3 stim.forage=0.50 hasExit=true
+   src sugar{honeydew:2298} protein{insect fall:770}
+   sink sugar{eaten by queen:40,spoiled:133,eaten by adults:243,eaten by ants outside:6} protein{eaten by queen:19,egg production:37,decomposed:415,fed to larvae:131,eaten by carrier:1,eaten by ants outside:7,eaten by adults:21}
+d12 world food s/p/seed=2169/224/114 workers=146 foraging=93 idle=11 eAvg=0.57
+   ant #1 in=185/60/15 store=86/31/35 brood=11 stim.forage=0.11 hasExit=true
+   ant #2 in=119/15/4 store=48/1/12 brood=7 stim.forage=0.61 hasExit=true
+   ant #3 in=121/49/11 store=26/27/31 brood=9 stim.forage=0.52 hasExit=true
+   src sugar{honeydew:2839} protein{insect fall:923,scavenged corpse:1}
+   sink sugar{eaten by queen:45,spoiled:218,eaten by adults:400,eaten by ants outside:24} protein{eaten by queen:21,egg production:49,decomposed:565,fed to larvae:154,eaten by carrier:1,eaten by ants outside:10,eaten by adults:21}
+d15 world food s/p/seed=2264/168/140 workers=158 foraging=101 idle=19 eAvg=0.56
+   ant #1 in=323/79/24 store=163/13/44 brood=20 stim.forage=0.08 hasExit=true
+   ant #2 in=159/23/6 store=14/0/0 brood=6 stim.forage=1.00 hasExit=true
+   ant #3 in=151/50/14 store=2/2/33 brood=9 stim.forage=0.80 hasExit=true
+   src sugar{honeydew:3265} protein{insect fall:1048,scavenged corpse:1}
+   sink sugar{eaten by queen:51,spoiled:329,eaten by adults:560,eaten by ants outside:36,larval maintenance:23,eaten by carrier:2} protein{eaten by queen:25,egg production:56,decomposed:713,fed to larvae:212,eaten by carrier:1,eaten by ants outside:14,eaten by adults:24}
+d18 world food s/p/seed=2387/107/170 workers=181 foraging=90 idle=27 eAvg=0.48
+   ant #1 in=472/93/31 store=254/0/38 brood=23 stim.forage=0.14 hasExit=true
+   ant #2 in=204/27/8 store=1/2/1 brood=1 stim.forage=0.86 hasExit=true
+   ant #3 in=164/52/18 store=0/0/0 brood=4 stim.forage=1.00 hasExit=true
+   src sugar{honeydew:3710} protein{insect fall:1099,scavenged corpse:1}
+   sink sugar{eaten by queen:56,spoiled:430,eaten by adults:682,eaten by ants outside:49,larval maintenance:27,eaten by carrier:2} protein{eaten by queen:25,egg production:65,decomposed:806,fed to larvae:233,eaten by carrier:1,eaten by ants outside:14,eaten by adults:27}
+d21 world food s/p/seed=2238/68/180 workers=179 foraging=103 idle=22 eAvg=0.56
+   ant #1 in=593/104/37 store=225/1/0 brood=16 stim.forage=0.53 hasExit=true
+   ant #2 in=249/29/12 store=0/1/3 brood=0 stim.forage=0.87 hasExit=true
+   ant #3 in=230/55/24 store=6/2/1 brood=0 stim.forage=0.84 hasExit=true
+   src sugar{honeydew:3902} protein{insect fall:1136,scavenged corpse:3}
+   sink sugar{eaten by queen:58,spoiled:521,eaten by adults:854,eaten by ants outside:64,larval maintenance:109,eaten by carrier:3} protein{eaten by queen:27,egg production:66,decomposed:868,fed to larvae:241,eaten by carrier:1,eaten by ants outside:14,eaten by adults:30}
+d24 world food s/p/seed=2121/43/182 workers=187 foraging=84 idle=36 eAvg=0.41
+   ant #1 in=692/108/40 store=178/1/1 brood=7 stim.forage=0.59 hasExit=true
+   ant #2 in=264/29/13 store=0/0/0 brood=1 stim.forage=1.00 hasExit=true
+   ant #3 in=242/55/24 store=0/0/0 brood=0 stim.forage=0.87 hasExit=true
+   src sugar{honeydew:4033} protein{insect fall:1149,scavenged corpse:3}
+   sink sugar{eaten by queen:61,spoiled:636,eaten by adults:939,eaten by ants outside:72,larval maintenance:200,eaten by carrier:4} protein{eaten by queen:27,egg production:66,decomposed:902,fed to larvae:245,eaten by carrier:1,eaten by ants outside:14,eaten by adults:33}
+d27 world food s/p/seed=1931/22/176 workers=166 foraging=78 idle=24 eAvg=0.52
+   ant #1 in=746/108/40 store=105/0/0 brood=5 stim.forage=0.46 hasExit=true
+   ant #2 in=295/29/15 store=0/0/0 brood=0 stim.forage=0.87 hasExit=true
+   ant #3 in=293/56/29 store=8/0/4 brood=0 stim.forage=0.63 hasExit=true
+   src sugar{honeydew:4085} protein{insect fall:1151,scavenged corpse:4}
+   sink sugar{eaten by queen:64,spoiled:721,eaten by adults:1077,eaten by ants outside:90,larval maintenance:260,eaten by carrier:4} protein{eaten by queen:27,egg production:66,decomposed:925,fed to larvae:246,eaten by carrier:1,eaten by ants outside:14,eaten by adults:34}
+d30 world food s/p/seed=1726/8/167 workers=157 foraging=82 idle=27 eAvg=0.53
+   ant #1 in=792/108/42 store=35/0/0 brood=4 stim.forage=0.86 hasExit=true
+   ant #2 in=310/30/18 store=0/0/0 brood=1 stim.forage=0.87 hasExit=true
+   ant #3 in=335/57/33 store=17/0/8 brood=7 stim.forage=0.34 hasExit=true
+   src sugar{honeydew:4085} protein{insect fall:1151,scavenged corpse:5,prey killed:4}
+   sink sugar{eaten by queen:68,spoiled:809,eaten by adults:1180,eaten by ants outside:103,larval maintenance:317,eaten by carrier:4} protein{eaten by queen:27,egg production:67,decomposed:939,fed to larvae:246,eaten by carrier:1,eaten by ants outside:16,eaten by adults:35}
+233 s

@@ -197,6 +197,8 @@ export interface NestPlan {
   mound: { kind: 'dome' | 'crater' | 'none'; r: number; h: number };
   midden: { x: number };
   todo: number; frontier: number[];
+  /** every frontier cell (frontier above is a random sample of these); absent in older saves */
+  front?: number[];
   version: number;
   /** original ground surface for columns ex-30 .. ex+30; heap height is measured above it */
   ground: number[];

@@ -1,6 +1,6 @@
 # Ant Colony Sandbox
 
-Screenshot content expansion: [all 312 named reference buttons](docs/SCREENSHOT-CHECKLIST.md), [implementation evidence and remaining scope](docs/SCREENSHOT-PROGRESS.md), [Life content and sources](docs/LIFE-CONTENT.md), and [Liquid mechanics and limits](docs/LIQUID-CONTENT.md). The registry now has **134 paintable materials**, plus 14 additional animal profiles. All 18 Land, 36 Life and 32 Liquids entries have representations; full reference organism/element/reaction parity remains incomplete. Try **New world → Living garden** or **Liquid reaction lab**. The default still starts with one founding queen.
+Screenshot content expansion: [all 312 named reference buttons](docs/SCREENSHOT-CHECKLIST.md), [implementation evidence and remaining scope](docs/SCREENSHOT-PROGRESS.md), [Life content and sources](docs/LIFE-CONTENT.md), and [Liquid mechanics and limits](docs/LIQUID-CONTENT.md). The registry now has **134 paintable materials**, plus 14 additional animal profiles. All 18 Land, 36 Life and 32 Liquids entries have representations; full reference organism/element/reaction parity remains incomplete. Try **New world → Living garden** or **Liquid reaction lab**. The default is the generated Living world with several kingdoms; choose New world → First colony for a single founding queen.
 
 A playable, editable pixel ecosystem with a simulation worker, autonomous ant agents, cellular terrain and water, brood development, local signals, competing colonies, and explicit inherited lineages. All art is original pixel grids and procedural code. No generated images or external art service.
 
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the printed local URL. The default starts with **one newly mated Lasius niger queen**, at 1× / 30 TPS so material motion stays readable. Watch her excavate and rear brood; choose 10×, 100× or Warp to reach workers sooner. Use the experiment guide in the bottom bar for controls and scenario interventions. One model day is 3,600 ticks, two real minutes at 1×; biological development is further compressed.
+Open the printed local URL. The default is the generated **Living world** (several kingdoms), at 1× / 30 TPS so material motion stays readable. Watch her excavate and rear brood; choose 10×, 100× or Warp to reach workers sooner. Use the experiment guide in the bottom bar for controls and scenario interventions. One model day is 3,600 ticks, two real minutes at 1×; biological development is further compressed.
 
 ```sh
 npm run typecheck
@@ -23,6 +23,18 @@ npm run preview
 ```
 
 `dist/` is the static browser build. Serve it over HTTP; opening index.html directly as a file cannot load a module worker. It has no backend/account dependency. Build only when needed to package or diagnose a build issue, not after every edit.
+
+## Deploy to Vercel
+
+The game is a static site (no server), so it deploys as-is: import the GitHub repo in Vercel, or run `npx vercel` in this folder. `vercel.json` sets the Vite framework preset, `npm run build` and the `dist` output. Saves and learnt ant brains are stored in each player's browser (IndexedDB), so they persist between visits on the deployed site. Use **Export brains** / **Import…** in an ant's Brain tab to move learnt brains between browsers. Open a specific world with `?scenario=colony-wars&seed=7`.
+
+## Learning ant brains
+
+Every worker carries its own small neural network (17 senses → 12 hidden → 9 actions), in the spirit of *Creatures* (1996). Senses are its drives (hunger, thirst, pain, fear, boredom) and local cues (calls to forage/nurse/dig, rivals nearby, stores, daylight…). It picks a verb — rest, forage, nurse, dig, clean, eat, drink, defend, flee — and the existing behaviour programs carry it out. It learns online by reinforcement: reward is drive reduction plus useful work (food delivered in proportion to colony need, larvae fed, soil dug, refuse removed, rivals killed); a death by starvation or combat is punished. A colony's first workers start from instincts dreamed into a template; newborns copy the colony template with small variation, and an above-average lifetime is blended back in when a worker dies. The best template per species is kept in a brain bank that seeds colonies in new worlds. Click an ant → **Brain** for its drives, action values, what it learnt and a weight map; a colony's **Mind** tab shows the template. (Transmitting learnt weights is a game abstraction, not ant biology.)
+
+## Kingdoms underground
+
+Colonies dig deep, branching nests: a main shaft down the soil column, chambers on alternating sides, galleries to satellite chambers, sloping side shafts and up to four levels of highways. The queen moves her court down as deeper chambers open. Most workers live underground; the surface is for foraging, fighting and territory. A colony that loses its queen raises or adopts a new one, so kingdoms last for generations. **Kingdoms → World** shows the world census (population, births, deaths, kingdoms founded and fallen) and each kingdom's population history; the default world is the generated *Living world*.
 
 ## Play
 

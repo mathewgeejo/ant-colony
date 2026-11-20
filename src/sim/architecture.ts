@@ -271,9 +271,8 @@ export function territorySummary(sim: Sim, c: Colony) {
   };
 }
 
-/** Every frontier cell of a plan (not saved; refreshed by scanFrontier). */
-const allFront = new WeakMap<NestPlan, number[]>();
-export const frontierCells = (p: NestPlan) => allFront.get(p) ?? p.frontier;
+/** Every frontier cell of a plan (saved with the plan so a loaded world digs on exactly as before). */
+export const frontierCells = (p: NestPlan) => p.front ?? p.frontier;
 
 /** Count unexcavated planned cells and collect the frontier (planned solid cells touching the nest). */
 function scanFrontier(sim: Sim, c: Colony, p: NestPlan) {
@@ -289,7 +288,7 @@ function scanFrontier(sim: Sim, c: Colony, p: NestPlan) {
     if (w.owner[k - 1] === own || w.owner[k + 1] === own || w.owner[k - w.W] === own || w.owner[k + w.W] === own) front.push(k);
   }
   p.todo = todo;
-  allFront.set(p, front);
+  p.front = front;
   p.frontier = [];
   for (let n = 0; n < Math.min(24, front.length); n++) p.frontier.push(front[sim.rng.int(front.length)]);
 }

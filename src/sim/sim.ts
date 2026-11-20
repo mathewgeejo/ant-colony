@@ -822,6 +822,9 @@ export class Sim {
         let larvae = 0; for (const b of c.brood) if (b.stage === STAGE.LARVA) larvae++;
         const protein = c.store.protein + c.store.seed * Math.max(0.4, sp.nutrition.seed);
         if (protein < larvae * 0.8) rate *= protein < 1 ? 0.15 : 0.45;
+        // carrying capacity: an established colony lays in proportion to its food security, so populations level
+        // off at what the land around them can feed instead of booming and then starving (logistic growth)
+        if (c.workers > 12) rate *= Math.max(0.1, Math.min(1, energyStore / target));
       }
       if (rng.next() < rate) this.layEgg(c, q, qi, sp);
       // queen fed by workers (trophallaxis abstraction) when stores allow
@@ -1172,7 +1175,7 @@ export class Sim {
   }
 
   /** Walking-distance fields through tunnels (not saved; cached a few hundred ticks). */
-  private netFields = new Map<string, { tick: number; d: Uint16Array }>();
+  netFields = new Map<string, { tick: number; d: Uint16Array }>();
   /** Distance (in cells) through colony c's excavations - and, when `other` is a colony slot+1, that
    *  colony's too - to the cell (x,y). Used by underground raiders to find a breach and the way back. */
   netDist(c: Colony, x: number, y: number, other = 0): Uint16Array {
@@ -1201,7 +1204,7 @@ export class Sim {
     return d;
   }
 
-  private frontFields = new Map<number, { tick: number; d: Uint16Array }>();
+  frontFields = new Map<number, { tick: number; d: Uint16Array }>();
   /** Distance through colony c's tunnels to the nearest unfinished planned cell (diggers walk down it). */
   frontierField(c: Colony): Uint16Array {
     const w = this.w;
@@ -1576,12 +1579,13 @@ export function foodKey(f: number) {
 /**
  * Development rate of brood (and laying rate) inside a tended nest. Workers carry brood between warmer and
  * cooler chambers and cluster over it, so outside winter it never falls below 60% of the optimum while the
- * nest is above freezing (game abstraction of nest thermoregulation: without it eggs in cool soil take a
- * month to become workers and colonies barely grow).
+ * soil is no more than 6 degC below the species' developmental threshold (game abstraction of nest
+ * thermoregulation: without it eggs in cool soil take a month to become workers and colonies barely grow).
+ * Real cold still stops development.
  */
 export function nestRate(sp: SpeciesDef, T: number, tended: boolean, winter: boolean) {
   const r = thermalRate(sp, T);
-  return tended && !winter && T > 2 && T < sp.development.tMax ? Math.max(r, 0.6) : r;
+  return tended && !winter && T > sp.development.tMin - 6 && T < sp.development.tMax ? Math.max(r, 0.6) : r;
 }
 
 /** Linear thermal reaction norm for development (degree-day style; Kipyatkov & Lopatina). */
