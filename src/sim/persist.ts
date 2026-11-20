@@ -48,7 +48,7 @@ export function snapshot(sim: Sim, name = 'save'): SaveFile {
       ledger: { sources: structuredClone(w.ledger.sources), sinks: structuredClone(w.ledger.sinks), initial: { ...w.ledger.initial } },
     },
     phys: { stamp: sim.phys.stamp, moistureCursor: sim.phys.moistureCursor, raining: sim.phys.raining, rainLocal: sim.phys.rainLocal.map((r) => ({ ...r })), slumps: sim.phys.slumps,topologyChanged:sim.phys.sandbox.topologyChanged },
-    traitBalance: 2,
+    player: { ...sim.player }, traitBalance: 2,
     ants: sim.a.serialize(),
     colonies: cols,
     nextColonyId: sim.nextColonyId, broodNextId: sim.broodNextId,
@@ -157,6 +157,7 @@ export function restore(file: SaveFile): Sim {
   Object.assign(sim.phys, { stamp: s.phys.stamp, moistureCursor: s.phys.moistureCursor, raining: s.phys.raining, rainLocal: s.phys.rainLocal.map((r: any) => ({ ...r })), slumps: s.phys.slumps });
   sim.phys.sandbox.topologyChanged=s.phys.topologyChanged??false;
   sim.a = AntStore.restore(s.ants);
+  if (s.player) sim.player = { ...s.player };
   // Older saves baked the original trait modifiers into each adult's phenotype.
   if (!s.traitBalance) {
     for (let i = 0; i < sim.a.n; i++) {

@@ -6,7 +6,7 @@ import { P, NP } from './genetics.ts';
 import { M,IS_LIQUID } from './materials.ts';
 import { DAY_TICKS, isDaytime } from './physics.ts';
 import type { Sim } from './sim.ts';
-import { habitatAllows,newWildlife,WildlifeSystem,medicineExposure,type WildlifeState } from './wildlife.ts';
+import { habitatAllows,newWildlife,WildlifeSystem,medicineExposure,type Settlement,type WildlifeState } from './wildlife.ts';
 import { wildlifeById,wildlifeByKey } from './wildlife-defs.ts';
 
 export const CRITTER = { SPRINGTAIL: 0, SPIDER: 1 } as const;
@@ -17,6 +17,8 @@ export type Critter=WildlifeState;
 export class Critters {
   list: Critter[] = [];
   nextId = 1;
+  settlements: Settlement[] = [];
+  nextSettlement = 1;
 
   private wildlife=new WildlifeSystem();
   spawn(sim:Sim,kind:string|number,x:number,y:number):Critter|undefined {
@@ -49,7 +51,15 @@ export class Critters {
       if (rng.next() > speed) continue;
       if (c.kind === CRITTER.SPRINGTAIL) {
         if (c.age > DAY_TICKS * 3) { this.list.splice(k, 1); continue; }
-        this.wander(sim, c, 0);
+        let danger = false;
+        sim.idx.query(a,c.x,c.y,3,j=>{
+          if (a.caste[j] === CASTE.WORKER && a.task[j] === TASK.FORAGE) {
+            c.foodX = a.x[j]; c.foodY = a.y[j]; c.foodUntil = sim.tick + 18; danger = true;
+          }
+        });
+        if (danger || c.foodUntil > sim.tick) {
+          c.action = 'Evading a forager'; this.moveToward(sim,c,2*c.x-c.foodX,2*c.y-c.foodY);
+        } else { c.action = 'Exploring litter'; this.wander(sim, c, 0); }
         continue;
       }
       // spider: hunt ants it can sense nearby; strong trails and light make prey easier to find
@@ -73,13 +83,16 @@ export class Critters {
       });
       if (target >= 0) {
         const tx = a.x[target], ty = a.y[target];
+        c.foodX=tx;c.foodY=ty;c.foodUntil=sim.tick+90;c.action='Tracking ant prey';
         if (Math.abs(tx - c.x) + Math.abs(ty - c.y) <= 1) {
           if (rng.chance(0.25)) {
             a.health[target] -= 0.6 * (1 - Math.min(0.8, a.pheno[target * NP + P.DEFENSE]));
             if (a.health[target] <= 0) { sim.killAnt(target, 'predation'); c.kills++; c.hunger = 0; }
           }
         } else this.moveToward(sim, c, tx, ty);
-      } else this.wander(sim, c, 1);
+      } else if (c.foodUntil > sim.tick && (c.x !== c.foodX || c.y !== c.foodY)) {
+        c.action='Searching the last prey sighting'; this.moveToward(sim,c,c.foodX,c.foodY);
+      } else { c.action='Patrolling for prey'; this.wander(sim,c,1); }
       // ants in contact fight back and release alarm
       sim.idx.query(a, c.x, c.y, 1, (j) => {
         if(Math.abs(a.x[j]-c.x)+Math.abs(a.y[j]-c.y)>1)return;
@@ -99,6 +112,10 @@ export class Critters {
       }
     }
     this.wildlife.step(sim,this.list,(kind,x,y)=>this.spawn(sim,kind,x,y));
+    if (sim.tick % 60 === 0 && this.settlements.length) {
+      const inhabited = new Set(this.list.map(c=>c.community));
+      this.settlements = this.settlements.filter(h=>inhabited.has(h.id));
+    }
   }
 
   /** Ants that bump into a springtail may capture it: it becomes a protein food cell. */
@@ -150,6 +167,6 @@ export class Critters {
     if (best) { c.x += best[0]; c.y += best[1]; c.dir = best[0] || c.dir; }
   }
 
-  serialize() { return { list: this.list.map((c) => ({ ...c })), nextId: this.nextId }; }
-  restore(s: { list: Critter[]; nextId: number }) { this.list = s.list.map((c) => ({ ...newWildlife(c.id,c.kind,c.x,c.y,0),...c })); this.nextId = s.nextId; }
+  serialize() { return { list: this.list.map((c) => ({ ...c })), nextId: this.nextId, settlements: this.settlements.map(h=>({...h})), nextSettlement:this.nextSettlement }; }
+  restore(s: { list: Critter[]; nextId: number; settlements?: Settlement[]; nextSettlement?: number }) { this.list = s.list.map((c) => ({ ...newWildlife(c.id,c.kind,c.x,c.y,0),...c })); this.nextId = s.nextId; this.settlements=(s.settlements??[]).map(h=>({...h}));this.nextSettlement=s.nextSettlement??1; }
 }

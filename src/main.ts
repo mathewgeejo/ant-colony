@@ -2,8 +2,9 @@ import '@fontsource/atkinson-hyperlegible/400.css';
 import '@fontsource/atkinson-hyperlegible/700.css';
 import '@fontsource/silkscreen/400.css';
 import './style.css';
+import { drawAntEye } from './render/ant-eye.ts';
 import { Renderer } from './render/renderer.ts';
-import { MATERIALS, M,FANTASY_MATERIALS } from './sim/materials.ts';
+import { FOOD_OF, MATERIALS, M,FANTASY_MATERIALS } from './sim/materials.ts';
 import { WILDLIFE,wildlifeByKey,type WildlifeDef } from './sim/wildlife-defs.ts';
 import { LIFE_MATERIALS } from './sim/life-ecology.ts';
 import { REFERENCE_LIQUIDS } from './sim/liquid-reactions.ts';
@@ -61,7 +62,7 @@ $('#app').innerHTML = `
     <canvas id="world" tabindex="0" aria-label="Editable ant ecosystem. Drag to paint; right-drag, middle-drag, Alt-drag or the hand tool pans. Scroll or pinch to zoom. Arrow keys pan, plus and minus zoom."></canvas>
     <div class="world-heading"><span class="live-dot"></span><strong id="world-title">First colony</strong><span id="mode-badge">Naturalistic</span></div>
     <div id="sheets"></div>
-    <div class="hud-right">
+    <div class="hud-right"><button id="pantry-run" title="Play as a worker and deliver three food loads">Pantry run</button>
       <button id="kingdoms-btn" title="Kingdoms &amp; alliances" aria-label="Open kingdoms and alliances">${icon('map')}<span>Kingdoms</span></button>
       <button id="sidebar-toggle" title="Open colony observatory" aria-label="Toggle colony panel">${icon('ant')}<span id="colony-peek">Colony</span></button>
       <div class="world-weather">${icon('sun')}<span id="weather">21°C · mild</span></div>
@@ -103,7 +104,7 @@ $('#app').innerHTML = `
   <div id="palette" class="palette"></div>
 </section>
 <footer><div><span class="seed-label">Seed <b id="seed-label">42</b></span><span id="status">Connecting to the ecosystem…</span></div><button id="scenario-help">${icon('book')}<span>Experiment guide</span></button><span id="fps">— fps</span></footer>
-<dialog id="modal"><div class="modal-head"><h2 id="modal-title"></h2><button id="modal-close" class="icon-btn" aria-label="Close dialog">${icon('close')}</button></div><div id="modal-body"></div></dialog><div id="toast" role="status" aria-live="polite"></div><input id="file-input" type="file" accept=".antsave,.json" hidden><input id="species-file" type="file" accept=".json" hidden>`;
+<dialog id="ant-eye" aria-labelledby="eye-title"><header><h2 id="eye-title">Pantry run</h2><button id="eye-exit">Return to world</button></header><canvas id="eye-scene" width="384" height="180" aria-label="First-person view from your ant"></canvas><p id="eye-status"></p><p id="eye-hint"></p><div class="eye-controls"><button data-eye="left">Turn left</button><button data-eye="go">Step forward</button><button data-eye="right">Turn right</button><button data-eye="use">Forage / unload</button></div><small>W/S to walk ? A/D to turn ? Space to forage ? Esc to leave</small></dialog><dialog id="modal"><div class="modal-head"><h2 id="modal-title"></h2><button id="modal-close" class="icon-btn" aria-label="Close dialog">${icon('close')}</button></div><div id="modal-body"></div></dialog><div id="toast" role="status" aria-live="polite"></div><input id="file-input" type="file" accept=".antsave,.json" hidden><input id="species-file" type="file" accept=".json" hidden>`;
 
 // The world stays full-width; the observatory opens over it when needed.
 document.body.classList.add('panel-hidden');
@@ -170,7 +171,7 @@ function antSheet(a: any): string {
     body = a.lines.map((l: string) => `<p class="muted">${esc(l)}</p>`).join('') + a.traits.map((tr: any) => `<div class="sh-kv"><span>${esc(tr.name)} <small>${esc(tr.kind)}</small></span><b>${esc(tr.value)}</b></div>`).join('');
   }
   const actions = t === 'brain' ? brainActions
-    : `<button data-sheet-act="follow" class="${sheet.ant.follow ? 'active' : ''}">${sheet.ant.follow ? 'Following' : 'Follow'}</button><button data-sheet-act="kingdom" data-colony="${a.colonyId}">Kingdom</button><button data-sheet-act="traits">Traits…</button>`;
+    : `${a.caste?.includes("worker") ? '<button data-sheet-act="play">Play as this ant</button>' : ''}<button data-sheet-act="follow" class="${sheet.ant.follow ? 'active' : ''}">${sheet.ant.follow ? 'Following' : 'Follow'}</button><button data-sheet-act="kingdom" data-colony="${a.colonyId}">Kingdom</button><button data-sheet-act="traits">Traits…</button>`;
   return sheetFrame('ant', a.name ?? `${a.caste} #${a.id}`, `${a.caste} #${a.id} · ${s.kingdom}`, rgb(s.marking), [['overview', 'Overview'], ['brain', 'Brain'], ['story', 'Story'], ['genes', 'Genes']], t, body, actions);
 }
 
@@ -287,6 +288,8 @@ function listSheet(cols: any[]): string {
   let body = '';
   if (t === 'world') {
     body = worldTab(cols, stats?.census ?? []);
+  } else if (t === 'settlements') {
+    body = (stats?.settlements ?? []).map((h: any) => `<button class="sh-row" data-settlement="${h.id}"><span><strong>${esc(h.name)}</strong><small>${esc(WILDLIFE.find(p=>p.id===h.kind)?.name ?? 'Wildlife')} ? ${h.members} members</small></span><b>${h.reserve.toFixed(1)}<small>food reserve</small></b></button>`).join('') || '<p>Social animals found settlements when adults of the same species meet.</p>';
   } else if (t === 'kingdoms') {
     body = alive.length ? alive.map((c) => `<button class="realm-entry" style="--mark:${rgb(c.marking)}" data-open-colony="${c.id}"><i aria-hidden="true"></i><span><strong>${esc(c.society?.kingdom ?? c.name)}</strong><small>${esc(c.species)} &middot; ${c.society?.ruler ? `Queen ${esc(c.society.ruler)}` : 'No ruler'}</small><em>${esc(c.society?.priority ?? c.stage)}</em></span><b>${c.workers}<small>workers</small></b></button>`).join('') : '<p class="muted">No living kingdoms.</p>';
   } else {
@@ -299,7 +302,7 @@ function listSheet(cols: any[]): string {
     }
     body = sec('Alliances & treaties') + (pacts.join('') || '<p class="muted">No treaties in force.</p>') + sec('Wars & tensions') + (wars.join('') || '<p class="muted">The world is at peace.</p>');
   }
-  return sheetFrame('list', 'Kingdoms of the world', `${alive.length} kingdom${alive.length === 1 ? '' : 's'}`, '#ffc23d', [['world', 'World'], ['kingdoms', 'Kingdoms'], ['diplomacy', 'Alliances & wars']], t, body);
+  return sheetFrame('list', 'Kingdoms of the world', `${alive.length} kingdom${alive.length === 1 ? '' : 's'}`, '#ffc23d', [['world', 'World'], ['kingdoms', 'Kingdoms'], ['diplomacy', 'Alliances & wars'], ['settlements', 'Wildlife']], t, body);
 }
 
 function sheetEl(kind: SheetKind): HTMLElement {
@@ -338,10 +341,13 @@ $('#sheets').addEventListener('click', (e) => {
   if (tab) { const [k, v] = tab.split(':') as [SheetKind, string]; sheet[k].tab = v; }
   const oc = t.closest<HTMLElement>('[data-open-colony]')?.dataset.openColony;
   if (oc) { e.preventDefault(); openColonySheet(Number(oc)); }
+  const settlement = t.closest<HTMLElement>('[data-settlement]')?.dataset.settlement;
+  if (settlement) {const h=stats?.settlements?.find((h:any)=>h.id===Number(settlement));if(h){renderer.focus(h.x,h.y);sheet.list.open=false;}}
   const act = t.closest<HTMLElement>('[data-sheet-act]');
   if (act) {
     const a = stats?.selectedAnt, c = stats?.colonies.find((x: any) => x.id === sheet.colony.id);
     switch (act.dataset.sheetAct) {
+      case 'play': if (a) enterAnt(a.id); break;
       case 'follow': sheet.ant.follow = !sheet.ant.follow; break;
       case 'brains-export': send({ type: 'brains', op: 'export' }); break;
       case 'brains-reset': if (confirm('Forget every learnt brain template stored in this browser? New worlds will start from instincts again.')) send({ type: 'brains', op: 'reset' }); break;
@@ -554,10 +560,73 @@ function journal() {
   if(journalTab==='mutations')$('#edit-apply').onclick=()=>{const value=Number($<HTMLInputElement>('#edit-value').value);if(!Number.isFinite(value)||value<0||value>1)return toast('Enter an allele value between 0 and 1.',true);send({type:'cmd',cmd:{t:'editGenome',colonyId:Number($<HTMLSelectElement>('#edit-colony').value),locus:Number($<HTMLSelectElement>('#edit-locus').value),value}});toast('Queen germline edited for future offspring');};
 }
 
+const eye = $<HTMLDialogElement>('#ant-eye');
+let bearing = 0;
+const bearings = ['east', 'down-right', 'down', 'down-left', 'west', 'up-left', 'up', 'up-right'];
+function enterAnt(id: number) {
+  bearing = 0;
+  send({type:'cmd', cmd:{t:'playWorker', id}});
+  if (!running) setRunning(true);
+}
+$('#pantry-run').onclick = () => enterAnt(0);
+function leaveAnt() {
+  send({type:'cmd', cmd:{t:'playWorker', id:-1}});
+  if (eye.open) eye.close();
+}
+$('#eye-exit').onclick = leaveAnt;
+eye.oncancel = e => { e.preventDefault(); leaveAnt(); };
+function eyeAction(action: string) {
+  const angle = bearing * Math.PI / 4;
+  if (action === 'left' || action === 'right') {
+    bearing = (bearing + (action === 'left' ? 7 : 1)) % 8;
+    if (stats?.player) showEye(stats.player);
+  } else {
+    const step = action === 'go' ? 1 : action === 'back' ? -1 : 0;
+    send({type:'cmd', cmd:{t:'workerStep',dx:step * Math.round(Math.cos(angle)),dy:step * Math.round(Math.sin(angle))}});
+  }
+}
+eye.onclick = e => { const action = (e.target as HTMLElement).closest<HTMLElement>('[data-eye]')?.dataset.eye; if (action) eyeAction(action); };
+document.addEventListener('keydown', e => {
+  if (!eye.open) return;
+  const key = e.key.toLowerCase();
+  const action = ({w:'go',arrowup:'go',s:'back',arrowdown:'back',a:'left',arrowleft:'left',d:'right',arrowright:'right',' ':'use'} as Record<string,string>)[key];
+  if (key === 'escape') { e.preventDefault(); leaveAnt(); }
+  else if (action) { e.preventDefault(); eyeAction(action); }
+  if (key !== 'tab' && key !== 'enter') e.stopImmediatePropagation();
+}, true);
+function showEye(p: any) {
+  if (!p?.id) { if (eye.open) eye.close(); return; }
+  if (!eye.open) eye.showModal();
+  if (!p.alive) {
+    $('#eye-status').textContent = 'Your worker died. Return to the world to choose another.';
+    $<HTMLCanvasElement>('#eye-scene').getContext('2d')?.clearRect(0,0,384,180);
+    $('#eye-hint').textContent = '';
+    return;
+  }
+  drawAntEye($<HTMLCanvasElement>('#eye-scene'), renderer, p.x, p.y, bearing * Math.PI / 4);
+  $('#eye-status').textContent = `${p.deliveries >= 3 ? 'Pantry run complete' : 'Bring home three food loads'} ? ${p.deliveries} delivered ? ${p.cargo ? MATERIALS[p.cargo].name : 'Empty mandibles'}`;
+  let scent = '';
+  if (!p.cargo) {
+    let nearest = 13;
+    for (let dy=-12; dy<=12; dy++) for (let dx=-12; dx<=12; dx++) {
+      const dist=Math.abs(dx)+Math.abs(dy), x=p.x+dx, y=p.y+dy;
+      if (dist>=nearest || x<0 || x>=renderer.W || y<0 || y>=renderer.H) continue;
+      const m=renderer.map[y*renderer.W+x];
+      if (FOOD_OF[m]) { nearest=dist; scent=` Food scent: ${MATERIALS[m].name}, ${bearings[(Math.round(Math.atan2(dy,dx)/(Math.PI/4))+8)%8]}.`; }
+    }
+  }
+  const dx = p.home.x - p.x, dy = p.home.y - p.y;
+  $('#eye-hint').textContent = `Facing ${bearings[bearing]} ? Nest entrance ${Math.abs(dx)} ${dx < 0 ? 'left' : 'right'}, ${Math.abs(dy)} ${dy < 0 ? 'up' : 'down'}. ${p.feedback}${scent}`;
+}
 function updateStats(s: any) {
   // A sampled status sent before the latest toggle must not reverse the next click.
   if(s.runRevision<runRevision)return;
-  stats=s; running=s.running; document.body.classList.toggle('paused',!s.running);
+  stats=s;
+  const playable = s.colonies.some((c: any) => c.alive && c.workers > 0);
+  $<HTMLButtonElement>('#pantry-run').disabled = !playable;
+  $('#pantry-run').title = playable ? 'Bring home three food loads as a worker' : 'A colony needs a worker before you can play';
+  showEye(s.player);
+  running=s.running; document.body.classList.toggle('paused',!s.running);
   $<HTMLButtonElement>('#undo').disabled=!s.history?.undo;$<HTMLButtonElement>('#redo').disabled=!s.history?.redo;
   $('#day').textContent=`Day ${s.day}`; $('#season').textContent=`${s.season} · ${s.clock}`;
   $('#weather').textContent=`${s.airT.toFixed(0)}°C · ${s.raining?'raining':s.daytime?'daylight':'night'}`;

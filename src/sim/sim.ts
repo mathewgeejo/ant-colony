@@ -1,7 +1,7 @@
 // Simulation orchestrator: fixed-step tick scheduling, player commands,
 // ledgered terrain operations, colony lifecycle, reproduction and inheritance.
 import { AntStore, CASTE, NAV, SpatialIndex, TASK } from './ants.ts';
-import { contactPhase, canStand, inOwnNest, moveTo, updateAnt } from './behavior.ts';
+import { playerStep, contactPhase, canStand, inOwnNest, moveTo, updateAnt } from './behavior.ts';
 import type { Brood, CensusDay, Colony, LineageRecord, QueenData, Sperm } from './colony.ts';
 import { COLONY_MARKINGS, DESTINY, STAGE, makeColonyFields, newStats } from './colony.ts';
 import { Critters } from './critters.ts';
@@ -54,6 +54,8 @@ export interface SimConfig {
 }
 
 export type Command =
+  | { t: 'playWorker'; id: number }
+  | { t: 'workerStep'; dx: number; dy: number }
   | {t:'color';x:number;y:number;r:number;tint:number}
   | { t:'fill';mat:number;x:number;y:number }
   | { t:'charge';x:number;y:number;r:number;amount?:number }
@@ -122,6 +124,7 @@ export class Sim {
   ecoCursor = 0;
   /** the options this world was created from (for deterministic replay verification) */
   createOpts: any = null;
+  player = { id: 0, deliveries: 0, feedback: '' };
   replayable = true;
   /** learnt brain templates per species, carried in from earlier worlds and updated as colonies die (brain.ts) */
   brainBank: Record<string, BankEntry> = {};
@@ -330,6 +333,17 @@ export class Sim {
         }
     };
     switch (cmd.t) {
+      case 'playWorker': {
+        if (cmd.id < 0) { this.player.id = 0; break; }
+        const a = this.a;
+        const i = cmd.id ? a.findById(cmd.id) : a.alive.findIndex((v, n) => !!v && a.caste[n] === CASTE.WORKER && !a.carry[n] && a.carryBrood[n] < 0);
+        if (i >= 0 && a.caste[i] === CASTE.WORKER && a.carryBrood[i] < 0 && (!a.carry[i] || FOOD_OF[a.carry[i]])) {
+          this.player.id = a.id[i]; this.player.feedback = 'Find food, then return two cells inside your nest.';
+          a.task[i] = a.carry[i] ? TASK.RETURN : TASK.FORAGE; a.timer[i] = 0;
+        }
+        break;
+      }
+      case 'workerStep': playerStep(this, cmd.dx, cmd.dy); break;
       case 'color':{circle(cmd.x,cmd.y,cmd.r,i=>{if(w.mat[i]!==M.AIR)w.setTint(i,cmd.tint);});break;}
       case 'smash':{circle(cmd.x,cmd.y,cmd.r,(i)=>{const old=w.mat[i],m=cmd.intense&&[M.STONE,M.GRAVEL,M.ROCK,M.BASALT].includes(old as any)?M.SAND:old===M.STONE?M.GRAVEL:old===M.GLASS?M.GLASS_SHARD:old===M.WOOD?M.SAWDUST:old===M.ICE?M.SNOW:old===M.CLAY?M.CLAY_POWDER:old===M.SUGAR?M.SUGAR_POWDER:old===M.SANDSTONE?M.SAND:old===M.MUDSTONE?M.DIRT:old===M.BASALT?M.ROCK:old===M.TUFF?M.ASH:old===M.LIMESTONE?M.DUST:old===M.BONE?M.DUST:old;if(m!==old)this.phys.sandbox.transform(i,m,w.amt[i],'player crushing');});this.navDirty=true;break;}
       case 'mix':{const movable=(m:number)=>{const d=MATERIALS[m];return(!d.solid||d.granular)&&(cmd.intense||![M.FIRE,M.SPARK,M.SMOKE].includes(m as any));};for(let n=0;n<Math.min(96,(cmd.r*2+1)**2);n++){const x=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,y=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r,xx=cmd.x+this.rng.int(cmd.r*2+1)-cmd.r,yy=cmd.y+this.rng.int(cmd.r*2+1)-cmd.r;if(!w.inb(x,y)||!w.inb(xx,yy))continue;const i=y*w.W+x,j=yy*w.W+xx;if(movable(w.mat[i])&&movable(w.mat[j]))w.swap(i,j);}this.navDirty=true;break;}

@@ -148,7 +148,7 @@ export function updateStrategy(sim: Sim, c: Colony) {
       if (o && d2(a.x[i], a.y[i], o.entrance.x, o.entrance.y) < 100) { r.nestKnown = true; r.nestX = o.entrance.x; r.nestY = o.entrance.y; }
     }
     const free = (t === TASK.IDLE || t === TASK.FORAGE || t === TASK.DIG || t === TASK.WASTE || t === TASK.DEFEND) && !a.carry[i] && a.carryBrood[i] < 0;
-    if (free && a.health[i] > 0.6 && a.age[i] >= 2) recruits.push(i);
+    if (free && a.id[i] !== sim.player.id && a.health[i] > 0.6 && a.age[i] >= 2) recruits.push(i);
   }
   w.majors = majors;
   if (sim.speciesOf(c).workers.soldiers) w.majorTarget = majorTarget(sim, c);

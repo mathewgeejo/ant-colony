@@ -485,6 +485,12 @@ export function createSim(opt: CreateOptions): Sim {
     plantTrees(sim, gen.plantMul);
     sim.w.recomputeAllSurface();
   }
+  if (def.id === 'living-world') {
+    for (const [kind, fraction] of [['termite', .23], ['bee', .73]] as const) {
+      const x = Math.floor(W * fraction);
+      for (let n = 0; n < 4; n++) sim.critters.spawn(sim,kind,x+n,sim.w.surface[x+n]-1);
+    }
+  }
   spinUp(sim);
   sim.w.rebuildReactive();
   setInitialLedger(sim);

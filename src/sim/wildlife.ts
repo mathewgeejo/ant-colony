@@ -7,8 +7,11 @@ import { wildlifeById,type WildlifeDef } from './wildlife-defs.ts';
 export interface WildlifeState{
  id:number;kind:number;x:number;y:number;px:number;py:number;hp:number;hunger:number;age:number;dir:number;kills:number;leaving:boolean;
  energy:number;stage:number;stageAge:number;sex:number;cooldown:number;parentId:number;mateId:number;generation:number;
+ foodX:number;foodY:number;foodUntil:number;community:number;
  pollen:number;pollenX:number;infection:number;immunity:number;action:string;eaten:boolean;
 }
+export interface Settlement { id:number; kind:number; name:string; x:number; y:number; reserve:number; founded:number }
+const settlementNames: Record<string,string> = {bee:'Hive',termite:'Mound',human:'Village',rat:'Warren',bird:'Roost'};
 export function habitatAllows(sim:Sim,p:WildlifeDef,x:number,y:number,stage=2){
  const w=sim.w;if(!w.inb(x,y))return false;const m=w.get(x,y);
  if(p.habitat==='water'||(p.key==='frog'&&stage===1))return m===M.WATER||m===M.SALTWATER;
@@ -18,7 +21,7 @@ export function habitatAllows(sim:Sim,p:WildlifeDef,x:number,y:number,stage=2){
  return canStand(sim,x,y,false);
 }
 export function newWildlife(id:number,kind:number,x:number,y:number,sex:number):WildlifeState{
- return{id,kind,x,y,px:x,py:y,hp:1,hunger:0,age:0,dir:1,kills:0,leaving:false,energy:.8,stage:2,stageAge:0,sex,cooldown:0,parentId:0,mateId:0,generation:0,pollen:0,pollenX:-1,infection:0,immunity:0,action:'Exploring local habitat',eaten:false};
+ return{foodX:-1,foodY:-1,foodUntil:0,community:0,id,kind,x,y,px:x,py:y,hp:1,hunger:0,age:0,dir:1,kills:0,leaving:false,energy:.8,stage:2,stageAge:0,sex,cooldown:0,parentId:0,mateId:0,generation:0,pollen:0,pollenX:-1,infection:0,immunity:0,action:'Exploring local habitat',eaten:false};
 }
 export function medicineExposure(sim:Sim,c:WildlifeState){
  c.immunity=Math.max(0,c.immunity-4);const w=sim.w;
@@ -96,6 +99,8 @@ export class WildlifeSystem{
    if(target)s-=Math.abs(target.x-x)+Math.abs(target.y-y);
    if(p.moisture)s+=p.moisture*(w.humAt(x,y)+w.moist[y*w.W+x]/160)*3;
    if(p.habitat==='air'&&c.stage!==2&&w.get(x,y+1)===M.AIR)s-=2;
+   const cell = y*w.W+x;
+   s -= w.toxin[cell]/32 + w.charge[cell]/48 + w.dose[cell]/48;
    if(s>score){score=s;choice={x,y};}
   }
   if(choice){const k=choice.y*w.W+choice.x,old=c.y*w.W+c.x;if(IS_SOLID[w.mat[k]]){
@@ -127,11 +132,50 @@ export class WildlifeSystem{
    const hunts=p.key==='firefly'?c.stage===1:p.prey.length>0;
    if(hunts)this.near(sim,list,c.x,c.y,5,n=>{const np=wildlifeById(n.kind);if(!np||n===c||!p.prey.includes(np.key)||!this.clear(sim,c.x,c.y,n.x,n.y))return;target=n;if(Math.abs(n.x-c.x)+Math.abs(n.y-c.y)<=1){n.hp-=.18*(1-np.shell);c.action='Attacking nearby prey';if(np.key==='stinkbug')for(const [dx,dy] of [[0,0],[-1,0],[1,0]])if(w.inb(n.x+dx,n.y+dy))w.toxin[(n.y+dy)*w.W+n.x+dx]=120;if(n.hp<=0){n.eaten=true;c.kills++;c.energy=Math.min(1,c.energy+.4);}}});
    if(p.key==='firefly'&&c.stage===2&&!isDaytime(sim.tick)){c.energy-=.0005;this.near(sim,list,c.x,c.y,5,n=>{if(n.kind===c.kind&&n.sex!==c.sex&&n.stage===2&&this.clear(sim,c.x,c.y,n.x,n.y))target=n;});}
+   if (target) {
+     c.foodX = target.x; c.foodY = target.y; c.foodUntil = sim.tick + 200;
+   } else if (c.energy < .72 && c.foodUntil > sim.tick) {
+     if (Math.abs(c.foodX-c.x)+Math.abs(c.foodY-c.y) < 2) c.foodUntil = 0;
+     else { target = {x:c.foodX,y:c.foodY}; c.action = 'Revisiting a remembered feeding site'; }
+   }
+   const groupName = settlementNames[p.key];
+   if (groupName && c.stage === 2 && !c.community) {
+     let neighbor: WildlifeState | undefined;
+     this.near(sim,list,c.x,c.y,3,n=>{
+       if (n !== c && n.kind === c.kind && n.stage === 2 && this.clear(sim,c.x,c.y,n.x,n.y)) neighbor = n;
+     });
+     if (neighbor) {
+       if (!neighbor.community) {
+         const id = sim.critters.nextSettlement++;
+         sim.critters.settlements.push({id, kind:c.kind, name:`${groupName} ${id}`, x:c.x, y:c.y, reserve:0, founded:sim.tick});
+         neighbor.community = id;
+         sim.event('settlement', `${p.name} founders established ${groupName} ${id} at x=${c.x}.`);
+       }
+       c.community = neighbor.community;
+     }
+   }
+   const home = c.community ? sim.critters.settlements.find(h=>h.id===c.community) : undefined;
+   if (home) {
+     const atHome = Math.abs(home.x-c.x)+Math.abs(home.y-c.y)<=2;
+     if (atHome && c.energy < .5 && home.reserve >= .1) {
+       home.reserve -= .1; c.energy += .1; c.action = 'Eating from shared stores';
+     } else if (atHome && c.energy > .83 && home.reserve < 4) {
+       home.reserve += .1; c.energy -= .1; c.action = 'Provisioning the settlement';
+     } else if (!atHome && ((c.energy < .45 && home.reserve >= .1) || (c.energy > .83 && home.reserve < 4))) {
+       target = home; c.action = 'Returning to the settlement';
+     }
+   }
+   this.near(sim,list,c.x,c.y,3,n=>{
+     const predator = wildlifeById(n.kind);
+     if (n!==c && predator?.prey.includes(p.key) && this.clear(sim,c.x,c.y,n.x,n.y)) {
+       target = {x:2*c.x-n.x,y:2*c.y-n.y}; c.action = 'Escaping a nearby predator';
+     }
+   });
    this.move(sim,c,p,target);
    if(c.stage===2&&c.energy>.7&&!c.cooldown&&list.length+children.length<384){let mate:WildlifeState|undefined;this.near(sim,list,c.x,c.y,2,n=>{if(n!==c&&n.kind===c.kind&&n.stage===2&&n.energy>.5&&!n.cooldown&&(n.sex!==c.sex||['worm','slug','snail'].includes(p.key))&&this.clear(sim,c.x,c.y,n.x,n.y))mate=n;});if(mate){c.energy-=.3;mate.energy-=.2;c.cooldown=mate.cooldown=1800;children.push({kind:c.kind,x:c.x,y:c.y,mother:c,father:mate.id,generation:Math.max(c.generation,mate.generation)+1});c.action='Reproducing after local mate contact';}}
-   if(p.key==='firefly'&&c.stage===2&&!isDaytime(sim.tick))c.action='Flashing at night; searching locally';
+   if(p.key==='firefly'&&c.stage===2&&!isDaytime(sim.tick)&&c.action==='Exploring local habitat')c.action='Flashing at night; searching locally';
   }
   for(let i=list.length-1;i>=0;i--)if(list[i].hp<=0){const c=list[i];if(!c.eaten&&c.action.startsWith('Attacking')===false&&c.action!=='Old age'&&c.action!=='Environmental stress / starvation')this.die(sim,c,'Predation or illness');list.splice(i,1);}
-  for(const egg of children){const c=spawn(egg.kind,egg.x,egg.y);if(c){c.stage=0;c.energy=.45;c.parentId=egg.mother.id;c.mateId=egg.father;c.generation=egg.generation;c.action='Developing egg / newborn';}}
+  for(const egg of children){const c=spawn(egg.kind,egg.x,egg.y);if(c){c.community=egg.mother.community;c.stage=0;c.energy=.45;c.parentId=egg.mother.id;c.mateId=egg.father;c.generation=egg.generation;c.action='Developing egg / newborn';}}
  }
 }

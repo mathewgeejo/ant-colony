@@ -79,6 +79,8 @@ export function inspectCell(sim: Sim, x: number, y: number): CellInfo | null {
   for(const c of sim.critters.list)if(Math.abs(c.x-x)+Math.abs(c.y-y)<=1){
    const d=wildlifeById(c.kind),name=d?.name??(c.kind===1?'Spider':'Springtail');
    lines.push(`${name} #${c.id}: ${c.action}. Health ${pct(c.hp)}, energy ${pct(c.energy)}.`);
+   if(c.community){const home=sim.critters.settlements.find(h=>h.id===c.community);if(home)lines.push(`Member of ${home.name}. Shared food reserve: ${home.reserve.toFixed(1)}.`);}
+   if(c.foodUntil>sim.tick)lines.push(`Remembers a recent encounter at ${c.foodX}, ${c.foodY}.`);
    if(d){lines.push(d.description);lines.push(`Stage: ${['egg / newborn','juvenile','adult','pupa'][c.stage]}; age ${c.age} ticks. Generation ${c.generation}; parent ${c.parentId||'introduced'}, mate ${c.mateId||'none'}.`);if(c.infection)lines.push(`Fictional sandbox infection: ${c.infection} ticks remaining. Not a disease prediction.`);if(c.immunity)lines.push(`Fictional immunizer protection: ${c.immunity} ticks remaining; existing infections are not cured.`);}
   }
   const T = w.tempAt(x, y), H = w.humAt(x, y);

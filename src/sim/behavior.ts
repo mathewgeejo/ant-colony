@@ -314,6 +314,10 @@ export function updateAnt(sim: Sim, i: number) {
       return;
     }
   }
+  if (sim.player.id === a.id[i]) {
+    if ((sim.tick + i) % PHYS_EVERY === 0) physiology(sim, i);
+    return;
+  }
   if (((sim.tick + i) % DECIDE_EVERY) === 0) decide(sim, i);
   if (!a.alive[i]) return;
   // timed work (digging, feeding) holds the ant in place
@@ -342,6 +346,32 @@ export function updateAnt(sim: Sim, i: number) {
     afterStep(sim, i);
   }
   if (((sim.tick + i) % PHYS_EVERY) === 0) physiology(sim, i);
+}
+
+export function playerStep(sim: Sim, dx: number, dy: number) {
+  const a = sim.a, i = a.findById(sim.player.id);
+  if (i < 0 || !Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return;
+  const c = sim.colonies[a.colony[i]];
+  if (!c) return;
+  const x = a.x[i], y = a.y[i];
+  if (dx || dy) {
+    if (!canStand(sim, x + dx, y + dy, false) ||
+        (dx && dy && IS_SOLID[sim.w.get(x + dx, y)] && IS_SOLID[sim.w.get(x, y + dy)])) {
+      sim.player.feedback = 'No foothold ahead. Turn and try another direction.';
+      return;
+    }
+    moveTo(sim, i, x + dx, y + dy);
+  }
+  a.task[i] = a.carry[i] ? TASK.RETURN : TASK.FORAGE;
+  const loaded = a.carry[i];
+  if (!loaded) tryPickFood(sim, i, c);
+  else if (inOwnNest(sim, i) && a.y[i] >= c.entrance.y + 2) {
+    deliver(sim, i, c); sim.player.deliveries++;
+    sim.player.feedback = 'Food delivered to the nest.';
+    if (sim.player.deliveries === 3) sim.event('milestone', 'Pantry run complete. A player worker brought home three loads.', c);
+    return;
+  }
+  sim.player.feedback = a.carry[i] ? 'Carrying food. Head back inside the nest.' : 'Searching for food within reach.';
 }
 
 /** Checks that happen right after moving: arrivals at goals, food pickup, delivery. */

@@ -383,3 +383,11 @@ body.gui-hidden #restore-ui{display:inline-flex}
 .trait-effect{padding:7px 0;border-bottom:1px solid #57604e}
 .trait-effect p{margin:3px 0;color:#f0e8d4}
 .trait-effect small{color:#cccebc}
+
+#ant-eye{width:min(660px,95vw);background:var(--panel);color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:14px}
+#ant-eye::backdrop{background:#131f1bd9}
+#ant-eye header,.eye-controls{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+#ant-eye h2{font:600 23px Georgia,serif;margin:0}
+#eye-scene{width:100%;display:block;image-rendering:pixelated;margin:12px 0}
+#ant-eye p{margin:6px 0}
+.eye-controls{justify-content:flex-start;margin:10px 0}

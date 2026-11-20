@@ -166,13 +166,17 @@ function sendStats() {
   for (let k = 0; k < s.w.chunkActive.length; k++) if (s.w.chunkActive[k]) activeChunks++;
   const t = s.timeString();
   const mem = (performance as any).memory;
+  const pi = s.player.id ? s.a.findById(s.player.id) : -1;
+  const home = pi >= 0 ? s.colonies[s.a.colony[pi]] : null;
   const route = selectedId >= 0 ? antRoute(s, s.a.findById(selectedId)) : [];
   post({
     type: 'stats',
+    player: { ...s.player, alive: pi >= 0, x: s.a.x[pi], y: s.a.y[pi], cargo: s.a.carry[pi], health: s.a.health[pi], home: home?.entrance },
     tick: s.tick, day: t.day, clock: t.clock, season: t.season, airT: s.airT, daytime: s.daytime, raining: s.phys.raining > 0,
     running,runRevision, speed, achievedSpeed: achievedTps / BASE_TPS, behind: running && speed < MAX_SPEED && achievedTps < BASE_TPS * speed * 0.9 && ticksThisSecond >= 0,
     droppedTicks,
     colonies: colonySummaries(s),
+    settlements: s.critters.settlements.map(h=>({...h,members:s.critters.list.filter(c=>c.community===h.id).length})),
     census: s.census.slice(-240),
     ants: s.a.count, critters: s.critters.list.length,
     events: s.events.slice(-80),
