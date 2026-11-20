@@ -1,0 +1,6 @@
+d2 T=19 ants=93 cols=3 ant #1:g w30 b9 q1 s39/54/20 | ant #2:g w30 b7 q1 s48/53/20 | ant #3:g w30 b8 q1 s30/60/20
+d4 T=21 ants=93 cols=3 ant #1:g w30 b17 q1 s24/33/20 | ant #2:g w30 b12 q1 s36/35/20 | ant #3:g w30 b19 q1 s8/31/20
+d6 T=22 ants=102 cols=3 ant #1:g w33 b23 q1 s33/10/21 | ant #2:g w31 b18 q1 s14/21/20 | ant #3:g w35 b27 q1 s29/21/23
+d8 T=23 ants=132 cols=3 ant #1:g w44 b22 q1 s62/1/22 | ant #2:g w41 b10 q1 s42/7/21 | ant #3:g w44 b29 q1 s73/0/26
+d10 T=23 ants=154 cols=3 ant #1:g w52 b24 q1 s119/1/18 | ant #2:g w43 b16 q1 s48/5/24 | ant #3:g w56 b21 q1 s39/0/0
+d12 T=23 ants=185 cols=3 ant #1:g w63 b18 q1 s87/0/0 | ant #2:g w49 b13 q1 s91/0/1 | ant #3:m w70 b9 q1 s54/5/3
